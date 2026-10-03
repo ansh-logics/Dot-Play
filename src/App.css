@@ -2326,6 +2326,10 @@ body {
   transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   flex-shrink: 0;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .sidebar-player-card:hover {
@@ -3015,6 +3019,9 @@ body {
   margin-top: 0;
   padding-top: 0;
   pointer-events: none;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .sidebar-player-queue.open {
@@ -3028,11 +3035,15 @@ body {
 
 .sidebar-queue-inner {
   min-height: 0;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 8px;
   transform: translateY(16px);
   transition: transform 0.42s cubic-bezier(0.32, 0.72, 0, 1);
+  overflow: hidden;
 }
 
 .sidebar-player-queue.open .sidebar-queue-inner {
@@ -3044,6 +3055,9 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 0 2px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .sidebar-queue-title {
@@ -3068,10 +3082,13 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 190px;
+  max-height: 154px; /* Clean 3-card fit with zero awkward clipping of 4th card */
   overflow-y: auto;
   overflow-x: hidden;
   padding-right: 2px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .sidebar-queue-list::-webkit-scrollbar {
@@ -3079,14 +3096,14 @@ body {
 }
 
 .sidebar-queue-list::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.18);
   border-radius: 3px;
 }
 
 .sidebar-queue-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   padding: 7px 10px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.035);
@@ -3095,12 +3112,16 @@ body {
   transition: transform 0.38s cubic-bezier(0.32, 0.72, 0, 1),
               opacity 0.32s cubic-bezier(0.32, 0.72, 0, 1),
               background 0.18s ease,
-              border-color 0.18s ease;
+              border-color 0.18s ease,
+              box-shadow 0.18s ease;
+  width: 100%;
   min-width: 0;
+  box-sizing: border-box;
   position: relative;
   text-align: left;
   transform: translateY(12px) scale(0.97);
   opacity: 0;
+  user-select: none;
 }
 
 .sidebar-player-queue.open .sidebar-queue-item {
@@ -3117,23 +3138,6 @@ body {
   transition-delay: 0s;
 }
 
-.sidebar-queue-empty {
-  font-size: 11px;
-  color: var(--text-tertiary);
-  text-align: center;
-  padding: 12px 0;
-  font-family: var(--font-dot);
-  letter-spacing: 0.05em;
-  transform: translateY(10px);
-  opacity: 0;
-  transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.3s ease;
-}
-
-.sidebar-player-queue.open .sidebar-queue-empty {
-  transform: translateY(0);
-  opacity: 1;
-}
-
 .sidebar-queue-item:hover {
   background: rgba(255, 255, 255, 0.07);
   border-color: rgba(255, 255, 255, 0.12);
@@ -3143,6 +3147,36 @@ body {
 .sidebar-queue-item.active {
   background: rgba(215, 25, 33, 0.1);
   border-color: rgba(215, 25, 33, 0.3);
+}
+
+.sidebar-queue-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  opacity: 0.35;
+  cursor: grab;
+  padding: 2px 0;
+  flex-shrink: 0;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.sidebar-queue-item:hover .sidebar-queue-drag-handle {
+  opacity: 0.85;
+  color: #ffffff;
+}
+
+.sidebar-queue-item.dragging {
+  opacity: 0.35 !important;
+  transform: scale(0.97) !important;
+  border: 1px dashed rgba(255, 255, 255, 0.35) !important;
+}
+
+.sidebar-queue-item.drag-over {
+  border-color: var(--accent-red) !important;
+  background: rgba(215, 25, 33, 0.14) !important;
+  box-shadow: 0 0 10px rgba(215, 25, 33, 0.25);
+  transform: translateY(-2px);
 }
 
 .sidebar-queue-thumb {
@@ -3173,6 +3207,8 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.25;
+  width: 100%;
+  display: block;
 }
 
 .sidebar-queue-item.active .sidebar-queue-item-title {
@@ -3187,6 +3223,9 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   margin-top: 1px;
+  line-height: 1.2;
+  width: 100%;
+  display: block;
 }
 
 .sidebar-queue-active-dot {
@@ -3204,6 +3243,14 @@ body {
   font-size: 11px;
   color: var(--text-tertiary);
   font-family: var(--font-heading);
+  transform: translateY(10px);
+  opacity: 0;
+  transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.3s ease;
+}
+
+.sidebar-player-queue.open .sidebar-queue-empty {
+  transform: translateY(0);
+  opacity: 1;
 }
 
 

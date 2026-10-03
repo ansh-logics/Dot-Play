@@ -35,6 +35,7 @@ import {
   VolumeX,
   User,
   Maximize2,
+  GripVertical,
 } from "lucide-react";
 import {
   searchTracks,
@@ -124,8 +125,25 @@ function App() {
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [showQueue, setShowQueue] = useState(false);
 
-  // Active playback queue for sidebar queue card
-  const activeQueue = useMemo(() => {
+  // Active playback queue with localStorage persistence
+  const [queueTracks, setQueueTracks] = useState<SearchResult[]>(() => {
+    try {
+      const raw = localStorage.getItem("dot_music_queue");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.error("Failed to load queue from localStorage:", e);
+    }
+    return [];
+  });
+
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  // Active playback queue fallback based on active context
+  const contextQueue = useMemo(() => {
     if (selectedPlaylist && selectedPlaylist.tracks.length > 0) {
       return selectedPlaylist.tracks;
     }
@@ -156,6 +174,36 @@ function App() {
     searchResults,
     currentTrack,
   ]);
+
+  // Synchronize queueTracks when switching playlists/albums/tracks or on initial load
+  useEffect(() => {
+    if (contextQueue.length > 0) {
+      const hasCurrent = queueTracks.some((t) => t.videoId === currentTrack?.videoId);
+      if (!hasCurrent || queueTracks.length === 0) {
+        setQueueTracks(contextQueue);
+        try {
+          localStorage.setItem("dot_music_queue", JSON.stringify(contextQueue));
+        } catch {}
+      }
+    }
+  }, [contextQueue, currentTrack]);
+
+  const handleReorderQueue = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return;
+    setQueueTracks((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      try {
+        localStorage.setItem("dot_music_queue", JSON.stringify(next));
+      } catch (err) {
+        console.error("Failed to save queue to localStorage:", err);
+      }
+      return next;
+    });
+  };
+
+  const activeQueue = queueTracks.length > 0 ? queueTracks : contextQueue;
 
   const playerRef = useRef<YouTubePlayerInstance | null>(null);
   const isScrubbingRef = useRef(false);
@@ -612,6 +660,18 @@ function App() {
     setCurrentTime(0);
     setPlaybackError(null);
 
+    setQueueTracks((prev) => {
+      const exists = prev.some((t) => t.videoId === track.videoId);
+      if (!exists && track.videoId) {
+        const next = [track, ...prev];
+        try {
+          localStorage.setItem("dot_music_queue", JSON.stringify(next));
+        } catch {}
+        return next;
+      }
+      return prev;
+    });
+
     if (!isSamePlaylist) {
       shouldAutoPlayRef.current = true;
       playerRef.current = null;
@@ -633,6 +693,10 @@ function App() {
       setSelectedPlaylist(details);
       if (details.tracks && details.tracks.length > 0) {
         cacheTracks(details.tracks);
+        setQueueTracks(details.tracks);
+        try {
+          localStorage.setItem("dot_music_queue", JSON.stringify(details.tracks));
+        } catch {}
       }
     } catch (err) {
       setPlaylistError("Could not load playlist details.");
@@ -697,6 +761,25 @@ function App() {
     playerRef.current.nextVideo();
 
     if (currentTrack) {
+      // 1. Follow custom / reordered queue first
+      if (queueTracks.length > 0) {
+        const idx = queueTracks.findIndex(
+          (t) => t.videoId === currentTrack.videoId,
+        );
+        if (idx !== -1 && idx < queueTracks.length - 1) {
+          const next = queueTracks[idx + 1];
+          setCurrentTrack({
+            videoId: next.videoId,
+            title: next.title,
+            artist: next.artist,
+            thumbnailUrl: next.thumbnailUrl,
+            playlistId: next.playlistId || currentTrack.playlistId,
+            itemType: "song",
+          });
+          return;
+        }
+      }
+
       if (selectedPlaylist) {
         const idx = selectedPlaylist.tracks.findIndex(
           (t) => t.videoId === currentTrack.videoId,
@@ -742,7 +825,7 @@ function App() {
         }
       }
     }
-  }, [selectedPlaylist, currentTrack, homeSections, searchResults]);
+  }, [queueTracks, selectedPlaylist, currentTrack, homeSections, searchResults]);
 
   useEffect(() => {
     handleNextTrackRef.current = handleNextTrack;
@@ -760,6 +843,25 @@ function App() {
     playerRef.current.previousVideo();
 
     if (currentTrack) {
+      // 1. Follow custom / reordered queue first
+      if (queueTracks.length > 0) {
+        const idx = queueTracks.findIndex(
+          (t) => t.videoId === currentTrack.videoId,
+        );
+        if (idx > 0) {
+          const prevTrack = queueTracks[idx - 1];
+          setCurrentTrack({
+            videoId: prevTrack.videoId,
+            title: prevTrack.title,
+            artist: prevTrack.artist,
+            thumbnailUrl: prevTrack.thumbnailUrl,
+            playlistId: prevTrack.playlistId || currentTrack.playlistId,
+            itemType: "song",
+          });
+          return;
+        }
+      }
+
       if (selectedPlaylist) {
         const idx = selectedPlaylist.tracks.findIndex(
           (t) => t.videoId === currentTrack.videoId,
@@ -803,7 +905,7 @@ function App() {
         }
       }
     }
-  }, [currentTime, selectedPlaylist, currentTrack, homeSections, searchResults]);
+  }, [currentTime, queueTracks, selectedPlaylist, currentTrack, homeSections, searchResults]);
 
   const getPlayButtonLabel = () => {
     if (!isPlayerReady) return "Loading...";
@@ -1079,11 +1181,50 @@ function App() {
                         return (
                           <div
                             key={track.videoId || qIdx}
-                            className={`sidebar-queue-item ${isCurrentPlaying ? "active" : ""}`}
+                            className={`sidebar-queue-item ${isCurrentPlaying ? "active" : ""} ${draggedIndex === qIdx ? "dragging" : ""} ${dragOverIndex === qIdx ? "drag-over" : ""}`}
                             onClick={() => selectTrack(track)}
+                            draggable
+                            onDragStart={(e) => {
+                              e.dataTransfer.effectAllowed = "move";
+                              e.dataTransfer.setData("text/plain", String(qIdx));
+                              setDraggedIndex(qIdx);
+                            }}
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              e.dataTransfer.dropEffect = "move";
+                              if (dragOverIndex !== qIdx) {
+                                setDragOverIndex(qIdx);
+                              }
+                            }}
+                            onDragLeave={() => {
+                              if (dragOverIndex === qIdx) {
+                                setDragOverIndex(null);
+                              }
+                            }}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              const sourceIdx = Number(e.dataTransfer.getData("text/plain"));
+                              if (!Number.isNaN(sourceIdx) && sourceIdx !== qIdx) {
+                                handleReorderQueue(sourceIdx, qIdx);
+                              }
+                              setDraggedIndex(null);
+                              setDragOverIndex(null);
+                            }}
+                            onDragEnd={() => {
+                              setDraggedIndex(null);
+                              setDragOverIndex(null);
+                            }}
                             role="button"
                             tabIndex={0}
+                            title="Drag to reorder queue"
                           >
+                            <div
+                              className="sidebar-queue-drag-handle"
+                              title="Drag to reorder"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <GripVertical size={11} />
+                            </div>
                             <ArtworkImage
                               src={track.thumbnailUrl}
                               videoId={track.videoId}
