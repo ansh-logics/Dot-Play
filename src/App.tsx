@@ -726,6 +726,10 @@ function App() {
 
   // 5. Unified Track Playback and Selection
   const playTrack = useCallback((track: SearchResult) => {
+    if (!track || !track.videoId || !track.videoId.trim()) {
+      console.warn("Attempted to play track without valid videoId:", track);
+      return;
+    }
     recordedTrackIdRef.current = null;
     setCurrentTrack(track);
     cacheTrack(track);
@@ -792,7 +796,7 @@ function App() {
     }
     if (item.itemType === "playlist" && item.playlistId) {
       openPlaylist(item.playlistId);
-    } else {
+    } else if (item.videoId) {
       selectTrack(item, contextList);
     }
   };

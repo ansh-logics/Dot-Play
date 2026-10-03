@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react"
+import { useCallback, useEffect, useRef } from "react"
 
 export interface YouTubePlayerInstance {
   destroy: () => void
@@ -128,14 +128,15 @@ export function HiddenYouTubePlayer({
 }: HiddenYouTubePlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const playerRef = useRef<YouTubePlayerInstance | null>(null)
-  const currentVideoIdRef = useRef<string | undefined>(videoId)
+  const currentVideoIdRef = useRef<string | undefined>(undefined)
+  const isInitializingRef = useRef(false)
 
   const callbacksRef = useRef({ onError, onReady, onStateChange, onTrackChange })
   useEffect(() => {
     callbacksRef.current = { onError, onReady, onStateChange, onTrackChange }
   })
 
-  const checkTrackChange = (instance: YouTubePlayerInstance) => {
+  const checkTrackChange = useCallback((instance: YouTubePlayerInstance) => {
     if (typeof instance.getVideoData === "function") {
       const data = instance.getVideoData()
       if (data && data.video_id && data.video_id !== currentVideoIdRef.current) {
@@ -147,46 +148,18 @@ export function HiddenYouTubePlayer({
         })
       }
     }
-  }
+  }, [])
 
-  // 1. Dedicated track watcher: seamlessly load and play when videoId changes on live instance
-  useEffect(() => {
-    const instance = playerRef.current
-    if (!instance || !videoId) return
-    if (videoId === currentVideoIdRef.current) return
-
-    currentVideoIdRef.current = videoId
-
-    if (typeof instance.loadVideoById === "function") {
-      instance.loadVideoById({ videoId, startSeconds: 0 })
-      instance.playVideo?.()
-    }
-  }, [videoId])
-
-  // 2. Watchdog: ensure track doesn't freeze in unstarted/paused state when auto-advancing
-  useEffect(() => {
-    if (!videoId) return
-    const timer = setTimeout(() => {
-      const instance = playerRef.current
-      if (instance && typeof instance.playVideo === "function") {
-        instance.playVideo()
-      }
-    }, 2000)
-    return () => clearTimeout(timer)
-  }, [videoId])
-
-  useEffect(() => {
-    let active = true
-    let player: YouTubePlayerInstance | null = null
-
-    if (!containerRef.current) return
+  const initPlayer = useCallback((targetVideoId: string) => {
+    if (playerRef.current || isInitializingRef.current || !containerRef.current) return
+    isInitializingRef.current = true
 
     const placeholder = document.createElement("div")
     containerRef.current.appendChild(placeholder)
 
     void loadIframeApi()
       .then(() => {
-        if (!active || !window.YT?.Player) return
+        if (!window.YT?.Player) return
 
         const playerVars: Record<string, number | string> = {
           autoplay: 1,
@@ -207,57 +180,85 @@ export function HiddenYouTubePlayer({
           }
         }
 
-        player = new window.YT.Player(placeholder, {
-          videoId: videoId || undefined,
+        const player = new window.YT.Player(placeholder, {
+          videoId: targetVideoId,
           playerVars,
           events: {
             onError: (event) => {
-              if (active) callbacksRef.current.onError(event.data)
+              callbacksRef.current.onError(event.data)
             },
             onReady: (event) => {
               applyIframeReferrerPolicy()
               const instance = event.target || player
-              if (active && instance) {
+              if (instance) {
                 playerRef.current = instance
+                currentVideoIdRef.current = targetVideoId
                 callbacksRef.current.onReady(instance)
 
-                if (videoId) {
-                  currentVideoIdRef.current = videoId
-                  if (typeof instance.loadVideoById === "function") {
-                    instance.loadVideoById({ videoId, startSeconds: 0 })
-                  }
-                  instance.playVideo?.()
+                if (typeof instance.loadVideoById === "function") {
+                  instance.loadVideoById({ videoId: targetVideoId, startSeconds: 0 })
                 }
+                instance.playVideo?.()
 
                 checkTrackChange(instance)
               }
             },
             onStateChange: (event) => {
-              if (active) {
-                callbacksRef.current.onStateChange(getPlaybackState(event.data))
-                const instance = event.target || player || playerRef.current
-                if (instance) {
-                  checkTrackChange(instance)
-                }
+              callbacksRef.current.onStateChange(getPlaybackState(event.data))
+              const instance = event.target || player || playerRef.current
+              if (instance) {
+                checkTrackChange(instance)
               }
             },
           },
         })
       })
       .catch((err) => {
-        if (active) callbacksRef.current.onError(-1)
+        isInitializingRef.current = false
+        callbacksRef.current.onError(-1)
         console.error("Failed to load YouTube iframe API:", err)
       })
+  }, [checkTrackChange])
 
-    return () => {
-      active = false
-      playerRef.current = null
-      try {
-        player?.destroy()
-      } catch {
-        // ignore cleanup error
+  // Track watcher: initialize persistent player on first track, or smoothly load next tracks
+  useEffect(() => {
+    const cleanId = videoId?.trim()
+    if (!cleanId) return
+
+    if (!playerRef.current) {
+      initPlayer(cleanId)
+    } else {
+      if (cleanId === currentVideoIdRef.current) return
+      currentVideoIdRef.current = cleanId
+
+      const instance = playerRef.current
+      if (typeof instance.loadVideoById === "function") {
+        instance.loadVideoById({ videoId: cleanId, startSeconds: 0 })
+        instance.playVideo?.()
       }
-      placeholder.remove()
+    }
+  }, [videoId, initPlayer])
+
+  // Watchdog: ensure track doesn't freeze in unstarted/paused state when auto-advancing
+  useEffect(() => {
+    if (!videoId) return
+    const timer = setTimeout(() => {
+      const instance = playerRef.current
+      if (instance && typeof instance.playVideo === "function") {
+        instance.playVideo()
+      }
+    }, 1500)
+    return () => clearTimeout(timer)
+  }, [videoId])
+
+  // Clean up on component unmount
+  useEffect(() => {
+    return () => {
+      try {
+        playerRef.current?.destroy()
+      } catch {}
+      playerRef.current = null
+      isInitializingRef.current = false
     }
   }, [])
 
