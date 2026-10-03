@@ -36,6 +36,8 @@ import {
   User,
   Maximize2,
   GripVertical,
+  CornerDownRight,
+  ListPlus,
 } from "lucide-react";
 import {
   searchTracks,
@@ -143,55 +145,20 @@ function App() {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
-  // Active playback queue fallback based on active context
-  const contextQueue = useMemo(() => {
-    if (selectedPlaylist && selectedPlaylist.tracks.length > 0) {
-      return selectedPlaylist.tracks;
+  // 1. Authoritative Virtual Queue Operations
+  const saveQueue = useCallback((newQueue: SearchResult[]) => {
+    setQueueTracks(newQueue);
+    try {
+      localStorage.setItem("dot_music_queue", JSON.stringify(newQueue));
+    } catch (e) {
+      console.error("Failed to save queue to localStorage:", e);
     }
-    for (const section of homeSections) {
-      const idx = section.items.findIndex(
-        (i) => i.videoId === currentTrack?.videoId,
-      );
-      if (idx !== -1) {
-        return section.items.filter((i) => Boolean(i.videoId));
-      }
-    }
-    for (const section of historySections) {
-      const idx = section.items.findIndex(
-        (i) => i.videoId === currentTrack?.videoId,
-      );
-      if (idx !== -1) {
-        return section.items.filter((i) => Boolean(i.videoId));
-      }
-    }
-    if (searchResults.some((i) => i.videoId === currentTrack?.videoId)) {
-      return searchResults.filter((i) => Boolean(i.videoId));
-    }
-    return currentTrack ? [currentTrack] : [];
-  }, [
-    selectedPlaylist,
-    homeSections,
-    historySections,
-    searchResults,
-    currentTrack,
-  ]);
+  }, []);
 
-  // Synchronize queueTracks when switching playlists/albums/tracks or on initial load
-  useEffect(() => {
-    if (contextQueue.length > 0) {
-      const hasCurrent = queueTracks.some((t) => t.videoId === currentTrack?.videoId);
-      if (!hasCurrent || queueTracks.length === 0) {
-        setQueueTracks(contextQueue);
-        try {
-          localStorage.setItem("dot_music_queue", JSON.stringify(contextQueue));
-        } catch {}
-      }
-    }
-  }, [contextQueue, currentTrack]);
-
-  const handleReorderQueue = (fromIndex: number, toIndex: number) => {
+  const handleReorderQueue = useCallback((fromIndex: number, toIndex: number) => {
     if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return;
     setQueueTracks((prev) => {
+      if (fromIndex >= prev.length || toIndex >= prev.length) return prev;
       const next = [...prev];
       const [moved] = next.splice(fromIndex, 1);
       next.splice(toIndex, 0, moved);
@@ -202,9 +169,73 @@ function App() {
       }
       return next;
     });
-  };
+  }, []);
 
-  const activeQueue = queueTracks.length > 0 ? queueTracks : contextQueue;
+  const handleRemoveFromQueue = useCallback((indexToRemove: number) => {
+    setQueueTracks((prev) => {
+      if (indexToRemove < 0 || indexToRemove >= prev.length) return prev;
+      const next = prev.filter((_, idx) => idx !== indexToRemove);
+      try {
+        localStorage.setItem("dot_music_queue", JSON.stringify(next));
+      } catch (err) {
+        console.error("Failed to save queue to localStorage:", err);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleClearQueue = useCallback(() => {
+    const next = currentTrack ? [currentTrack] : [];
+    saveQueue(next);
+  }, [currentTrack, saveQueue]);
+
+  const handlePlayNext = useCallback((track: SearchResult) => {
+    if (!track.videoId) return;
+    setQueueTracks((prev) => {
+      const base = [...prev];
+      const currentIdx = currentTrack
+        ? base.findIndex((t) => t.videoId === currentTrack.videoId)
+        : -1;
+
+      // Avoid immediate duplicates
+      const existingIdx = base.findIndex((t) => t.videoId === track.videoId);
+      if (existingIdx !== -1) {
+        base.splice(existingIdx, 1);
+      }
+
+      const insertIdx = currentIdx !== -1 ? currentIdx + 1 : (base.length > 0 ? 1 : 0);
+      base.splice(insertIdx, 0, track);
+      try {
+        localStorage.setItem("dot_music_queue", JSON.stringify(base));
+      } catch {}
+      return base;
+    });
+  }, [currentTrack]);
+
+  const handleAddToQueue = useCallback((track: SearchResult) => {
+    if (!track.videoId) return;
+    setQueueTracks((prev) => {
+      const filtered = prev.filter((t) => t.videoId !== track.videoId);
+      const next = [...filtered, track];
+      try {
+        localStorage.setItem("dot_music_queue", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  const handleAppendTracksToQueue = useCallback((tracks: SearchResult[]) => {
+    if (!tracks || tracks.length === 0) return;
+    setQueueTracks((prev) => {
+      const existingIds = new Set(prev.map((t) => t.videoId));
+      const newTracks = tracks.filter((t) => t.videoId && !existingIds.has(t.videoId));
+      const next = [...prev, ...newTracks];
+      try {
+        localStorage.setItem("dot_music_queue", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  }, []);
 
   const playerRef = useRef<YouTubePlayerInstance | null>(null);
   const isScrubbingRef = useRef(false);
@@ -712,21 +743,28 @@ function App() {
     }
   }, []);
 
-  const selectTrack = (track: SearchResult) => {
-    playTrack(track);
+  const selectTrack = useCallback(
+    (track: SearchResult, contextList?: SearchResult[]) => {
+      playTrack(track);
 
-    setQueueTracks((prev) => {
-      const exists = prev.some((t) => t.videoId === track.videoId);
-      if (!exists && track.videoId) {
-        const next = [track, ...prev];
-        try {
-          localStorage.setItem("dot_music_queue", JSON.stringify(next));
-        } catch {}
-        return next;
+      if (contextList && contextList.length > 0) {
+        saveQueue(contextList);
+      } else {
+        setQueueTracks((prev) => {
+          const exists = prev.some((t) => t.videoId === track.videoId);
+          if (!exists && track.videoId) {
+            const next = [track, ...prev];
+            try {
+              localStorage.setItem("dot_music_queue", JSON.stringify(next));
+            } catch {}
+            return next;
+          }
+          return prev;
+        });
       }
-      return prev;
-    });
-  };
+    },
+    [playTrack, saveQueue],
+  );
 
   // 6. Playlist Selection & Navigation
   const openPlaylist = async (playlistId: string) => {
@@ -738,10 +776,6 @@ function App() {
       setSelectedPlaylist(details);
       if (details.tracks && details.tracks.length > 0) {
         cacheTracks(details.tracks);
-        setQueueTracks(details.tracks);
-        try {
-          localStorage.setItem("dot_music_queue", JSON.stringify(details.tracks));
-        } catch {}
       }
     } catch (err) {
       setPlaylistError("Could not load playlist details.");
@@ -751,7 +785,7 @@ function App() {
     }
   };
 
-  const handleCardClick = (item: SearchResult) => {
+  const handleCardClick = (item: SearchResult, contextList?: SearchResult[]) => {
     if (searchQuery.trim()) {
       const updated = saveRecentSearch(searchQuery.trim());
       setRecentSearches(updated);
@@ -759,7 +793,7 @@ function App() {
     if (item.itemType === "playlist" && item.playlistId) {
       openPlaylist(item.playlistId);
     } else {
-      selectTrack(item);
+      selectTrack(item, contextList);
     }
   };
 
@@ -806,70 +840,36 @@ function App() {
   const handleNextTrack = useCallback(() => {
     if (!currentTrack) return;
 
-    // 1. Follow custom / reordered queue first
+    // Follow custom virtual queue first
     if (queueTracks.length > 0) {
       const idx = queueTracks.findIndex(
         (t) => t.videoId === currentTrack.videoId,
       );
-      if (idx !== -1 && idx < queueTracks.length - 1) {
-        const next = queueTracks[idx + 1];
-        playTrack({
-          videoId: next.videoId,
-          title: next.title,
-          artist: next.artist,
-          thumbnailUrl: next.thumbnailUrl,
-          playlistId: next.playlistId || currentTrack.playlistId,
-          itemType: "song",
-        });
+      if (idx !== -1) {
+        if (idx < queueTracks.length - 1) {
+          playTrack(queueTracks[idx + 1]);
+          return;
+        } else {
+          // Loop queue: go to beginning
+          playTrack(queueTracks[0]);
+          return;
+        }
+      } else {
+        playTrack(queueTracks[0]);
         return;
       }
     }
 
-    if (selectedPlaylist) {
+    if (selectedPlaylist && selectedPlaylist.tracks.length > 0) {
       const idx = selectedPlaylist.tracks.findIndex(
         (t) => t.videoId === currentTrack.videoId,
       );
       if (idx !== -1 && idx < selectedPlaylist.tracks.length - 1) {
-        const next = selectedPlaylist.tracks[idx + 1];
-        playTrack({
-          videoId: next.videoId,
-          title: next.title,
-          artist: next.artist,
-          thumbnailUrl: next.thumbnailUrl,
-          playlistId: selectedPlaylist.id,
-          itemType: "song",
-        });
+        playTrack(selectedPlaylist.tracks[idx + 1]);
         return;
       }
-    } else {
-      // Fallback: check home feed sections
-      for (const section of homeSections) {
-        const idx = section.items.findIndex(
-          (t) => t.videoId === currentTrack.videoId,
-        );
-        if (idx !== -1 && idx < section.items.length - 1) {
-          const next = section.items[idx + 1];
-          if (next.videoId) {
-            playTrack(next);
-            return;
-          }
-        }
-      }
-      // Fallback: check search results
-      if (searchResults.length > 0) {
-        const idx = searchResults.findIndex(
-          (t) => t.videoId === currentTrack.videoId,
-        );
-        if (idx !== -1 && idx < searchResults.length - 1) {
-          const next = searchResults[idx + 1];
-          if (next.videoId) {
-            playTrack(next);
-            return;
-          }
-        }
-      }
     }
-  }, [queueTracks, selectedPlaylist, currentTrack, homeSections, searchResults, playTrack]);
+  }, [queueTracks, selectedPlaylist, currentTrack, playTrack]);
 
   useEffect(() => {
     handleNextTrackRef.current = handleNextTrack;
@@ -884,68 +884,34 @@ function App() {
 
     if (!currentTrack) return;
 
-    // 1. Follow custom / reordered queue first
+    // Follow custom virtual queue first
     if (queueTracks.length > 0) {
       const idx = queueTracks.findIndex(
         (t) => t.videoId === currentTrack.videoId,
       );
       if (idx > 0) {
-        const prevTrack = queueTracks[idx - 1];
-        playTrack({
-          videoId: prevTrack.videoId,
-          title: prevTrack.title,
-          artist: prevTrack.artist,
-          thumbnailUrl: prevTrack.thumbnailUrl,
-          playlistId: prevTrack.playlistId || currentTrack.playlistId,
-          itemType: "song",
-        });
+        playTrack(queueTracks[idx - 1]);
+        return;
+      } else if (idx === 0) {
+        // Loop queue backwards: jump to last track
+        playTrack(queueTracks[queueTracks.length - 1]);
+        return;
+      } else {
+        playTrack(queueTracks[0]);
         return;
       }
     }
 
-    if (selectedPlaylist) {
+    if (selectedPlaylist && selectedPlaylist.tracks.length > 0) {
       const idx = selectedPlaylist.tracks.findIndex(
         (t) => t.videoId === currentTrack.videoId,
       );
       if (idx > 0) {
-        const prevTrack = selectedPlaylist.tracks[idx - 1];
-        playTrack({
-          videoId: prevTrack.videoId,
-          title: prevTrack.title,
-          artist: prevTrack.artist,
-          thumbnailUrl: prevTrack.thumbnailUrl,
-          playlistId: selectedPlaylist.id,
-          itemType: "song",
-        });
+        playTrack(selectedPlaylist.tracks[idx - 1]);
         return;
       }
-    } else {
-      for (const section of homeSections) {
-        const idx = section.items.findIndex(
-          (t) => t.videoId === currentTrack.videoId,
-        );
-        if (idx > 0) {
-          const prev = section.items[idx - 1];
-          if (prev.videoId) {
-            playTrack(prev);
-            return;
-          }
-        }
-      }
-      if (searchResults.length > 0) {
-        const idx = searchResults.findIndex(
-          (t) => t.videoId === currentTrack.videoId,
-        );
-        if (idx > 0) {
-          const prev = searchResults[idx - 1];
-          if (prev.videoId) {
-            playTrack(prev);
-            return;
-          }
-        }
-      }
     }
-  }, [currentTime, queueTracks, selectedPlaylist, currentTrack, homeSections, searchResults, playTrack]);
+  }, [currentTime, queueTracks, selectedPlaylist, currentTrack, playTrack]);
 
   const getPlayButtonLabel = () => {
     if (!isPlayerReady) return "Loading...";
@@ -1207,22 +1173,37 @@ function App() {
               <div className={`sidebar-player-queue ${showQueue ? "open" : "collapsed"}`}>
                 <div className="sidebar-queue-inner">
                   <div className="sidebar-queue-header">
-                    <span className="sidebar-queue-title">UPCOMING QUEUE</span>
-                    <span className="sidebar-queue-count">
-                      {activeQueue.length} {activeQueue.length === 1 ? "track" : "tracks"}
-                    </span>
+                    <div className="sidebar-queue-header-left">
+                      <span className="sidebar-queue-title">UPCOMING QUEUE</span>
+                      <span className="sidebar-queue-count">
+                        {queueTracks.length} {queueTracks.length === 1 ? "track" : "tracks"}
+                      </span>
+                    </div>
+                    {queueTracks.length > 1 && (
+                      <button
+                        type="button"
+                        className="sidebar-queue-clear-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleClearQueue();
+                        }}
+                        title="Clear upcoming queue"
+                      >
+                        Clear
+                      </button>
+                    )}
                   </div>
                   <div className="sidebar-queue-list">
-                    {activeQueue.length === 0 ? (
+                    {queueTracks.length === 0 ? (
                       <div className="sidebar-queue-empty">Queue is empty</div>
                     ) : (
-                      activeQueue.map((track, qIdx) => {
+                      queueTracks.map((track, qIdx) => {
                         const isCurrentPlaying = currentTrack.videoId === track.videoId;
                         return (
                           <div
                             key={track.videoId || qIdx}
                             className={`sidebar-queue-item ${isCurrentPlaying ? "active" : ""} ${draggedIndex === qIdx ? "dragging" : ""} ${dragOverIndex === qIdx ? "drag-over" : ""}`}
-                            onClick={() => selectTrack(track)}
+                            onClick={() => playTrack(track)}
                             draggable
                             onDragStart={(e) => {
                               e.dataTransfer.effectAllowed = "move";
@@ -1282,6 +1263,18 @@ function App() {
                             {isCurrentPlaying && (
                               <span className="sidebar-queue-active-dot" />
                             )}
+                            <button
+                              type="button"
+                              className="sidebar-queue-remove-btn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemoveFromQueue(qIdx);
+                              }}
+                              title="Remove from queue"
+                              aria-label="Remove track from queue"
+                            >
+                              <X size={10} strokeWidth={2.5} />
+                            </button>
                           </div>
                         );
                       })
@@ -1550,13 +1543,27 @@ function App() {
                           artist: first.artist,
                           thumbnailUrl: first.thumbnailUrl,
                           playlistId: selectedPlaylist.id,
-                        });
+                        }, selectedPlaylist.tracks);
                       }
                     }}
                     disabled={selectedPlaylist.tracks.length === 0}
                   >
                     <Play size={15} fill="currentColor" strokeWidth={0} />
                     <span>Play All</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="playlist-queue-all-btn"
+                    onClick={() => {
+                      if (selectedPlaylist.tracks.length > 0) {
+                        handleAppendTracksToQueue(selectedPlaylist.tracks);
+                      }
+                    }}
+                    disabled={selectedPlaylist.tracks.length === 0}
+                    title="Add all songs to queue"
+                  >
+                    <ListPlus size={14} />
+                    <span>Add to Queue</span>
                   </button>
                 </div>
               </div>
@@ -1584,7 +1591,7 @@ function App() {
                           artist: track.artist,
                           thumbnailUrl: track.thumbnailUrl,
                           playlistId: selectedPlaylist.id,
-                        });
+                        }, selectedPlaylist.tracks);
                       }}
                     >
                       <span className="col-num">
@@ -1604,7 +1611,29 @@ function App() {
                         <span className="track-row-title">{track.title}</span>
                       </div>
                       <span className="col-artist">{track.artist}</span>
-                      <span className="col-time">{track.duration}</span>
+                      <div className="col-time-actions">
+                        <div className="track-row-actions" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            className="track-row-action-btn"
+                            onClick={() => handlePlayNext(track)}
+                            title="Play Next"
+                            aria-label="Play Next"
+                          >
+                            <CornerDownRight size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            className="track-row-action-btn"
+                            onClick={() => handleAddToQueue(track)}
+                            title="Add to Queue"
+                            aria-label="Add to Queue"
+                          >
+                            <ListPlus size={13} />
+                          </button>
+                        </div>
+                        <span className="col-time">{track.duration}</span>
+                      </div>
                     </div>
                   );
                 })}
@@ -1742,7 +1771,10 @@ function App() {
                           className="top-match-play-btn"
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleCardClick(filteredSearchResults[0]);
+                            handleCardClick(
+                              filteredSearchResults[0],
+                              filteredSearchResults.filter((i) => Boolean(i.videoId)),
+                            );
                           }}
                           aria-label="Play Top Match"
                         >
@@ -1781,7 +1813,12 @@ function App() {
                           key={trackId}
                           type="button"
                           className={`track-card ${isActive ? "active" : ""}`}
-                          onClick={() => handleCardClick(item)}
+                          onClick={() =>
+                            handleCardClick(
+                              item,
+                              filteredSearchResults.filter((i) => Boolean(i.videoId)),
+                            )
+                          }
                         >
                           <div className="card-thumb-wrap">
                             <ArtworkImage
@@ -1968,7 +2005,12 @@ function App() {
                             key={trackId}
                             type="button"
                             className={`track-card ${isActive ? "active" : ""}`}
-                            onClick={() => handleCardClick(item)}
+                            onClick={() =>
+                              handleCardClick(
+                                item,
+                                section.items.filter((i) => Boolean(i.videoId)),
+                              )
+                            }
                           >
                             <div className="card-thumb-wrap">
                               <ArtworkImage
@@ -2252,7 +2294,12 @@ function App() {
                         key={trackId}
                         type="button"
                         className={`track-card ${isActive ? "active" : ""}`}
-                        onClick={() => handleCardClick(item)}
+                        onClick={() =>
+                          handleCardClick(
+                            item,
+                            historySections[0].items.filter((i) => Boolean(i.videoId)),
+                          )
+                        }
                       >
                         <div className="card-thumb-wrap">
                           <ArtworkImage
@@ -2291,7 +2338,12 @@ function App() {
             {topPicksItems.length > 0 && (
               <TopPicksCarousel
                 items={topPicksItems}
-                onPlay={selectTrack}
+                onPlay={(item) =>
+                  selectTrack(
+                    item,
+                    topPicksItems.filter((i) => Boolean(i.videoId)),
+                  )
+                }
                 onOpenPlaylist={openPlaylist}
                 currentTrackId={currentTrack?.videoId}
                 isPlaying={playerState === "playing"}
@@ -2314,7 +2366,12 @@ function App() {
                         key={trackId}
                         type="button"
                         className={`track-card ${isActive ? "active" : ""}`}
-                        onClick={() => handleCardClick(item)}
+                        onClick={() =>
+                          handleCardClick(
+                            item,
+                            section.items.filter((i) => Boolean(i.videoId)),
+                          )
+                        }
                       >
                         <div className="card-thumb-wrap">
                           <ArtworkImage
