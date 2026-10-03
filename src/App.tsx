@@ -1062,8 +1062,8 @@ function App() {
               </div>
 
               {/* Scrollable Queue Section inside Player Card */}
-              {showQueue && (
-                <div className="sidebar-player-queue">
+              <div className={`sidebar-player-queue ${showQueue ? "open" : "collapsed"}`}>
+                <div className="sidebar-queue-inner">
                   <div className="sidebar-queue-header">
                     <span className="sidebar-queue-title">UPCOMING QUEUE</span>
                     <span className="sidebar-queue-count">
@@ -1107,7 +1107,7 @@ function App() {
                     )}
                   </div>
                 </div>
-              )}
+              </div>
             </div>
           )}
 
