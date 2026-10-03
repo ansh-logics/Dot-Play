@@ -108,7 +108,6 @@ interface HiddenYouTubePlayerProps {
   onStateChange: (state: YouTubePlaybackState) => void
   onTrackChange?: (trackInfo: { videoId: string; title?: string; artist?: string }) => void
   videoId?: string
-  playlistId?: string
 }
 
 function getPlaybackState(stateCode: number): YouTubePlaybackState {
@@ -120,18 +119,12 @@ function getPlaybackState(stateCode: number): YouTubePlaybackState {
   return "unstarted"
 }
 
-function isStandardEmbedPlaylist(id?: string): id is string {
-  if (!id) return false
-  return id.startsWith("PL") || id.startsWith("UU") || id.startsWith("FL") || id.startsWith("OLAK")
-}
-
 export function HiddenYouTubePlayer({
   onError,
   onReady,
   onStateChange,
   onTrackChange,
   videoId,
-  playlistId,
 }: HiddenYouTubePlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const playerRef = useRef<YouTubePlayerInstance | null>(null)
@@ -156,7 +149,7 @@ export function HiddenYouTubePlayer({
     }
   }
 
-  // Handle external videoId changes within the same mounted instance
+  // 1. Dedicated track watcher: seamlessly load and play when videoId changes on live instance
   useEffect(() => {
     const instance = playerRef.current
     if (!instance || !videoId) return
@@ -164,21 +157,23 @@ export function HiddenYouTubePlayer({
 
     currentVideoIdRef.current = videoId
 
-    if (isStandardEmbedPlaylist(playlistId) && typeof instance.getPlaylist === "function") {
-      const list = instance.getPlaylist()
-      if (Array.isArray(list)) {
-        const idx = list.indexOf(videoId)
-        if (idx !== -1 && typeof instance.playVideoAt === "function") {
-          instance.playVideoAt(idx)
-          return
-        }
-      }
-    }
-
     if (typeof instance.loadVideoById === "function") {
-      instance.loadVideoById(videoId)
+      instance.loadVideoById({ videoId, startSeconds: 0 })
+      instance.playVideo?.()
     }
-  }, [videoId, playlistId])
+  }, [videoId])
+
+  // 2. Watchdog: ensure track doesn't freeze in unstarted/paused state when auto-advancing
+  useEffect(() => {
+    if (!videoId) return
+    const timer = setTimeout(() => {
+      const instance = playerRef.current
+      if (instance && typeof instance.playVideo === "function") {
+        instance.playVideo()
+      }
+    }, 2000)
+    return () => clearTimeout(timer)
+  }, [videoId])
 
   useEffect(() => {
     let active = true
@@ -186,8 +181,6 @@ export function HiddenYouTubePlayer({
 
     if (!containerRef.current) return
 
-    // Create a dedicated child placeholder element for YouTube to replace with an iframe.
-    // This protects React's containerRef DOM node from being removed by YouTube's API.
     const placeholder = document.createElement("div")
     containerRef.current.appendChild(placeholder)
 
@@ -196,19 +189,13 @@ export function HiddenYouTubePlayer({
         if (!active || !window.YT?.Player) return
 
         const playerVars: Record<string, number | string> = {
-          autoplay: 0,
+          autoplay: 1,
           controls: 0,
           enablejsapi: 1,
           playsinline: 1,
           rel: 0,
         }
 
-        if (isStandardEmbedPlaylist(playlistId)) {
-          playerVars.listType = "playlist"
-          playerVars.list = playlistId
-        }
-
-        // Only pass origin if running under http/https protocol (avoids breaking in tauri://)
         if (window.location.protocol.startsWith("http")) {
           playerVars.origin = window.location.origin
         }
@@ -234,15 +221,12 @@ export function HiddenYouTubePlayer({
                 playerRef.current = instance
                 callbacksRef.current.onReady(instance)
 
-                // If loaded with a playlist and specific videoId, seek to that track index
-                if (isStandardEmbedPlaylist(playlistId) && videoId && typeof instance.getPlaylist === "function") {
-                  const list = instance.getPlaylist()
-                  if (Array.isArray(list) && list.length > 0) {
-                    const idx = list.indexOf(videoId)
-                    if (idx > 0 && typeof instance.playVideoAt === "function") {
-                      instance.playVideoAt(idx)
-                    }
+                if (videoId) {
+                  currentVideoIdRef.current = videoId
+                  if (typeof instance.loadVideoById === "function") {
+                    instance.loadVideoById({ videoId, startSeconds: 0 })
                   }
+                  instance.playVideo?.()
                 }
 
                 checkTrackChange(instance)
@@ -275,7 +259,7 @@ export function HiddenYouTubePlayer({
       }
       placeholder.remove()
     }
-  }, [playlistId])
+  }, [])
 
   return (
     <div

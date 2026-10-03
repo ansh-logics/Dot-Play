@@ -693,19 +693,27 @@ function App() {
     }
   }, [currentTime, currentTrack, duration, isLoggedIn]);
 
-  // 5. Track Selection
-  const selectTrack = (track: SearchResult) => {
+  // 5. Unified Track Playback and Selection
+  const playTrack = useCallback((track: SearchResult) => {
     recordedTrackIdRef.current = null;
-    const isSamePlaylist = Boolean(
-      track.playlistId &&
-        currentTrack?.playlistId &&
-        track.playlistId === currentTrack.playlistId,
-    );
-
     setCurrentTrack(track);
     cacheTrack(track);
     setCurrentTime(0);
+    setDuration(0);
     setPlaybackError(null);
+    setPlayerState("buffering");
+
+    const player = playerRef.current;
+    if (player && track.videoId) {
+      if (typeof player.loadVideoById === "function") {
+        player.loadVideoById({ videoId: track.videoId, startSeconds: 0 });
+      }
+      player.playVideo?.();
+    }
+  }, []);
+
+  const selectTrack = (track: SearchResult) => {
+    playTrack(track);
 
     setQueueTracks((prev) => {
       const exists = prev.some((t) => t.videoId === track.videoId);
@@ -718,16 +726,6 @@ function App() {
       }
       return prev;
     });
-
-    if (!isSamePlaylist) {
-      shouldAutoPlayRef.current = true;
-      playerRef.current = null;
-      setIsPlayerReady(false);
-      setPlayerState("unstarted");
-      setDuration(0);
-    } else {
-      setPlayerState("buffering");
-    }
   };
 
   // 6. Playlist Selection & Navigation
@@ -806,155 +804,148 @@ function App() {
   );
 
   const handleNextTrack = useCallback(() => {
-    if (!playerRef.current) return;
-    playerRef.current.nextVideo();
+    if (!currentTrack) return;
 
-    if (currentTrack) {
-      // 1. Follow custom / reordered queue first
-      if (queueTracks.length > 0) {
-        const idx = queueTracks.findIndex(
-          (t) => t.videoId === currentTrack.videoId,
-        );
-        if (idx !== -1 && idx < queueTracks.length - 1) {
-          const next = queueTracks[idx + 1];
-          setCurrentTrack({
-            videoId: next.videoId,
-            title: next.title,
-            artist: next.artist,
-            thumbnailUrl: next.thumbnailUrl,
-            playlistId: next.playlistId || currentTrack.playlistId,
-            itemType: "song",
-          });
-          return;
-        }
+    // 1. Follow custom / reordered queue first
+    if (queueTracks.length > 0) {
+      const idx = queueTracks.findIndex(
+        (t) => t.videoId === currentTrack.videoId,
+      );
+      if (idx !== -1 && idx < queueTracks.length - 1) {
+        const next = queueTracks[idx + 1];
+        playTrack({
+          videoId: next.videoId,
+          title: next.title,
+          artist: next.artist,
+          thumbnailUrl: next.thumbnailUrl,
+          playlistId: next.playlistId || currentTrack.playlistId,
+          itemType: "song",
+        });
+        return;
       }
+    }
 
-      if (selectedPlaylist) {
-        const idx = selectedPlaylist.tracks.findIndex(
+    if (selectedPlaylist) {
+      const idx = selectedPlaylist.tracks.findIndex(
+        (t) => t.videoId === currentTrack.videoId,
+      );
+      if (idx !== -1 && idx < selectedPlaylist.tracks.length - 1) {
+        const next = selectedPlaylist.tracks[idx + 1];
+        playTrack({
+          videoId: next.videoId,
+          title: next.title,
+          artist: next.artist,
+          thumbnailUrl: next.thumbnailUrl,
+          playlistId: selectedPlaylist.id,
+          itemType: "song",
+        });
+        return;
+      }
+    } else {
+      // Fallback: check home feed sections
+      for (const section of homeSections) {
+        const idx = section.items.findIndex(
           (t) => t.videoId === currentTrack.videoId,
         );
-        if (idx !== -1 && idx < selectedPlaylist.tracks.length - 1) {
-          const next = selectedPlaylist.tracks[idx + 1];
-          setCurrentTrack({
-            videoId: next.videoId,
-            title: next.title,
-            artist: next.artist,
-            thumbnailUrl: next.thumbnailUrl,
-            playlistId: selectedPlaylist.id,
-            itemType: "song",
-          });
-          return;
-        }
-      } else {
-        // Fallback: check home feed sections
-        for (const section of homeSections) {
-          const idx = section.items.findIndex(
-            (t) => t.videoId === currentTrack.videoId,
-          );
-          if (idx !== -1 && idx < section.items.length - 1) {
-            const next = section.items[idx + 1];
-            if (next.videoId) {
-              setCurrentTrack(next);
-              return;
-            }
+        if (idx !== -1 && idx < section.items.length - 1) {
+          const next = section.items[idx + 1];
+          if (next.videoId) {
+            playTrack(next);
+            return;
           }
         }
-        // Fallback: check search results
-        if (searchResults.length > 0) {
-          const idx = searchResults.findIndex(
-            (t) => t.videoId === currentTrack.videoId,
-          );
-          if (idx !== -1 && idx < searchResults.length - 1) {
-            const next = searchResults[idx + 1];
-            if (next.videoId) {
-              setCurrentTrack(next);
-              return;
-            }
+      }
+      // Fallback: check search results
+      if (searchResults.length > 0) {
+        const idx = searchResults.findIndex(
+          (t) => t.videoId === currentTrack.videoId,
+        );
+        if (idx !== -1 && idx < searchResults.length - 1) {
+          const next = searchResults[idx + 1];
+          if (next.videoId) {
+            playTrack(next);
+            return;
           }
         }
       }
     }
-  }, [queueTracks, selectedPlaylist, currentTrack, homeSections, searchResults]);
+  }, [queueTracks, selectedPlaylist, currentTrack, homeSections, searchResults, playTrack]);
 
   useEffect(() => {
     handleNextTrackRef.current = handleNextTrack;
   }, [handleNextTrack]);
 
   const handlePreviousTrack = useCallback(() => {
-    if (!playerRef.current) return;
-
     if (currentTime > 3) {
-      playerRef.current.seekTo(0, true);
+      playerRef.current?.seekTo(0, true);
       setCurrentTime(0);
       return;
     }
 
-    playerRef.current.previousVideo();
+    if (!currentTrack) return;
 
-    if (currentTrack) {
-      // 1. Follow custom / reordered queue first
-      if (queueTracks.length > 0) {
-        const idx = queueTracks.findIndex(
-          (t) => t.videoId === currentTrack.videoId,
-        );
-        if (idx > 0) {
-          const prevTrack = queueTracks[idx - 1];
-          setCurrentTrack({
-            videoId: prevTrack.videoId,
-            title: prevTrack.title,
-            artist: prevTrack.artist,
-            thumbnailUrl: prevTrack.thumbnailUrl,
-            playlistId: prevTrack.playlistId || currentTrack.playlistId,
-            itemType: "song",
-          });
-          return;
-        }
+    // 1. Follow custom / reordered queue first
+    if (queueTracks.length > 0) {
+      const idx = queueTracks.findIndex(
+        (t) => t.videoId === currentTrack.videoId,
+      );
+      if (idx > 0) {
+        const prevTrack = queueTracks[idx - 1];
+        playTrack({
+          videoId: prevTrack.videoId,
+          title: prevTrack.title,
+          artist: prevTrack.artist,
+          thumbnailUrl: prevTrack.thumbnailUrl,
+          playlistId: prevTrack.playlistId || currentTrack.playlistId,
+          itemType: "song",
+        });
+        return;
       }
+    }
 
-      if (selectedPlaylist) {
-        const idx = selectedPlaylist.tracks.findIndex(
+    if (selectedPlaylist) {
+      const idx = selectedPlaylist.tracks.findIndex(
+        (t) => t.videoId === currentTrack.videoId,
+      );
+      if (idx > 0) {
+        const prevTrack = selectedPlaylist.tracks[idx - 1];
+        playTrack({
+          videoId: prevTrack.videoId,
+          title: prevTrack.title,
+          artist: prevTrack.artist,
+          thumbnailUrl: prevTrack.thumbnailUrl,
+          playlistId: selectedPlaylist.id,
+          itemType: "song",
+        });
+        return;
+      }
+    } else {
+      for (const section of homeSections) {
+        const idx = section.items.findIndex(
           (t) => t.videoId === currentTrack.videoId,
         );
         if (idx > 0) {
-          const prevTrack = selectedPlaylist.tracks[idx - 1];
-          setCurrentTrack({
-            videoId: prevTrack.videoId,
-            title: prevTrack.title,
-            artist: prevTrack.artist,
-            thumbnailUrl: prevTrack.thumbnailUrl,
-            playlistId: selectedPlaylist.id,
-            itemType: "song",
-          });
-          return;
-        }
-      } else {
-        for (const section of homeSections) {
-          const idx = section.items.findIndex(
-            (t) => t.videoId === currentTrack.videoId,
-          );
-          if (idx > 0) {
-            const prev = section.items[idx - 1];
-            if (prev.videoId) {
-              setCurrentTrack(prev);
-              return;
-            }
+          const prev = section.items[idx - 1];
+          if (prev.videoId) {
+            playTrack(prev);
+            return;
           }
         }
-        if (searchResults.length > 0) {
-          const idx = searchResults.findIndex(
-            (t) => t.videoId === currentTrack.videoId,
-          );
-          if (idx > 0) {
-            const prev = searchResults[idx - 1];
-            if (prev.videoId) {
-              setCurrentTrack(prev);
-              return;
-            }
+      }
+      if (searchResults.length > 0) {
+        const idx = searchResults.findIndex(
+          (t) => t.videoId === currentTrack.videoId,
+        );
+        if (idx > 0) {
+          const prev = searchResults[idx - 1];
+          if (prev.videoId) {
+            playTrack(prev);
+            return;
           }
         }
       }
     }
-  }, [currentTime, queueTracks, selectedPlaylist, currentTrack, homeSections, searchResults]);
+  }, [currentTime, queueTracks, selectedPlaylist, currentTrack, homeSections, searchResults, playTrack]);
 
   const getPlayButtonLabel = () => {
     if (!isPlayerReady) return "Loading...";
@@ -2362,21 +2353,14 @@ function App() {
   </div> {/* app-body-container */}
 
       {/* Hidden Audio Stream Engine */}
-      {currentTrack && (
-        <HiddenYouTubePlayer
-          key={
-            currentTrack.playlistId
-              ? `playlist-${currentTrack.playlistId}`
-              : `track-${currentTrack.videoId}`
-          }
-          videoId={currentTrack.videoId}
-          playlistId={currentTrack.playlistId}
-          onReady={handlePlayerReady}
-          onStateChange={handlePlayerStateChange}
-          onError={handlePlayerError}
-          onTrackChange={handleTrackChangeFromIframe}
-        />
-      )}
+      <HiddenYouTubePlayer
+        key="global-audio-engine"
+        videoId={currentTrack?.videoId}
+        onReady={handlePlayerReady}
+        onStateChange={handlePlayerStateChange}
+        onError={handlePlayerError}
+        onTrackChange={handleTrackChangeFromIframe}
+      />
 
       {/* Settings Modal (Image 2) */}
       {showSettingsModal && (
