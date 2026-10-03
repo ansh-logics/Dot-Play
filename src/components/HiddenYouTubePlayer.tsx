@@ -14,6 +14,11 @@ export interface YouTubePlayerInstance {
   getVideoData: () => { video_id?: string; title?: string; author?: string }
   getPlaylist?: () => string[]
   getPlaylistIndex?: () => number
+  mute?: () => void
+  unMute?: () => void
+  isMuted?: () => boolean
+  setVolume?: (volume: number) => void
+  getVolume?: () => number
 }
 
 export type YouTubePlaybackState =

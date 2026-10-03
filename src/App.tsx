@@ -20,7 +20,6 @@ import {
   X,
   Loader2,
   LogOut,
-  ChevronUp,
   SearchX,
   Music,
   ListMusic,
@@ -29,6 +28,12 @@ import {
   Trash2,
   RefreshCw,
   UserPlus,
+  HelpCircle,
+  Settings,
+  MoreVertical,
+  Volume2,
+  VolumeX,
+  User,
 } from "lucide-react";
 import {
   searchTracks,
@@ -95,9 +100,23 @@ function App() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [isMuted, setIsMuted] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showSupportModal, setShowSupportModal] = useState(false);
 
   const playerRef = useRef<YouTubePlayerInstance | null>(null);
   const isScrubbingRef = useRef(false);
+
+  const toggleMute = () => {
+    if (!playerRef.current) return;
+    if (isMuted) {
+      playerRef.current.unMute?.();
+      setIsMuted(false);
+    } else {
+      playerRef.current.mute?.();
+      setIsMuted(true);
+    }
+  };
   const shouldAutoPlayRef = useRef(false);
   const contentRef = useRef<HTMLElement>(null);
   const isLoadingMoreRef = useRef(false);
@@ -665,131 +684,302 @@ function App() {
               <History size={17} strokeWidth={2} className="nav-svg-icon" />
               <span className="nav-item-label">History</span>
             </button>
+
+            {/* General Navigation Group (Image 2) */}
+            <span className="nav-group-label">GENERAL</span>
+            <button
+              type="button"
+              className={`sidebar-nav-item ${showSupportModal ? "active" : ""}`}
+              onClick={() => setShowSupportModal(true)}
+            >
+              <span className="nav-item-indicator" />
+              <HelpCircle size={17} strokeWidth={2} className="nav-svg-icon" />
+              <span className="nav-item-label">Support</span>
+            </button>
+
+            <button
+              type="button"
+              className={`sidebar-nav-item ${showSettingsModal ? "active" : ""}`}
+              onClick={() => setShowSettingsModal(true)}
+            >
+              <span className="nav-item-indicator" />
+              <Settings size={17} strokeWidth={2} className="nav-svg-icon" />
+              <span className="nav-item-label">Settings</span>
+            </button>
           </nav>
 
-          {/* User Auth Section in Sidebar */}
-          <div className="sidebar-auth-section" ref={profileMenuRef}>
-            {/* Apple-style Frosted Floating Profile Popover */}
-            {isLoggedIn && showProfileMenu && (
-              <div className="apple-profile-popover" role="dialog" aria-label="Account details">
-                <div className="popover-user-row">
-                  {userProfile?.avatarUrl && (
-                    <img
-                      src={userProfile.avatarUrl}
-                      alt={userProfile.name}
-                      className="popover-avatar"
-                      referrerPolicy="no-referrer"
-                    />
-                  )}
-                  <div className="popover-user-text">
-                    <span className="popover-user-name">{userProfile?.name || "Connected Account"}</span>
-                    {userProfile?.email && (
-                      <span className="popover-user-email">{userProfile.email}</span>
-                    )}
-                  </div>
+          {/* Sidebar Mini Player Card (Image 1) */}
+          {currentTrack && (
+            <div className="sidebar-player-card" aria-label="Audio Player">
+              <div className="sidebar-player-header">
+                <ArtworkImage
+                  src={currentTrack.thumbnailUrl}
+                  videoId={currentTrack.videoId}
+                  alt={currentTrack.title}
+                  className="sidebar-player-thumb"
+                  priority
+                />
+                <div className="sidebar-player-meta">
+                  <span className="sidebar-player-title" title={currentTrack.title}>
+                    {currentTrack.title}
+                  </span>
+                  <span
+                    className={`sidebar-player-artist ${playbackError ? "error" : ""}`}
+                    title={playbackError || currentTrack.artist}
+                  >
+                    {playbackError || currentTrack.artist}
+                  </span>
                 </div>
+              </div>
+
+              <div className="sidebar-player-progress-wrap">
+                <input
+                  type="range"
+                  className="sidebar-player-scrubber"
+                  min="0"
+                  max={duration || 0}
+                  step="0.1"
+                  value={Math.min(currentTime, duration || 0)}
+                  onPointerDown={() => {
+                    isScrubbingRef.current = true;
+                  }}
+                  onChange={(event) => {
+                    const nextTime = Number(event.target.value);
+                    setCurrentTime(nextTime);
+                    if (!isScrubbingRef.current) {
+                      playerRef.current?.seekTo(nextTime, true);
+                    }
+                  }}
+                  onPointerUp={(event) => {
+                    isScrubbingRef.current = false;
+                    const nextTime = Number(event.currentTarget.value);
+                    playerRef.current?.seekTo(nextTime, true);
+                  }}
+                  disabled={!isPlayerReady || duration <= 0}
+                  aria-label="Seek track"
+                />
+                <div className="sidebar-player-times">
+                  <span>{formatTime(currentTime)}</span>
+                  <span>{formatTime(duration)}</span>
+                </div>
+              </div>
+
+              <div className="sidebar-player-controls">
+                <button
+                  type="button"
+                  className={`sidebar-ctrl-btn volume ${isMuted ? "active-muted" : ""}`}
+                  onClick={toggleMute}
+                  title={isMuted ? "Unmute" : "Mute"}
+                  aria-label="Toggle mute"
+                >
+                  {isMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
+                </button>
+
+                <button
+                  type="button"
+                  className="sidebar-ctrl-btn"
+                  onClick={handlePreviousTrack}
+                  disabled={!isPlayerReady}
+                  title="Previous track"
+                  aria-label="Previous"
+                >
+                  <SkipBack size={15} fill="currentColor" />
+                </button>
+
+                <button
+                  type="button"
+                  className="sidebar-ctrl-btn play-pause"
+                  onClick={() => {
+                    if (playerState === "playing") {
+                      playerRef.current?.pauseVideo();
+                    } else {
+                      if (playerState === "ended") {
+                        playerRef.current?.seekTo(0, true);
+                        setCurrentTime(0);
+                      }
+                      playerRef.current?.playVideo();
+                    }
+                  }}
+                  disabled={!isPlayerReady || playerState === "buffering"}
+                  title={getPlayButtonLabel()}
+                  aria-label={playerState === "playing" ? "Pause" : "Play"}
+                >
+                  {playerState === "buffering" || !isPlayerReady ? (
+                    <Loader2 size={15} className="spin-icon" />
+                  ) : playerState === "playing" ? (
+                    <Pause size={15} fill="currentColor" strokeWidth={0} />
+                  ) : (
+                    <Play size={15} fill="currentColor" strokeWidth={0} style={{ marginLeft: 1 }} />
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  className="sidebar-ctrl-btn"
+                  onClick={handleNextTrack}
+                  disabled={!isPlayerReady}
+                  title="Next track"
+                  aria-label="Next"
+                >
+                  <SkipForward size={15} fill="currentColor" />
+                </button>
+
+                <button
+                  type="button"
+                  className="sidebar-ctrl-btn queue"
+                  onClick={() => {
+                    setActiveNav("library");
+                  }}
+                  title="Queue / Playlists"
+                  aria-label="Playlists"
+                >
+                  <ListMusic size={15} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* User Account Card at Bottom of Sidebar (Image 2) */}
+          <div className="sidebar-account-container" ref={profileMenuRef}>
+            {/* Frosted Floating Profile Popover */}
+            {showProfileMenu && (
+              <div className="apple-profile-popover" role="dialog" aria-label="Account details">
+                {isLoggedIn && (
+                  <div className="popover-user-row">
+                    {userProfile?.avatarUrl ? (
+                      <img
+                        src={userProfile.avatarUrl}
+                        alt={userProfile.name}
+                        className="popover-avatar"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="popover-avatar-placeholder">
+                        <User size={16} />
+                      </div>
+                    )}
+                    <div className="popover-user-text">
+                      <span className="popover-user-name">{userProfile?.name || "Connected Account"}</span>
+                      {userProfile?.email && (
+                        <span className="popover-user-email">{userProfile.email}</span>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 <div className="popover-badge-row">
-                  <span className="popover-status-badge">
-                    <span className="nothing-status-dot online" />
-                    <span>YouTube Music</span>
+                  <span className={`popover-status-badge ${isLoggedIn ? "online" : "offline"}`}>
+                    <span className={`nothing-status-dot ${isLoggedIn ? "online" : "offline"}`} />
+                    <span>{isLoggedIn ? "YouTube Music" : "Offline"}</span>
                   </span>
                 </div>
 
                 <div className="popover-divider" />
 
                 <div className="popover-actions">
-                  <button
-                    type="button"
-                    className="popover-switch-btn"
-                    onClick={async () => {
-                      setShowProfileMenu(false);
-                      setIsLoggingIn(true);
-                      await openLoginWindow(true);
-                    }}
-                  >
-                    <UserPlus size={14} strokeWidth={2} />
-                    <span>Switch Account</span>
-                  </button>
+                  {isLoggedIn ? (
+                    <>
+                      <button
+                        type="button"
+                        className="popover-switch-btn"
+                        onClick={async () => {
+                          setShowProfileMenu(false);
+                          setIsLoggingIn(true);
+                          await openLoginWindow(true);
+                        }}
+                      >
+                        <UserPlus size={14} strokeWidth={2} />
+                        <span>Switch Account</span>
+                      </button>
 
-                  <button
-                    type="button"
-                    className="popover-signout-btn"
-                    onClick={async () => {
-                      setShowProfileMenu(false);
-                      await logoutUser();
-                      setIsLoggedIn(false);
-                      setUserProfile(null);
-                      getHomeFeed().then((res) => {
-                        setHomeSections(res.sections);
-                        setContinuationToken(res.continuationToken ?? null);
-                      });
-                    }}
-                  >
-                    <LogOut size={14} strokeWidth={2} />
-                    <span>Sign Out</span>
-                  </button>
+                      <button
+                        type="button"
+                        className="popover-signout-btn"
+                        onClick={async () => {
+                          setShowProfileMenu(false);
+                          await logoutUser();
+                          setIsLoggedIn(false);
+                          setUserProfile(null);
+                          getHomeFeed().then((res) => {
+                            setHomeSections(res.sections);
+                            setContinuationToken(res.continuationToken ?? null);
+                          });
+                        }}
+                      >
+                        <LogOut size={14} strokeWidth={2} />
+                        <span>Sign Out</span>
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className="popover-switch-btn"
+                      disabled={isLoggingIn}
+                      onClick={async () => {
+                        setShowProfileMenu(false);
+                        setIsLoggingIn(true);
+                        await openLoginWindow(false);
+                      }}
+                    >
+                      <UserPlus size={14} strokeWidth={2} />
+                      <span>{isLoggingIn ? "CONNECTING..." : "Sign In with Google"}</span>
+                    </button>
+                  )}
                 </div>
               </div>
             )}
 
-            {isLoggedIn ? (
+            <div
+              className={`sidebar-account-card ${isLoggedIn ? "connected" : "guest"}`}
+              onClick={() => {
+                if (isLoggedIn) {
+                  setShowProfileMenu((prev) => !prev);
+                } else {
+                  setIsLoggingIn(true);
+                  openLoginWindow(false);
+                }
+              }}
+              role="button"
+              tabIndex={0}
+              aria-label="Account details"
+            >
+              <div className="account-avatar-wrapper">
+                {userProfile?.avatarUrl ? (
+                  <img
+                    src={userProfile.avatarUrl}
+                    alt={userProfile.name}
+                    className="account-avatar-img"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="account-avatar-fallback">
+                    <User size={18} strokeWidth={1.8} />
+                  </div>
+                )}
+                <span className={`account-status-indicator ${isLoggedIn ? "online" : "offline"}`} />
+              </div>
+
+              <div className="account-details-col">
+                <span className="account-display-name">
+                  {isLoggedIn ? (userProfile?.name || "Connected User") : "Sign In"}
+                </span>
+                <span className="account-sub-label">
+                  {isLoggedIn ? (userProfile?.email || "YouTube Music") : "Personalize feed & history"}
+                </span>
+              </div>
+
               <button
                 type="button"
-                className={`sidebar-auth-card connected interactive ${showProfileMenu ? "menu-open" : ""}`}
-                onClick={() => setShowProfileMenu((prev) => !prev)}
-                aria-haspopup="dialog"
-                aria-expanded={showProfileMenu}
+                className="account-dots-btn"
+                aria-label="Account options"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowProfileMenu((prev) => !prev);
+                }}
               >
-                <div className="auth-status-row">
-                  <span className="nothing-status-dot online" />
-                  <span className="auth-status-text">CONNECTED</span>
-                  <ChevronUp
-                    size={14}
-                    className={`auth-chevron-icon ${showProfileMenu ? "rotated" : ""}`}
-                  />
-                </div>
-                {userProfile ? (
-                  <div className="auth-profile-info">
-                    {userProfile.avatarUrl && (
-                      <img
-                        src={userProfile.avatarUrl}
-                        alt={userProfile.name}
-                        className="auth-profile-avatar"
-                        referrerPolicy="no-referrer"
-                      />
-                    )}
-                    <div className="auth-profile-text">
-                      <span className="auth-profile-name">{userProfile.name}</span>
-                      {userProfile.email && (
-                        <span className="auth-profile-email">{userProfile.email}</span>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <p className="auth-account-desc">YouTube Music</p>
-                )}
+                <MoreVertical size={16} strokeWidth={2} />
               </button>
-            ) : (
-              <div className="sidebar-auth-card">
-                <div className="auth-status-row">
-                  <span className="nothing-status-dot offline" />
-                  <span className="auth-status-text">OFFLINE</span>
-                </div>
-                <p className="auth-account-desc">Personalize your feed</p>
-                <button
-                  type="button"
-                  className="nothing-auth-btn signin"
-                  disabled={isLoggingIn}
-                  onClick={async () => {
-                    setIsLoggingIn(true);
-                    await openLoginWindow();
-                  }}
-                >
-                  {isLoggingIn ? "CONNECTING..." : "SIGN IN"}
-                </button>
-              </div>
-            )}
+            </div>
           </div>
         </aside>
 
@@ -1544,153 +1734,162 @@ function App() {
     </div> {/* app-main-area */}
   </div> {/* app-body-container */}
 
-      {/* Persistent Docked Music Player */}
+      {/* Hidden Audio Stream Engine */}
       {currentTrack && (
-        <>
-          <HiddenYouTubePlayer
-            key={
-              currentTrack.playlistId
-                ? `playlist-${currentTrack.playlistId}`
-                : `track-${currentTrack.videoId}`
-            }
-            videoId={currentTrack.videoId}
-            playlistId={currentTrack.playlistId}
-            onReady={handlePlayerReady}
-            onStateChange={handlePlayerStateChange}
-            onError={handlePlayerError}
-            onTrackChange={handleTrackChangeFromIframe}
-          />
+        <HiddenYouTubePlayer
+          key={
+            currentTrack.playlistId
+              ? `playlist-${currentTrack.playlistId}`
+              : `track-${currentTrack.videoId}`
+          }
+          videoId={currentTrack.videoId}
+          playlistId={currentTrack.playlistId}
+          onReady={handlePlayerReady}
+          onStateChange={handlePlayerStateChange}
+          onError={handlePlayerError}
+          onTrackChange={handleTrackChangeFromIframe}
+        />
+      )}
 
-          <footer className="docked-player" aria-label="Audio player">
-            {/* Left: Track Information */}
-            <div className="player-track-info">
-              <ArtworkImage
-                src={currentTrack.thumbnailUrl}
-                videoId={currentTrack.videoId}
-                alt={currentTrack.title}
-                className="player-thumb"
-                priority
-              />
-              <div className="player-meta">
-                <p className="player-title">{currentTrack.title}</p>
-                <p className="player-artist">{currentTrack.artist}</p>
+      {/* Settings Modal (Image 2) */}
+      {showSettingsModal && (
+        <div className="nothing-modal-backdrop" onClick={() => setShowSettingsModal(false)}>
+          <div className="nothing-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="nothing-modal-header">
+              <div className="nothing-modal-title-row">
+                <Settings size={18} strokeWidth={2} className="modal-title-icon" />
+                <h3 className="nothing-modal-title">SETTINGS</h3>
               </div>
+              <button
+                type="button"
+                className="nothing-modal-close-btn"
+                onClick={() => setShowSettingsModal(false)}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
             </div>
 
-            {/* Center: Controls & Scrubber */}
-            <div className="player-center-controls">
-              <div className="player-buttons-row">
-                <button
-                  type="button"
-                  className="player-skip-btn"
-                  onClick={handlePreviousTrack}
-                  disabled={!isPlayerReady}
-                  aria-label="Previous track"
-                  title="Previous"
-                >
-                  <SkipBack size={18} fill="currentColor" strokeWidth={1} />
-                </button>
-
-                <button
-                  type="button"
-                  className="player-main-btn"
-                  onClick={() => {
-                    if (playerState === "playing") {
-                      playerRef.current?.pauseVideo();
-                    } else {
-                      if (playerState === "ended") {
-                        playerRef.current?.seekTo(0, true);
-                        setCurrentTime(0);
-                      }
-                      playerRef.current?.playVideo();
-                    }
-                  }}
-                  disabled={!isPlayerReady || playerState === "buffering"}
-                  aria-label={playerState === "playing" ? "Pause" : "Play"}
-                  title={getPlayButtonLabel()}
-                >
-                  {playerState === "buffering" || !isPlayerReady ? (
-                    <Loader2 size={16} className="spin-icon" />
-                  ) : playerState === "playing" ? (
-                    <Pause size={16} fill="currentColor" strokeWidth={0} />
-                  ) : (
-                    <Play size={16} fill="currentColor" strokeWidth={0} style={{ marginLeft: 2 }} />
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  className="player-skip-btn"
-                  onClick={handleNextTrack}
-                  disabled={!isPlayerReady}
-                  aria-label="Next track"
-                  title="Next"
-                >
-                  <SkipForward size={18} fill="currentColor" strokeWidth={1} />
-                </button>
+            <div className="nothing-modal-body">
+              <div className="settings-section">
+                <span className="settings-section-title">AUDIO ENGINE</span>
+                <div className="settings-row">
+                  <div className="settings-row-text">
+                    <span className="settings-label">Stream Quality</span>
+                    <span className="settings-desc">High Definition WebM/Opus audio streaming</span>
+                  </div>
+                  <span className="settings-badge">256 KBPS</span>
+                </div>
               </div>
 
-              <div className="player-scrubber-row">
-                <span className="time-display">{formatTime(currentTime)}</span>
-                <input
-                  type="range"
-                  className="scrubber-slider"
-                  min="0"
-                  max={duration || 0}
-                  step="0.1"
-                  value={Math.min(currentTime, duration || 0)}
-                  onPointerDown={() => {
-                    isScrubbingRef.current = true;
-                  }}
-                  onChange={(event) => {
-                    const nextTime = Number(event.target.value);
-                    setCurrentTime(nextTime);
-                    if (!isScrubbingRef.current) {
-                      playerRef.current?.seekTo(nextTime, true);
-                    }
-                  }}
-                  onPointerUp={(event) => {
-                    isScrubbingRef.current = false;
-                    const nextTime = Number(event.currentTarget.value);
-                    playerRef.current?.seekTo(nextTime, true);
-                  }}
-                  onKeyUp={(event) => {
-                    if (
-                      event.key === "ArrowLeft" ||
-                      event.key === "ArrowRight"
-                    ) {
-                      const nextTime = Number(event.currentTarget.value);
-                      playerRef.current?.seekTo(nextTime, true);
-                    }
-                  }}
-                  disabled={!isPlayerReady || duration <= 0}
-                />
-                <span className="time-display">{formatTime(duration)}</span>
+              <div className="settings-section">
+                <span className="settings-section-title">DATA & STORAGE</span>
+                <div className="settings-row">
+                  <div className="settings-row-text">
+                    <span className="settings-label">Track & Artwork Cache</span>
+                    <span className="settings-desc">Optimized WebP local cache for fast loading</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="settings-action-btn"
+                    onClick={() => {
+                      localStorage.clear();
+                      window.location.reload();
+                    }}
+                  >
+                    Clear Cache
+                  </button>
+                </div>
+              </div>
+
+              <div className="settings-section">
+                <span className="settings-section-title">ACCOUNT</span>
+                <div className="settings-row">
+                  <div className="settings-row-text">
+                    <span className="settings-label">Status</span>
+                    <span className="settings-desc">
+                      {isLoggedIn ? (userProfile?.email || "Connected to YouTube Music") : "Offline (Guest Mode)"}
+                    </span>
+                  </div>
+                  <span className={`settings-status-pill ${isLoggedIn ? "online" : "offline"}`}>
+                    {isLoggedIn ? "CONNECTED" : "OFFLINE"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="settings-section">
+                <span className="settings-section-title">ABOUT</span>
+                <div className="settings-about-box">
+                  <span className="about-app-name">dot(.)music</span>
+                  <span className="about-app-ver">Version 0.1.0 • Nothing OS Minimalist Design</span>
+                </div>
               </div>
             </div>
+          </div>
+        </div>
+      )}
 
-            {/* Right: Status & Error Warning */}
-            <div className="player-status-side">
-              {playbackError ? (
-                <span className="player-error-tag">{playbackError}</span>
-              ) : (
-                <span
-                  className="player-state-pill"
-                  data-state={isPlayerReady ? playerState : "loading"}
-                >
-                  <span className="pill-dot" />
-                  {isPlayerReady
-                    ? playerState === "playing"
-                      ? "Playing"
-                      : playerState === "buffering"
-                        ? "Buffering"
-                        : "Ready"
-                    : "Loading"}
-                </span>
-              )}
+      {/* Support Modal (Image 2) */}
+      {showSupportModal && (
+        <div className="nothing-modal-backdrop" onClick={() => setShowSupportModal(false)}>
+          <div className="nothing-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="nothing-modal-header">
+              <div className="nothing-modal-title-row">
+                <HelpCircle size={18} strokeWidth={2} className="modal-title-icon" />
+                <h3 className="nothing-modal-title">SUPPORT & SHORTCUTS</h3>
+              </div>
+              <button
+                type="button"
+                className="nothing-modal-close-btn"
+                onClick={() => setShowSupportModal(false)}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
             </div>
-          </footer>
-        </>
+
+            <div className="nothing-modal-body">
+              <div className="settings-section">
+                <span className="settings-section-title">KEYBOARD SHORTCUTS</span>
+                <div className="shortcuts-grid">
+                  <div className="shortcut-item">
+                    <kbd>Space</kbd>
+                    <span>Play / Pause</span>
+                  </div>
+                  <div className="shortcut-item">
+                    <kbd>←</kbd> <kbd>→</kbd>
+                    <span>Seek -5s / +5s</span>
+                  </div>
+                  <div className="shortcut-item">
+                    <kbd>/</kbd>
+                    <span>Focus Search</span>
+                  </div>
+                  <div className="shortcut-item">
+                    <kbd>Esc</kbd>
+                    <span>Dismiss Popups & Modals</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="settings-section">
+                <span className="settings-section-title">HELP & COMMUNITY</span>
+                <p className="support-desc">
+                  dot(.)music is a lightweight desktop client for YouTube Music built with Tauri and React, featuring an OLED-black aesthetic.
+                </p>
+                <div className="support-links">
+                  <a
+                    href="https://music.youtube.com"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="support-link-btn"
+                  >
+                    Open YouTube Music Web
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
