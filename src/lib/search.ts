@@ -166,6 +166,17 @@ export async function getHistory(): Promise<HomeFeedResponse> {
   return { sections: [] }
 }
 
+export async function getLibraryPlaylists(): Promise<HomeFeedResponse> {
+  if (isTauriEnvironment()) {
+    try {
+      return await invoke<HomeFeedResponse>("get_library_playlists")
+    } catch {
+      return { sections: [] }
+    }
+  }
+  return { sections: [] }
+}
+
 const RECENT_SEARCHES_KEY = "dot_music_recent_searches"
 const MAX_RECENT_SEARCHES = 12
 

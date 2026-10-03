@@ -2902,3 +2902,124 @@ body {
   border-color: rgba(255, 255, 255, 0.25);
 }
 
+/* ==========================================================================
+   Playlists & Library View
+   ========================================================================== */
+.library-view-container {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  animation: fadeIn 0.25s ease-out;
+}
+
+.liked-music-spotlight {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.liked-music-card {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  background: linear-gradient(
+    135deg,
+    rgba(215, 25, 33, 0.14) 0%,
+    rgba(20, 20, 24, 0.7) 100%
+  );
+  border: 1px solid rgba(215, 25, 33, 0.28);
+  border-radius: 16px;
+  padding: 20px 24px;
+  cursor: pointer;
+  transition: all 0.22s ease;
+  position: relative;
+  overflow: hidden;
+  max-width: 680px;
+}
+
+.liked-music-card:hover {
+  border-color: rgba(215, 25, 33, 0.55);
+  background: linear-gradient(
+    135deg,
+    rgba(215, 25, 33, 0.2) 0%,
+    rgba(26, 26, 32, 0.85) 100%
+  );
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(215, 25, 33, 0.16);
+}
+
+.liked-music-cover-wrap {
+  position: relative;
+  width: 90px;
+  height: 90px;
+  min-width: 90px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #2a0b0d 0%, #150507 100%);
+  border: 1px solid rgba(215, 25, 33, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  flex-shrink: 0;
+}
+
+.liked-heart-icon {
+  filter: drop-shadow(0 0 10px rgba(215, 25, 33, 0.6));
+  transition: transform 0.22s ease;
+}
+
+.liked-music-card:hover .liked-heart-icon {
+  transform: scale(1.12);
+}
+
+.liked-music-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.liked-music-title {
+  font-family: var(--font-heading);
+  font-size: 20px;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 2px 0 0;
+  letter-spacing: -0.01em;
+}
+
+.liked-music-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.liked-music-actions {
+  margin-top: 6px;
+}
+
+.liked-music-play-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  border-radius: 20px;
+  background: #ffffff;
+  color: #000000;
+  border: none;
+  font-family: var(--font-heading);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.liked-music-play-btn:hover {
+  background: #e6e6e6;
+  transform: scale(1.04);
+  box-shadow: 0 4px 14px rgba(255, 255, 255, 0.2);
+}
+
+

@@ -34,6 +34,7 @@ import {
   Volume2,
   VolumeX,
   User,
+  Heart,
 } from "lucide-react";
 import {
   searchTracks,
@@ -43,6 +44,7 @@ import {
   getHomeFeed,
   getHomeFeedContinuation,
   getPlaylistDetails,
+  getLibraryPlaylists,
   getUserProfile,
   getHistory,
   getRecentSearches,
@@ -67,6 +69,8 @@ function App() {
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [historySections, setHistorySections] = useState<HomeSection[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [librarySections, setLibrarySections] = useState<HomeSection[]>([]);
+  const [isLoadingLibrary, setIsLoadingLibrary] = useState(false);
 
   const filteredSearchResults = useMemo(() => {
     if (searchFilter === "all") return searchResults;
@@ -85,6 +89,21 @@ function App() {
     if (homeSections.length === 0) return [];
     const firstGoodShelf = homeSections.find((s) => s.items.length >= 3);
     return (firstGoodShelf ? firstGoodShelf.items : homeSections[0].items).slice(0, 8);
+  }, [homeSections]);
+
+  // Featured playlists extracted from home feed
+  const featuredPlaylists = useMemo(() => {
+    const seen = new Set<string>();
+    const list: SearchResult[] = [];
+    for (const s of homeSections) {
+      for (const item of s.items) {
+        if (item.itemType === "playlist" && item.playlistId && !seen.has(item.playlistId)) {
+          seen.add(item.playlistId);
+          list.push(item);
+        }
+      }
+    }
+    return list;
   }, [homeSections]);
 
   // Playlist view state
@@ -106,6 +125,22 @@ function App() {
 
   const playerRef = useRef<YouTubePlayerInstance | null>(null);
   const isScrubbingRef = useRef(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const currentTimeRef = useRef(0);
+  const durationRef = useRef(0);
+  const playerStateRef = useRef<YouTubePlaybackState>("unstarted");
+
+  useEffect(() => {
+    currentTimeRef.current = currentTime;
+  }, [currentTime]);
+
+  useEffect(() => {
+    durationRef.current = duration;
+  }, [duration]);
+
+  useEffect(() => {
+    playerStateRef.current = playerState;
+  }, [playerState]);
 
   const toggleMute = () => {
     if (!playerRef.current) return;
@@ -123,7 +158,121 @@ function App() {
   const handleNextTrackRef = useRef<() => void>(() => {});
   const profileMenuRef = useRef<HTMLDivElement>(null);
 
-  // Dismiss profile popup on outside click or Escape
+  const togglePlayPause = useCallback(() => {
+    if (!playerRef.current || !isPlayerReady) return;
+    if (playerStateRef.current === "playing") {
+      playerRef.current.pauseVideo();
+    } else {
+      if (playerStateRef.current === "ended") {
+        playerRef.current.seekTo(0, true);
+        setCurrentTime(0);
+      }
+      playerRef.current.playVideo();
+    }
+  }, [isPlayerReady]);
+
+  const seekRelative = useCallback((deltaSeconds: number) => {
+    if (!playerRef.current || !isPlayerReady) return;
+    const current = currentTimeRef.current;
+    const total = durationRef.current;
+    const target = Math.max(0, Math.min(total > 0 ? total : 999999, current + deltaSeconds));
+    playerRef.current.seekTo(target, true);
+    setCurrentTime(target);
+  }, [isPlayerReady]);
+
+  // Global Keyboard Shortcuts (Space: Play/Pause, Left/Right: Seek -5s/+5s, /: Focus Search, Esc: Dismiss)
+  useEffect(() => {
+    const isTyping = (target: EventTarget | null) => {
+      if (!target || !(target instanceof HTMLElement)) return false;
+      const tag = target.tagName.toLowerCase();
+      return (
+        tag === "input" ||
+        tag === "textarea" ||
+        target.isContentEditable ||
+        target.getAttribute("role") === "textbox"
+      );
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 1. Esc: Dismiss modals, menus, back navigation or blur search
+      if (e.key === "Escape") {
+        if (showSettingsModal) {
+          setShowSettingsModal(false);
+          e.preventDefault();
+          return;
+        }
+        if (showSupportModal) {
+          setShowSupportModal(false);
+          e.preventDefault();
+          return;
+        }
+        if (showProfileMenu) {
+          setShowProfileMenu(false);
+          e.preventDefault();
+          return;
+        }
+        if (selectedPlaylist) {
+          setSelectedPlaylist(null);
+          e.preventDefault();
+          return;
+        }
+        if (document.activeElement === searchInputRef.current) {
+          searchInputRef.current?.blur();
+          e.preventDefault();
+          return;
+        }
+      }
+
+      // Ignore playback/navigation shortcuts if user is typing
+      if (isTyping(e.target)) return;
+
+      // 2. Space: Play / Pause
+      if (e.code === "Space") {
+        e.preventDefault();
+        togglePlayPause();
+        return;
+      }
+
+      // 3. ArrowLeft: Seek -5s
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        seekRelative(-5);
+        return;
+      }
+
+      // 4. ArrowRight: Seek +5s
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        seekRelative(5);
+        return;
+      }
+
+      // 5. / : Focus Search
+      if (e.key === "/") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        if (activeNav !== "search") {
+          setActiveNav("search");
+        }
+        return;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [
+    showSettingsModal,
+    showSupportModal,
+    showProfileMenu,
+    selectedPlaylist,
+    activeNav,
+    togglePlayPause,
+    seekRelative,
+  ]);
+
+  // Dismiss profile popup on outside click
   useEffect(() => {
     if (!showProfileMenu) return;
     const handleClickOutside = (e: MouseEvent) => {
@@ -134,16 +283,9 @@ function App() {
         setShowProfileMenu(false);
       }
     };
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setShowProfileMenu(false);
-      }
-    };
     window.addEventListener("mousedown", handleClickOutside);
-    window.addEventListener("keydown", handleKeyDown);
     return () => {
       window.removeEventListener("mousedown", handleClickOutside);
-      window.removeEventListener("keydown", handleKeyDown);
     };
   }, [showProfileMenu]);
 
@@ -156,6 +298,10 @@ function App() {
       setIsLoggedIn(status);
       if (status) {
         getUserProfile().then((profile) => setUserProfile(profile));
+        getLibraryPlaylists().then((res) => {
+          setLibrarySections(res.sections);
+          cacheTracks(res.sections.flatMap((s) => s.items));
+        });
       }
     });
 
@@ -177,6 +323,10 @@ function App() {
         });
         getHistory().then((res) => {
           setHistorySections(res.sections);
+          cacheTracks(res.sections.flatMap((s) => s.items));
+        });
+        getLibraryPlaylists().then((res) => {
+          setLibrarySections(res.sections);
           cacheTracks(res.sections.flatMap((s) => s.items));
         });
       }).then((un) => {
@@ -218,6 +368,27 @@ function App() {
       fetchHistory();
     }
   }, [activeNav, isLoggedIn, historySections.length, fetchHistory]);
+
+  const fetchLibrary = useCallback(async () => {
+    if (!isLoggedIn) return;
+    setIsLoadingLibrary(true);
+    try {
+      const res = await getLibraryPlaylists();
+      setLibrarySections(res.sections);
+      cacheTracks(res.sections.flatMap((s) => s.items));
+    } catch (e) {
+      console.error("Failed to fetch library playlists:", e);
+    } finally {
+      setIsLoadingLibrary(false);
+    }
+  }, [isLoggedIn]);
+
+  // Fetch library when navigating to library
+  useEffect(() => {
+    if (activeNav === "library" && isLoggedIn && librarySections.length === 0) {
+      fetchLibrary();
+    }
+  }, [activeNav, isLoggedIn, librarySections.length, fetchLibrary]);
 
   const handleSelectRecentSearch = (query: string) => {
     setSearchQuery(query);
@@ -652,14 +823,13 @@ function App() {
             <span className="nav-group-label">COLLECTIONS</span>
             <button
               type="button"
-              className={`sidebar-nav-item ${activeNav === "library" || selectedPlaylist ? "active" : ""}`}
+              className={`sidebar-nav-item ${activeNav === "library" && !selectedPlaylist ? "active" : ""}`}
               onClick={() => {
                 setActiveNav("library");
-                const firstPlaylist = homeSections
-                  .flatMap((s) => s.items)
-                  .find((i) => i.itemType === "playlist" && i.playlistId);
-                if (firstPlaylist?.playlistId) {
-                  openPlaylist(firstPlaylist.playlistId);
+                setSearchQuery("");
+                setSelectedPlaylist(null);
+                if (isLoggedIn && librarySections.length === 0) {
+                  fetchLibrary();
                 }
               }}
             >
@@ -990,6 +1160,7 @@ function App() {
             <div className="top-search-wrap">
               <Search size={16} strokeWidth={2.2} className="top-search-svg" />
               <input
+                ref={searchInputRef}
                 type="text"
                 className="top-search-input"
                 value={searchQuery}
@@ -1549,6 +1720,214 @@ function App() {
                   </section>
                 ))}
               </div>
+            )}
+          </div>
+        ) : activeNav === "library" ? (
+          /* View 4: Liked & Saved Playlists / Library Page */
+          <div className="library-view-container" aria-label="Playlists and library">
+            {/* Header */}
+            <div className="history-header-panel">
+              <div className="history-header-meta">
+                <span className="dot-red-accent" />
+                <div>
+                  <h2 className="history-header-title">PLAYLISTS & LIBRARY</h2>
+                  <p className="history-header-subtitle">
+                    {isLoggedIn
+                      ? "Your liked music, saved playlists, and collections"
+                      : "Personalized playlists and YouTube Music collections"}
+                  </p>
+                </div>
+              </div>
+
+              {isLoggedIn && (
+                <button
+                  type="button"
+                  className="history-refresh-btn"
+                  onClick={() => fetchLibrary()}
+                  disabled={isLoadingLibrary}
+                  title="Refresh library playlists"
+                >
+                  <RefreshCw
+                    size={13}
+                    className={isLoadingLibrary ? "history-spin" : ""}
+                  />
+                  <span>Refresh</span>
+                </button>
+              )}
+            </div>
+
+            {/* Liked Music Spotlight Card */}
+            <div className="liked-music-spotlight">
+              <span className="search-subheading-label">FAVORITES</span>
+              <div
+                className="liked-music-card"
+                onClick={() => openPlaylist("LM")}
+                role="button"
+                tabIndex={0}
+              >
+                <div className="liked-music-cover-wrap">
+                  <Heart
+                    size={40}
+                    fill="var(--accent-red)"
+                    color="var(--accent-red)"
+                    className="liked-heart-icon"
+                  />
+                  <span className="top-match-play-btn" style={{ opacity: 1, position: "absolute" }}>
+                    <Play size={18} fill="currentColor" strokeWidth={0} style={{ marginLeft: 2 }} />
+                  </span>
+                </div>
+
+                <div className="liked-music-meta">
+                  <span className="card-type-pill song">AUTO PLAYLIST</span>
+                  <h3 className="liked-music-title">Liked Music</h3>
+                  <p className="liked-music-desc">
+                    Auto-generated playlist of all your thumbs-up tracks synchronized with your YouTube Music account.
+                  </p>
+                  <div className="liked-music-actions">
+                    <button
+                      type="button"
+                      className="liked-music-play-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openPlaylist("LM");
+                      }}
+                    >
+                      <Play size={13} fill="currentColor" strokeWidth={0} />
+                      <span>Open Liked Music</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Guest mode unauthenticated notice if not signed in */}
+            {!isLoggedIn && (
+              <div className="history-auth-prompt" style={{ margin: "16px 0 24px" }}>
+                <div className="history-auth-icon-wrap">
+                  <Library size={28} strokeWidth={1.8} />
+                </div>
+                <h3 className="history-auth-title">SYNC YOUR SAVED PLAYLISTS</h3>
+                <p className="history-auth-desc">
+                  Sign in with your Google account to access your Liked Music, custom playlists, and saved albums in one click.
+                </p>
+                <button
+                  type="button"
+                  className="history-signin-btn"
+                  disabled={isLoggingIn}
+                  onClick={() => {
+                    setIsLoggingIn(true);
+                    openLoginWindow(false);
+                  }}
+                >
+                  <UserPlus size={14} />
+                  <span>{isLoggingIn ? "CONNECTING..." : "Sign In with Google"}</span>
+                </button>
+              </div>
+            )}
+
+            {/* User Library Playlists Sections */}
+            {isLoggedIn && isLoadingLibrary && librarySections.length === 0 ? (
+              <div className="history-loading-view" style={{ padding: "40px 0", textAlign: "center" }}>
+                <span className="loading-spinner large" />
+                <p className="loading-label" style={{ marginTop: 12 }}>Loading your saved playlists...</p>
+              </div>
+            ) : (
+              librarySections.map((section, idx) => (
+                <section key={idx} className="content-section">
+                  <div className="section-header-row">
+                    <span className="dot-red-accent small" />
+                    <h2 className="section-heading">{section.title}</h2>
+                  </div>
+                  <div className="shelves-grid">
+                    {section.items.map((item, itemIdx) => {
+                      const trackId = item.videoId || item.playlistId || `${idx}-${itemIdx}`;
+                      const isActive =
+                        (currentTrack?.videoId && currentTrack.videoId === item.videoId) ||
+                        (currentTrack?.playlistId && currentTrack.playlistId === item.playlistId);
+
+                      return (
+                        <button
+                          key={trackId}
+                          type="button"
+                          className={`track-card ${isActive ? "active" : ""}`}
+                          onClick={() => handleCardClick(item)}
+                        >
+                          <div className="card-thumb-wrap">
+                            <ArtworkImage
+                              src={item.thumbnailUrl}
+                              videoId={item.videoId}
+                              alt={item.title}
+                            />
+                            <span className={`card-type-pill ${item.itemType || "playlist"}`}>
+                              {item.itemType === "song" ? "Song" : "Playlist"}
+                            </span>
+                            <span className="card-play-indicator">
+                              <Play
+                                size={13}
+                                fill="currentColor"
+                                strokeWidth={0}
+                                style={{ marginLeft: 1 }}
+                              />
+                            </span>
+                          </div>
+                          <div className="card-meta">
+                            <p className="card-title">{item.title}</p>
+                            <p className="card-artist">{item.artist}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              ))
+            )}
+
+            {/* Featured & Recommended Playlists */}
+            {featuredPlaylists.length > 0 && (
+              <section className="content-section" style={{ marginTop: 20 }}>
+                <div className="section-header-row">
+                  <span className="dot-red-accent small" />
+                  <h2 className="section-heading">Featured & Recommended Playlists</h2>
+                </div>
+                <div className="shelves-grid">
+                  {featuredPlaylists.slice(0, 12).map((item, itemIdx) => {
+                    const trackId = item.playlistId || item.videoId || `feat-${itemIdx}`;
+                    const isActive =
+                      (currentTrack?.videoId && currentTrack.videoId === item.videoId) ||
+                      (currentTrack?.playlistId && currentTrack.playlistId === item.playlistId);
+
+                    return (
+                      <button
+                        key={trackId}
+                        type="button"
+                        className={`track-card ${isActive ? "active" : ""}`}
+                        onClick={() => handleCardClick(item)}
+                      >
+                        <div className="card-thumb-wrap">
+                          <ArtworkImage
+                            src={item.thumbnailUrl}
+                            videoId={item.videoId}
+                            alt={item.title}
+                          />
+                          <span className="card-type-pill playlist">Playlist</span>
+                          <span className="card-play-indicator">
+                            <Play
+                              size={13}
+                              fill="currentColor"
+                              strokeWidth={0}
+                              style={{ marginLeft: 1 }}
+                            />
+                          </span>
+                        </div>
+                        <div className="card-meta">
+                          <p className="card-title">{item.title}</p>
+                          <p className="card-artist">{item.artist}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
             )}
           </div>
         ) : activeNav === "search" ? (

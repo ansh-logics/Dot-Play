@@ -891,6 +891,29 @@ fn parse_shelves(shelves: &[serde_json::Value]) -> Vec<HomeSection> {
                 });
             }
         }
+        // 3. Grid Shelves (Library playlists, albums grid, etc.)
+        else if let Some(grid) = shelf.get("gridRenderer") {
+            let section_title = grid
+                .pointer("/header/gridHeaderRenderer/title/runs/0/text")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Playlists");
+
+            let mut items = Vec::new();
+            if let Some(grid_items) = grid.get("items").and_then(|v| v.as_array()) {
+                for item in grid_items {
+                    if let Some(parsed) = parse_feed_item(item) {
+                        items.push(parsed);
+                    }
+                }
+            }
+
+            if !items.is_empty() {
+                sections.push(HomeSection {
+                    title: section_title.to_string(),
+                    items,
+                });
+            }
+        }
     }
 
     sections
@@ -1096,6 +1119,107 @@ async fn get_history(state: State<'_, SessionState>) -> Result<HomeFeedResponse,
                 sections,
                 continuation_token,
             });
+        }
+    }
+
+    Ok(HomeFeedResponse {
+        sections: Vec::new(),
+        continuation_token: None,
+    })
+}
+
+#[tauri::command]
+async fn get_library_playlists(state: State<'_, SessionState>) -> Result<HomeFeedResponse, String> {
+    let maybe_cookies = state.cookies.lock().unwrap().clone();
+    if maybe_cookies.is_none() {
+        return Ok(HomeFeedResponse {
+            sections: Vec::new(),
+            continuation_token: None,
+        });
+    }
+
+    let client = reqwest::Client::new();
+    let browse_ids = ["FEmusic_liked_playlists", "FEmusic_library_landing"];
+
+    for browse_id in browse_ids {
+        let body = serde_json::json!({
+            "context": {
+                "client": {
+                    "clientName": "WEB_REMIX",
+                    "clientVersion": "1.20240101.01.00"
+                }
+            },
+            "browseId": browse_id
+        });
+
+        let mut request = client
+            .post("https://music.youtube.com/youtubei/v1/browse")
+            .header(
+                reqwest::header::USER_AGENT,
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            )
+            .header("Referer", "https://music.youtube.com/")
+            .header("Origin", "https://music.youtube.com");
+
+        request = attach_youtube_auth(request, &maybe_cookies);
+
+        if let Ok(res) = request.json(&body).send().await {
+            if let Ok(json) = res.json::<serde_json::Value>().await {
+                let shelves_opt = json
+                    .pointer(
+                        "/contents/singleColumnBrowseResultsRenderer/tabs/0/tabRenderer/content/sectionListRenderer/contents",
+                    )
+                    .or_else(|| {
+                        json.pointer(
+                            "/contents/twoColumnBrowseResultsRenderer/secondaryContents/sectionListRenderer/contents",
+                        )
+                    })
+                    .or_else(|| {
+                        json.pointer(
+                            "/contents/twoColumnBrowseResultsRenderer/tabs/0/tabRenderer/content/sectionListRenderer/contents",
+                        )
+                    })
+                    .and_then(|v| v.as_array());
+
+                let mut sections = Vec::new();
+                if let Some(shelves) = shelves_opt {
+                    sections = parse_shelves(shelves);
+                } else if let Some(grid) = json.pointer(
+                    "/contents/singleColumnBrowseResultsRenderer/tabs/0/tabRenderer/content/gridRenderer",
+                ) {
+                    let section_title = grid
+                        .pointer("/header/gridHeaderRenderer/title/runs/0/text")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Playlists");
+                    let mut items = Vec::new();
+                    if let Some(grid_items) = grid.get("items").and_then(|v| v.as_array()) {
+                        for item in grid_items {
+                            if let Some(parsed) = parse_feed_item(item) {
+                                items.push(parsed);
+                            }
+                        }
+                    }
+                    if !items.is_empty() {
+                        sections.push(HomeSection {
+                            title: section_title.to_string(),
+                            items,
+                        });
+                    }
+                }
+
+                let continuation_token = json
+                    .pointer(
+                        "/contents/singleColumnBrowseResultsRenderer/tabs/0/tabRenderer/content/sectionListRenderer",
+                    )
+                    .and_then(|sl| extract_continuation_token(sl));
+
+                if !sections.is_empty() {
+                    return Ok(HomeFeedResponse {
+                        sections,
+                        continuation_token,
+                    });
+                }
+            }
         }
     }
 
@@ -1464,7 +1588,8 @@ pub fn run() {
             get_playlist_details,
             get_highres_thumbnails,
             get_user_profile,
-            get_history
+            get_history,
+            get_library_playlists
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
