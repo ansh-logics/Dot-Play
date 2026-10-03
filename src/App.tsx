@@ -34,6 +34,7 @@ import {
   Volume2,
   VolumeX,
   User,
+  Maximize2,
 } from "lucide-react";
 import {
   searchTracks,
@@ -919,15 +920,29 @@ function App() {
 
           {/* Sidebar Mini Player Card (Image 1) */}
           {currentTrack && (
-            <div className="sidebar-player-card" aria-label="Audio Player">
-              <div className="sidebar-player-header">
-                <ArtworkImage
-                  src={currentTrack.thumbnailUrl}
-                  videoId={currentTrack.videoId}
-                  alt={currentTrack.title}
-                  className="sidebar-player-thumb"
-                  priority
-                />
+            <div
+              className={`sidebar-player-card ${showQueue ? "queue-mode" : "hero-mode"}`}
+              aria-label="Audio Player"
+            >
+              <div className={`sidebar-player-header ${showQueue ? "queue-view" : "hero-view"}`}>
+                <div
+                  className="sidebar-artwork-container"
+                  onClick={() => setShowQueue((prev) => !prev)}
+                  role="button"
+                  tabIndex={0}
+                  title={showQueue ? "Click to expand album artwork" : "Click to view upcoming queue"}
+                >
+                  <ArtworkImage
+                    src={currentTrack.thumbnailUrl}
+                    videoId={currentTrack.videoId}
+                    alt={currentTrack.title}
+                    className="sidebar-player-thumb"
+                    priority
+                  />
+                  <span className="sidebar-artwork-hint-badge">
+                    {showQueue ? <Maximize2 size={11} /> : <ListMusic size={11} />}
+                  </span>
+                </div>
                 <div className="sidebar-player-meta">
                   <span className="sidebar-player-title" title={currentTrack.title}>
                     {currentTrack.title}
