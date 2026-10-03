@@ -52,6 +52,7 @@ import {
   saveRecentSearch,
   removeRecentSearch,
   clearRecentSearches,
+  recordPlayback,
   isTauriEnvironment,
   type SearchResult,
   type HomeSection,
@@ -211,6 +212,7 @@ function App() {
   const currentTimeRef = useRef(0);
   const durationRef = useRef(0);
   const playerStateRef = useRef<YouTubePlaybackState>("unstarted");
+  const recordedTrackIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     currentTimeRef.current = currentTime;
@@ -600,14 +602,33 @@ function App() {
     }
   }, []);
 
-  const handlePlayerStateChange = useCallback((state: YouTubePlaybackState) => {
-    setPlayerState(state);
-    if (state === "playing") {
-      setPlaybackError(null);
-    } else if (state === "ended") {
-      handleNextTrackRef.current();
-    }
-  }, []);
+  const handlePlayerStateChange = useCallback(
+    (state: YouTubePlaybackState) => {
+      setPlayerState(state);
+      if (state === "playing") {
+        setPlaybackError(null);
+      } else if (state === "ended") {
+        // Record completed playback to YouTube Music history if not yet recorded
+        if (currentTrack && currentTrack.videoId && recordedTrackIdRef.current !== currentTrack.videoId) {
+          recordedTrackIdRef.current = currentTrack.videoId;
+          recordPlayback(currentTrack.videoId, durationRef.current, currentTimeRef.current);
+          if (isLoggedIn) {
+            setHistorySections((prev) => {
+              if (prev.length === 0) return [{ title: "Today", items: [currentTrack] }];
+              const updated = [...prev];
+              const first = { ...updated[0] };
+              const filtered = first.items.filter((i) => i.videoId !== currentTrack.videoId);
+              first.items = [currentTrack, ...filtered];
+              updated[0] = first;
+              return updated;
+            });
+          }
+        }
+        handleNextTrackRef.current();
+      }
+    },
+    [currentTrack, isLoggedIn],
+  );
 
   const handlePlayerError = useCallback((code: number) => {
     setPlayerState("paused");
@@ -647,8 +668,34 @@ function App() {
     return () => window.clearInterval(timer);
   }, [isPlayerReady, currentTrack]);
 
+  // 4b. Record playback to YouTube Music history once 10 seconds of playback threshold is met
+  useEffect(() => {
+    if (!currentTrack || !currentTrack.videoId) return;
+
+    if (currentTime >= 10 && recordedTrackIdRef.current !== currentTrack.videoId) {
+      recordedTrackIdRef.current = currentTrack.videoId;
+      recordPlayback(currentTrack.videoId, duration, currentTime);
+
+      // Optimistically push track into the top of the history list if logged in
+      if (isLoggedIn) {
+        setHistorySections((prev) => {
+          if (prev.length === 0) {
+            return [{ title: "Today", items: [currentTrack] }];
+          }
+          const updated = [...prev];
+          const first = { ...updated[0] };
+          const filtered = first.items.filter((i) => i.videoId !== currentTrack.videoId);
+          first.items = [currentTrack, ...filtered];
+          updated[0] = first;
+          return updated;
+        });
+      }
+    }
+  }, [currentTime, currentTrack, duration, isLoggedIn]);
+
   // 5. Track Selection
   const selectTrack = (track: SearchResult) => {
+    recordedTrackIdRef.current = null;
     const isSamePlaylist = Boolean(
       track.playlistId &&
         currentTrack?.playlistId &&
@@ -726,6 +773,8 @@ function App() {
       setCurrentTrack((prev) => {
         if (!prev) return null;
         if (prev.videoId === info.videoId) return prev;
+
+        recordedTrackIdRef.current = null;
 
         // Check if track matches one from selectedPlaylist
         const matched = selectedPlaylist?.tracks.find(

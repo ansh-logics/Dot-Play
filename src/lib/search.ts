@@ -308,3 +308,21 @@ export async function searchTracks(
       item.artist.toLowerCase().includes(lowerQuery),
   )
 }
+
+export async function recordPlayback(
+  videoId: string,
+  duration: number,
+  elapsed: number,
+): Promise<boolean> {
+  if (!isTauriEnvironment() || !videoId) return false
+  try {
+    return await invoke<boolean>("record_playback", {
+      videoId,
+      duration,
+      elapsed,
+    })
+  } catch (err) {
+    console.warn("[DOT Music] Failed to record playback to YouTube:", err)
+    return false
+  }
+}
