@@ -9,7 +9,7 @@
   --bg-card: #101012;
   --bg-card-hover: #17171a;
   --bg-elevated: #1a1a1e;
-  
+
   /* Nothing Signature Red */
   --accent-red: #d71921;
   --accent-red-hover: #e5242c;
@@ -28,8 +28,10 @@
 
   /* Fonts */
   --font-dot: "Doto", monospace;
-  --font-heading: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-heading:
+    "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-body:
+    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 
   /* Dimensions */
   --sidebar-width: 230px;
@@ -325,6 +327,36 @@ body {
   margin: 2px 0;
 }
 
+.popover-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.popover-switch-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: var(--text-primary);
+  font-family: var(--font-heading);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.popover-switch-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.32);
+  transform: translateY(-1px);
+}
+
 .popover-signout-btn {
   display: flex;
   align-items: center;
@@ -394,7 +426,9 @@ body {
 .auth-chevron-icon {
   margin-left: auto;
   color: var(--text-tertiary);
-  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), color 0.18s ease;
+  transition:
+    transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    color 0.18s ease;
 }
 
 .sidebar-auth-card.interactive:hover .auth-chevron-icon {
@@ -535,7 +569,7 @@ body {
   align-items: center;
   justify-content: center;
   padding: 0 36px;
-  background: rgba(0, 0, 0, 0.85);
+  background: rgba(0, 0, 0, 1);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--border-subtle);
@@ -566,7 +600,7 @@ body {
   height: 42px;
   padding: 0 36px 0 38px;
   border-radius: 8px;
-  background: transparent;
+  background: #0c0c0d;
   border: none;
   color: var(--text-primary);
   font-family: var(--font-heading);
@@ -584,9 +618,11 @@ body {
 }
 
 .top-search-input:focus {
-  background: rgba(255, 255, 255, 0.03);
+  /* Increased from 0.03 to 0.12 for a noticeably brighter background */
+  background: rgba(255, 255, 255, 0.12);
   border: none;
-  box-shadow: none;
+  /* Added a very subtle focus ring to make it pop more, remove if you only want the background change */
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.05);
 }
 
 .search-clear-btn {
@@ -759,12 +795,7 @@ body {
   position: absolute;
   inset: 0;
   border-radius: 20px;
-  background: linear-gradient(
-    90deg,
-    #0e0e12 0%,
-    #1e1e26 50%,
-    #0e0e12 100%
-  );
+  background: linear-gradient(90deg, #0e0e12 0%, #1e1e26 50%, #0e0e12 100%);
   background-size: 200% 100%;
   animation: carousel-shimmer 1.6s infinite linear;
   z-index: 1;
@@ -1082,7 +1113,11 @@ body {
   display: flex;
   align-items: center;
   gap: 20px;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0%, rgba(20, 20, 24, 0.6) 100%);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.04) 0%,
+    rgba(20, 20, 24, 0.6) 100%
+  );
   border: 1px solid var(--border-glass);
   border-radius: 16px;
   padding: 16px;
@@ -1094,7 +1129,11 @@ body {
 }
 
 .top-match-card:hover {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.07) 0%, rgba(26, 26, 32, 0.8) 100%);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.07) 0%,
+    rgba(26, 26, 32, 0.8) 100%
+  );
   border-color: rgba(255, 255, 255, 0.2);
   transform: translateY(-2px);
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
@@ -1335,11 +1374,27 @@ body {
   object-fit: cover;
   display: block;
   opacity: 0;
-  transition: opacity 0.3s ease, transform 0.3s ease;
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
 }
 
 .artwork-img-element.loaded {
   opacity: 1;
+}
+
+.artwork-fallback-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #111115;
+  color: var(--text-tertiary);
+}
+
+.fallback-music-icon {
+  opacity: 0.55;
 }
 
 .track-card:hover .artwork-img-element {
@@ -1884,8 +1939,12 @@ body {
 }
 
 @keyframes pulse {
-  0% { opacity: 0.4; }
-  100% { opacity: 1; }
+  0% {
+    opacity: 0.4;
+  }
+  100% {
+    opacity: 1;
+  }
 }
 
 /* --------------------------------------------------------------------------
@@ -1908,7 +1967,9 @@ body {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .shelves-loading-indicator {
@@ -2234,4 +2295,3 @@ body {
   gap: 20px;
   animation: fadeIn 0.25s ease-out;
 }
-

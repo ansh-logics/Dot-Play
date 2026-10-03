@@ -75,9 +75,9 @@ export function isTauriEnvironment(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
 }
 
-export async function openLoginWindow(): Promise<void> {
+export async function openLoginWindow(clean = false): Promise<void> {
   if (isTauriEnvironment()) {
-    await invoke("open_login_window")
+    await invoke("open_login_window", { clean })
   }
 }
 

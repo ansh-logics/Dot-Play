@@ -28,6 +28,7 @@ import {
   Clock,
   Trash2,
   RefreshCw,
+  UserPlus,
 } from "lucide-react";
 import {
   searchTracks,
@@ -49,6 +50,7 @@ import {
   type PlaylistDetails,
   type UserProfile,
 } from "./lib/search";
+import { cacheTracks, cacheTrack } from "./lib/trackCache";
 
 function App() {
   const [activeNav, setActiveNav] = useState<"home" | "search" | "library" | "history">("home");
@@ -141,6 +143,7 @@ function App() {
     getHomeFeed().then((res) => {
       setHomeSections(res.sections);
       setContinuationToken(res.continuationToken ?? null);
+      cacheTracks(res.sections.flatMap((s) => s.items));
     });
 
     if (isTauriEnvironment()) {
@@ -151,6 +154,11 @@ function App() {
         getHomeFeed().then((res) => {
           setHomeSections(res.sections);
           setContinuationToken(res.continuationToken ?? null);
+          cacheTracks(res.sections.flatMap((s) => s.items));
+        });
+        getHistory().then((res) => {
+          setHistorySections(res.sections);
+          cacheTracks(res.sections.flatMap((s) => s.items));
         });
       }).then((un) => {
         unlistenSuccess = un;
@@ -177,6 +185,7 @@ function App() {
     try {
       const res = await getHistory();
       setHistorySections(res.sections);
+      cacheTracks(res.sections.flatMap((s) => s.items));
     } catch (e) {
       console.error("Failed to fetch history:", e);
     } finally {
@@ -223,6 +232,7 @@ function App() {
       try {
         const results = await searchTracks(cleanQuery);
         setSearchResults(results);
+        cacheTracks(results);
         if (results.length > 0) {
           const updated = saveRecentSearch(cleanQuery);
           setRecentSearches(updated);
@@ -253,6 +263,7 @@ function App() {
     try {
       const res = await getHomeFeedContinuation(continuationToken);
       if (res.sections.length > 0) {
+        cacheTracks(res.sections.flatMap((s) => s.items));
         setHomeSections((prev) => {
           const existingTitles = new Set(prev.map((s) => s.title));
           const newUnique = res.sections.filter(
@@ -367,6 +378,7 @@ function App() {
     );
 
     setCurrentTrack(track);
+    cacheTrack(track);
     setCurrentTime(0);
     setPlaybackError(null);
 
@@ -389,6 +401,9 @@ function App() {
     try {
       const details = await getPlaylistDetails(playlistId);
       setSelectedPlaylist(details);
+      if (details.tracks && details.tracks.length > 0) {
+        cacheTracks(details.tracks);
+      }
     } catch (err) {
       setPlaylistError("Could not load playlist details.");
       console.error(err);
@@ -683,23 +698,38 @@ function App() {
 
                 <div className="popover-divider" />
 
-                <button
-                  type="button"
-                  className="popover-signout-btn"
-                  onClick={async () => {
-                    setShowProfileMenu(false);
-                    await logoutUser();
-                    setIsLoggedIn(false);
-                    setUserProfile(null);
-                    getHomeFeed().then((res) => {
-                      setHomeSections(res.sections);
-                      setContinuationToken(res.continuationToken ?? null);
-                    });
-                  }}
-                >
-                  <LogOut size={14} strokeWidth={2} />
-                  <span>Sign Out</span>
-                </button>
+                <div className="popover-actions">
+                  <button
+                    type="button"
+                    className="popover-switch-btn"
+                    onClick={async () => {
+                      setShowProfileMenu(false);
+                      setIsLoggingIn(true);
+                      await openLoginWindow(true);
+                    }}
+                  >
+                    <UserPlus size={14} strokeWidth={2} />
+                    <span>Switch Account</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="popover-signout-btn"
+                    onClick={async () => {
+                      setShowProfileMenu(false);
+                      await logoutUser();
+                      setIsLoggedIn(false);
+                      setUserProfile(null);
+                      getHomeFeed().then((res) => {
+                        setHomeSections(res.sections);
+                        setContinuationToken(res.continuationToken ?? null);
+                      });
+                    }}
+                  >
+                    <LogOut size={14} strokeWidth={2} />
+                    <span>Sign Out</span>
+                  </button>
+                </div>
               </div>
             )}
 

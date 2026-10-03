@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { isTauriEnvironment } from "./search";
+import { getCachedArtwork, markArtworkVerified } from "./trackCache";
 
 // In-memory cache for ultra-fast synchronous lookup
 const memoryCache = new Map<string, string>();
@@ -19,19 +20,26 @@ try {
 
 /**
  * Optimizes a thumbnail URL immediately without blocking.
+ * Checks TrackCache and MemoryCache first for verified artwork.
  * Upgrades Google CDN URLs to master quality (800x800 square, 90% quality).
- * Checks memory cache for previously probed video high-res URLs.
  */
 export function optimizeThumbnailUrl(rawUrl: string, videoId?: string): string {
-  if (!rawUrl && !videoId) return "";
-
-  // 1. Check memory cache first
-  if (videoId && memoryCache.has(videoId)) {
-    return memoryCache.get(videoId)!;
+  // 1. Check Track Metadata Cache & Memory Cache first
+  if (videoId) {
+    const cachedArtwork = getCachedArtwork(videoId);
+    if (cachedArtwork) {
+      return cachedArtwork;
+    }
+    if (memoryCache.has(videoId)) {
+      return memoryCache.get(videoId)!;
+    }
   }
+
   if (rawUrl && memoryCache.has(rawUrl)) {
     return memoryCache.get(rawUrl)!;
   }
+
+  if (!rawUrl && !videoId) return "";
 
   // 2. Google CDN immediate upscaling (0ms latency)
   if (
@@ -58,6 +66,28 @@ export function optimizeThumbnailUrl(rawUrl: string, videoId?: string): string {
   }
 
   return rawUrl;
+}
+
+/**
+ * Provides a guaranteed fallback thumbnail URL for stalled or broken images.
+ */
+export function getFallbackArtwork(
+  videoId?: string,
+  failedUrl?: string
+): string {
+  if (!videoId) return "";
+
+  const hq = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+  const sd = `https://i.ytimg.com/vi/${videoId}/sddefault.jpg`;
+  const mq = `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
+
+  if (failedUrl && failedUrl.includes("hqdefault")) {
+    return mq;
+  }
+  if (failedUrl && failedUrl.includes("maxresdefault")) {
+    return sd;
+  }
+  return hq;
 }
 
 // Queue of pending items to probe
@@ -96,9 +126,12 @@ function flushBatch() {
     .then((results) => {
       let updated = false;
       for (const [k, v] of Object.entries(results)) {
-        if (v && memoryCache.get(k) !== v) {
-          memoryCache.set(k, v);
-          updated = true;
+        if (v) {
+          markArtworkVerified(k, v);
+          if (memoryCache.get(k) !== v) {
+            memoryCache.set(k, v);
+            updated = true;
+          }
         }
       }
 

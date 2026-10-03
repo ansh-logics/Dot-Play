@@ -259,10 +259,11 @@ fn trigger_native_cookie_sync(app: &AppHandle) {
                 let block = RcBlock::new(move |cookies_ptr: NonNull<AnyObject>| {
                     let cookies = cookies_ptr.as_ptr();
                     let count: usize = msg_send![cookies, count];
-                    let mut cookie_map = std::collections::HashMap::new();
+                    let mut yt_cookie_map = std::collections::HashMap::new();
+                    let mut google_cookie_map = std::collections::HashMap::new();
                     let mut has_login_info = false;
                     let mut has_yt_sapisid = false;
-                    let mut has_yt_auth_proof = false;
+                    let mut has_google_sapisid = false;
 
                     for i in 0..count {
                         let cookie: Retained<AnyObject> = msg_send![cookies, objectAtIndex: i];
@@ -274,7 +275,6 @@ fn trigger_native_cookie_sync(app: &AppHandle) {
                         let val = val_ns.to_string();
                         let domain = domain_ns.to_string();
 
-                        // YouTube-specific auth credentials check
                         if domain.contains("youtube.com") {
                             if name == "LOGIN_INFO" && !val.trim().is_empty() {
                                 has_login_info = true;
@@ -282,40 +282,49 @@ fn trigger_native_cookie_sync(app: &AppHandle) {
                             if name == "SAPISID" || name == "__Secure-3PAPISID" {
                                 has_yt_sapisid = true;
                             }
-                            if name == "HSID" || name == "SSID" || name == "__Secure-3PSID" {
-                                has_yt_auth_proof = true;
-                            }
+                            yt_cookie_map.insert(name.clone(), val.clone());
                         }
 
-                        if domain.contains("youtube.com") || domain.contains("google.com") {
-                            cookie_map.insert(name, val);
+                        if domain.contains("google.com") {
+                            if name == "SAPISID" || name == "__Secure-3PAPISID" {
+                                has_google_sapisid = true;
+                            }
+                            google_cookie_map.insert(name, val);
                         }
                     }
 
-                    // Only consider authenticated when YouTube has established its session
-                    let is_authenticated = has_login_info || (has_yt_sapisid && has_yt_auth_proof);
+                    // Strict YouTube authentication condition:
+                    // YouTube MUST have issued LOGIN_INFO, plus valid SAPISID
+                    let is_authenticated = has_login_info && (has_yt_sapisid || has_google_sapisid);
 
                     if is_authenticated {
-                        let full_cookie_str = cookie_map
+                        // Merge cookies with YouTube cookies taking highest priority
+                        let mut final_map = google_cookie_map;
+                        for (k, v) in yt_cookie_map {
+                            final_map.insert(k, v);
+                        }
+
+                        let full_cookie_str = final_map
                             .into_iter()
                             .map(|(k, v)| format!("{}={}", k, v))
                             .collect::<Vec<_>>()
                             .join("; ");
 
                         println!(
-                            "[DOT Music] Successfully verified YouTube authentication (has_login_info={}, cookies_count={}, bytes={})",
-                            has_login_info, count, full_cookie_str.len()
+                            "[DOT Music] Successfully verified YouTube authentication (has_login_info=true, cookies_count={}, bytes={})",
+                            count, full_cookie_str.len()
                         );
 
                         let app = app_cb.clone();
                         tauri::async_runtime::spawn(async move {
+                            if let Some(win) = app.get_webview_window("yt_login") {
+                                let _ = win.hide();
+                                let _ = win.destroy();
+                            }
                             if let Some(state) = app.try_state::<SessionState>() {
                                 *state.cookies.lock().unwrap() = Some(full_cookie_str.clone());
                             }
                             let _ = persist_session(&app, &full_cookie_str);
-                            if let Some(win) = app.get_webview_window("yt_login") {
-                                let _ = win.close();
-                            }
                             let _ = app.emit("login_success", ());
                         });
                     }
@@ -347,15 +356,37 @@ fn attach_youtube_auth(mut req: reqwest::RequestBuilder, cookies_opt: &Option<St
 }
 
 #[tauri::command]
-async fn open_login_window(app: AppHandle) -> Result<(), String> {
+async fn open_login_window(app: AppHandle, clean: Option<bool>) -> Result<(), String> {
     if let Some(existing) = app.get_webview_window("yt_login") {
         let _ = existing.set_focus();
         return Ok(());
     }
 
-    let url = "https://accounts.google.com/ServiceLogin?continue=https%3A%2F%2Fmusic.youtube.com%2F"
+    if clean.unwrap_or(false) {
+        clear_native_webkit_data(&app);
+    }
+
+    let url = "https://accounts.google.com/AccountChooser?continue=https%3A%2F%2Fmusic.youtube.com%2F&prompt=select_account&hl=en"
         .parse()
         .map_err(|e| format!("Invalid URL: {}", e))?;
+
+    let init_script = r#"
+        (function() {
+            function checkInterstitial() {
+                var host = window.location.hostname;
+                // Only auto-forward if landed on Google Account settings detour (not during sign-in)
+                if (host.includes('myaccount.google.com')) {
+                    window.location.href = 'https://music.youtube.com/';
+                }
+            }
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', checkInterstitial);
+            } else {
+                checkInterstitial();
+            }
+            setInterval(checkInterstitial, 1000);
+        })();
+    "#;
 
     let app_nav_handle = app.clone();
     let login_window = WebviewWindowBuilder::new(&app, "yt_login", WebviewUrl::External(url))
@@ -364,28 +395,35 @@ async fn open_login_window(app: AppHandle) -> Result<(), String> {
         .user_agent(
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
         )
+        .initialization_script(init_script)
         .on_navigation(move |nav_url| {
-            // Only trigger cookie capture when arriving back at music.youtube.com
             let host = nav_url.host_str().unwrap_or("");
-            if host == "music.youtube.com" || host.ends_with(".youtube.com") {
+            if host == "music.youtube.com" || host.ends_with(".music.youtube.com") {
+                // Instantly hide the window upon entering YouTube Music so user never sees web player
+                if let Some(win) = app_nav_handle.get_webview_window("yt_login") {
+                    let _ = win.hide();
+                }
                 trigger_native_cookie_sync(&app_nav_handle);
-
-                let app = app_nav_handle.clone();
-                tauri::async_runtime::spawn(async move {
-                    for _ in 0..25 {
-                        std::thread::sleep(std::time::Duration::from_millis(600));
-                        if app.get_webview_window("yt_login").is_some() {
-                            trigger_native_cookie_sync(&app);
-                        } else {
-                            break;
-                        }
-                    }
-                });
+            } else if host.ends_with(".youtube.com") || host == "myaccount.google.com" {
+                trigger_native_cookie_sync(&app_nav_handle);
             }
             true
         })
         .build()
         .map_err(|e| format!("Failed to create login window: {}", e))?;
+
+    // Continuous heartbeat while yt_login is open (poll every 400ms for instant completion)
+    let app_poll_handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        for _ in 0..750 {
+            std::thread::sleep(std::time::Duration::from_millis(400));
+            if app_poll_handle.get_webview_window("yt_login").is_some() {
+                trigger_native_cookie_sync(&app_poll_handle);
+            } else {
+                break;
+            }
+        }
+    });
 
     let app_close_handle = app.clone();
     login_window.on_window_event(move |event| {
@@ -408,55 +446,54 @@ async fn save_session(
     state: State<'_, SessionState>,
     cookies: String,
 ) -> Result<(), String> {
-    if cookies.contains("SAPISID") || cookies.contains("__Secure-3PAPISID") || cookies.contains("LOGIN_INFO") {
+    if cookies.contains("LOGIN_INFO") && (cookies.contains("SAPISID") || cookies.contains("__Secure-3PAPISID")) {
         *state.cookies.lock().unwrap() = Some(cookies.clone());
         let _ = persist_session(&app, &cookies);
 
         if let Some(win) = app.get_webview_window("yt_login") {
-            let _ = win.close();
+            let _ = win.hide();
+            let _ = win.destroy();
         }
 
         let _ = app.emit("login_success", ());
         Ok(())
     } else {
-        Err("Incomplete cookies: missing SAPISID".to_string())
+        Err("Incomplete cookies: missing LOGIN_INFO".to_string())
     }
 }
 
 #[tauri::command]
 async fn get_auth_status(state: State<'_, SessionState>) -> Result<bool, String> {
     let guard = state.cookies.lock().unwrap();
-    Ok(guard.is_some())
+    if let Some(ref cookies) = *guard {
+        Ok(cookies.contains("LOGIN_INFO") && (cookies.contains("SAPISID") || cookies.contains("__Secure-3PAPISID")))
+    } else {
+        Ok(false)
+    }
 }
 
 #[cfg(target_os = "macos")]
-fn clear_native_webkit_data(app: &AppHandle) {
-    if let Some(win) = app.get_webview_window("main").or_else(|| app.get_webview_window("yt_login")) {
-        let _ = win.with_webview(|w| {
-            use objc2::runtime::AnyObject;
-            use objc2::rc::Retained;
-            use objc2::msg_send;
-            use block2::RcBlock;
+fn clear_native_webkit_data(_app: &AppHandle) {
+    use objc2::runtime::AnyObject;
+    use objc2::rc::Retained;
+    use objc2::msg_send;
+    use block2::RcBlock;
 
-            unsafe {
-                let view = &*(w.inner() as *const AnyObject);
-                let config: Retained<AnyObject> = msg_send![view, configuration];
-                let data_store: Retained<AnyObject> = msg_send![&config, websiteDataStore];
-                let data_types: Retained<AnyObject> = msg_send![objc2::class!(WKWebsiteDataStore), allWebsiteDataTypes];
-                let date_past: Retained<AnyObject> = msg_send![objc2::class!(NSDate), distantPast];
+    unsafe {
+        let data_store: Retained<AnyObject> = msg_send![objc2::class!(WKWebsiteDataStore), defaultDataStore];
+        let data_types: Retained<AnyObject> = msg_send![objc2::class!(WKWebsiteDataStore), allWebsiteDataTypes];
+        let date_past: Retained<AnyObject> = msg_send![objc2::class!(NSDate), distantPast];
 
-                let block = RcBlock::new(|| {
-                    println!("[DOT Music] All WebKit website data, cookies, and cache cleared!");
-                });
-
-                let _: () = msg_send![
-                    &data_store,
-                    removeDataOfTypes: &*data_types,
-                    modifiedSince: &*date_past,
-                    completionHandler: &*block
-                ];
-            }
+        let block = RcBlock::new(|| {
+            println!("[DOT Music] All WebKit website data, cookies, and cache cleared!");
         });
+
+        let _: () = msg_send![
+            &data_store,
+            removeDataOfTypes: &*data_types,
+            modifiedSince: &*date_past,
+            completionHandler: &*block
+        ];
     }
 }
 
@@ -465,8 +502,10 @@ fn clear_native_webkit_data(_app: &AppHandle) {}
 
 #[tauri::command]
 async fn logout(app: AppHandle, state: State<'_, SessionState>) -> Result<(), String> {
-    let mut guard = state.cookies.lock().unwrap();
-    *guard = None;
+    {
+        let mut guard = state.cookies.lock().unwrap();
+        *guard = None;
+    }
 
     // Delete session file from disk
     if let Ok(app_data) = app.path().app_data_dir() {
@@ -608,6 +647,10 @@ fn parse_feed_item(item: &serde_json::Value) -> Option<SearchResult> {
     let raw_thumb = renderer
         .pointer("/thumbnailRenderer/musicThumbnailRenderer/thumbnail/thumbnails")
         .or_else(|| renderer.pointer("/thumbnail/musicThumbnailRenderer/thumbnail/thumbnails"))
+        .or_else(|| renderer.pointer("/thumbnail/thumbnails"))
+        .or_else(|| renderer.pointer("/thumbnailRenderer/thumbnails"))
+        .or_else(|| renderer.pointer("/thumbnail/croppedSquareThumbnailRenderer/thumbnail/thumbnails"))
+        .or_else(|| renderer.pointer("/thumbnails"))
         .and_then(|v| v.as_array())
         .and_then(|arr| arr.last().or_else(|| arr.first()))
         .and_then(|t| t.get("url"))
@@ -735,11 +778,19 @@ fn parse_feed_item(item: &serde_json::Value) -> Option<SearchResult> {
     };
 
     if !resolved_video_id.is_empty() || final_playlist_id.is_some() {
+        let final_thumb = if !thumb.is_empty() {
+            thumb
+        } else if !resolved_video_id.is_empty() {
+            format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", resolved_video_id)
+        } else {
+            String::new()
+        };
+
         Some(SearchResult {
             video_id: resolved_video_id.to_string(),
             title: title.to_string(),
             artist,
-            thumbnail_url: thumb.to_string(),
+            thumbnail_url: final_thumb,
             playlist_id: final_playlist_id,
             item_type: Some(item_type.to_string()),
         })
@@ -1375,11 +1426,16 @@ pub fn run() {
             if let Ok(app_data) = app.path().app_data_dir() {
                 let session_file = app_data.join("session.json");
                 if session_file.exists() {
-                    if let Ok(contents) = std::fs::read_to_string(session_file) {
+                    if let Ok(contents) = std::fs::read_to_string(&session_file) {
                         if let Ok(saved) = serde_json::from_str::<serde_json::Value>(&contents) {
                             if let Some(cookies) = saved.get("cookies").and_then(|c| c.as_str()) {
-                                let state = app.state::<SessionState>();
-                                *state.cookies.lock().unwrap() = Some(cookies.to_string());
+                                if cookies.contains("LOGIN_INFO") && (cookies.contains("SAPISID") || cookies.contains("__Secure-3PAPISID")) {
+                                    let state = app.state::<SessionState>();
+                                    *state.cookies.lock().unwrap() = Some(cookies.to_string());
+                                } else {
+                                    // Session on disk is incomplete or missing LOGIN_INFO - wipe it clean!
+                                    let _ = std::fs::remove_file(&session_file);
+                                }
                             }
                         }
                     }
