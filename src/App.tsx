@@ -34,7 +34,6 @@ import {
   Volume2,
   VolumeX,
   User,
-  Heart,
 } from "lucide-react";
 import {
   searchTracks,
@@ -122,6 +121,40 @@ function App() {
   const [isMuted, setIsMuted] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);
+  const [showQueue, setShowQueue] = useState(false);
+
+  // Active playback queue for sidebar queue card
+  const activeQueue = useMemo(() => {
+    if (selectedPlaylist && selectedPlaylist.tracks.length > 0) {
+      return selectedPlaylist.tracks;
+    }
+    for (const section of homeSections) {
+      const idx = section.items.findIndex(
+        (i) => i.videoId === currentTrack?.videoId,
+      );
+      if (idx !== -1) {
+        return section.items.filter((i) => Boolean(i.videoId));
+      }
+    }
+    for (const section of historySections) {
+      const idx = section.items.findIndex(
+        (i) => i.videoId === currentTrack?.videoId,
+      );
+      if (idx !== -1) {
+        return section.items.filter((i) => Boolean(i.videoId));
+      }
+    }
+    if (searchResults.some((i) => i.videoId === currentTrack?.videoId)) {
+      return searchResults.filter((i) => Boolean(i.videoId));
+    }
+    return currentTrack ? [currentTrack] : [];
+  }, [
+    selectedPlaylist,
+    homeSections,
+    historySections,
+    searchResults,
+    currentTrack,
+  ]);
 
   const playerRef = useRef<YouTubePlayerInstance | null>(null);
   const isScrubbingRef = useRef(false);
@@ -211,6 +244,11 @@ function App() {
           e.preventDefault();
           return;
         }
+        if (showQueue) {
+          setShowQueue(false);
+          e.preventDefault();
+          return;
+        }
         if (selectedPlaylist) {
           setSelectedPlaylist(null);
           e.preventDefault();
@@ -266,6 +304,7 @@ function App() {
     showSettingsModal,
     showSupportModal,
     showProfileMenu,
+    showQueue,
     selectedPlaylist,
     activeNav,
     togglePlayPause,
@@ -996,16 +1035,64 @@ function App() {
 
                 <button
                   type="button"
-                  className="sidebar-ctrl-btn queue"
+                  className={`sidebar-ctrl-btn queue ${showQueue ? "active" : ""}`}
                   onClick={() => {
-                    setActiveNav("library");
+                    setShowQueue((prev) => !prev);
                   }}
-                  title="Queue / Playlists"
-                  aria-label="Playlists"
+                  title={showQueue ? "Hide queue" : "Show upcoming queue"}
+                  aria-label="Upcoming queue"
                 >
                   <ListMusic size={15} />
                 </button>
               </div>
+
+              {/* Scrollable Queue Section inside Player Card */}
+              {showQueue && (
+                <div className="sidebar-player-queue">
+                  <div className="sidebar-queue-header">
+                    <span className="sidebar-queue-title">UPCOMING QUEUE</span>
+                    <span className="sidebar-queue-count">
+                      {activeQueue.length} {activeQueue.length === 1 ? "track" : "tracks"}
+                    </span>
+                  </div>
+                  <div className="sidebar-queue-list">
+                    {activeQueue.length === 0 ? (
+                      <div className="sidebar-queue-empty">Queue is empty</div>
+                    ) : (
+                      activeQueue.map((track, qIdx) => {
+                        const isCurrentPlaying = currentTrack.videoId === track.videoId;
+                        return (
+                          <div
+                            key={track.videoId || qIdx}
+                            className={`sidebar-queue-item ${isCurrentPlaying ? "active" : ""}`}
+                            onClick={() => selectTrack(track)}
+                            role="button"
+                            tabIndex={0}
+                          >
+                            <ArtworkImage
+                              src={track.thumbnailUrl}
+                              videoId={track.videoId}
+                              alt={track.title}
+                              className="sidebar-queue-thumb"
+                            />
+                            <div className="sidebar-queue-meta">
+                              <span className="sidebar-queue-item-title" title={track.title}>
+                                {track.title}
+                              </span>
+                              <span className="sidebar-queue-item-artist" title={track.artist}>
+                                {track.artist}
+                              </span>
+                            </div>
+                            {isCurrentPlaying && (
+                              <span className="sidebar-queue-active-dot" />
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1754,50 +1841,6 @@ function App() {
                   <span>Refresh</span>
                 </button>
               )}
-            </div>
-
-            {/* Liked Music Spotlight Card */}
-            <div className="liked-music-spotlight">
-              <span className="search-subheading-label">FAVORITES</span>
-              <div
-                className="liked-music-card"
-                onClick={() => openPlaylist("LM")}
-                role="button"
-                tabIndex={0}
-              >
-                <div className="liked-music-cover-wrap">
-                  <Heart
-                    size={40}
-                    fill="var(--accent-red)"
-                    color="var(--accent-red)"
-                    className="liked-heart-icon"
-                  />
-                  <span className="top-match-play-btn" style={{ opacity: 1, position: "absolute" }}>
-                    <Play size={18} fill="currentColor" strokeWidth={0} style={{ marginLeft: 2 }} />
-                  </span>
-                </div>
-
-                <div className="liked-music-meta">
-                  <span className="card-type-pill song">AUTO PLAYLIST</span>
-                  <h3 className="liked-music-title">Liked Music</h3>
-                  <p className="liked-music-desc">
-                    Auto-generated playlist of all your thumbs-up tracks synchronized with your YouTube Music account.
-                  </p>
-                  <div className="liked-music-actions">
-                    <button
-                      type="button"
-                      className="liked-music-play-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openPlaylist("LM");
-                      }}
-                    >
-                      <Play size={13} fill="currentColor" strokeWidth={0} />
-                      <span>Open Liked Music</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
             </div>
 
             {/* Guest mode unauthenticated notice if not signed in */}
