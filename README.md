@@ -1,74 +1,107 @@
 # DOT Music
 
-DOT Music is a minimal React + TypeScript learning project demonstrating how a custom frontend music interface controls a hidden YouTube iframe player.
+![DOT Music desktop experience](docs/social-preview.png)
 
-## Learning Architecture
+**DOT Music is a macOS-first desktop music client that gives YouTube Music discovery a focused, personal library experience.** It combines a custom React interface with a Tauri desktop shell and the YouTube IFrame Player API, so the application owns the browsing and playback experience while YouTube remains responsible for media delivery.
+
+> Built as a product exploration of what a calmer, more intentional desktop music library can feel like.
+
+## Product Vision
+
+Music players should feel like libraries, not crowded feeds. DOT Music is designed around fast discovery, readable collections, strong artwork, and playback controls that stay out of the way until they are needed.
+
+The current experience is built for macOS first, with a technical foundation that can later support Windows, Linux, Android, and additional approved music sources.
+
+## What You Can Do Today
+
+- Search YouTube Music tracks and playlists from a custom desktop interface.
+- Browse recommendation shelves and open playlist details.
+- Play, pause, seek, and move between tracks through a persistent player.
+- Use high-resolution artwork where it is available.
+- Keep recent searches locally for faster rediscovery.
+- Optionally connect a YouTube Music account for personalized library content.
+- Run the same React interface in a browser for UI development.
+
+## Product Principles
+
+1. **Music first**: artwork, title, artist, and controls should always be easy to scan.
+2. **Native where it matters**: use Tauri for desktop integration while keeping product UI flexible in React.
+3. **Respect the source**: DOT Music does not host music files or bypass content restrictions. Playback availability remains subject to YouTube's embedding and rights rules.
+4. **Build for expansion**: separate the UI, playback controls, data contracts, and native commands so additional supported sources can be evaluated later.
+
+## How It Works
 
 ```text
-User pastes YouTube URL
-  ↓
-React parses video ID locally (no network call)
-  ↓
-React fetches public metadata via YouTube oEmbed (no API key)
-  ↓
-If metadata exists, mount hidden YouTube iframe player
-  ↓
-React owns all visible UI (title, thumbnail, controls, seek bar)
-  ↓
-YouTube iframe owns media playback & stream state
-  ↓
-Iframe events (ready, stateChange, error) update React state
+React interface
+  -> Tauri commands for desktop search and library data
+  -> normalized track and playlist data
+  -> YouTube IFrame Player API for playback
+  -> player events synchronized back into React state
 ```
 
-## Boundaries
+The visible player is DOT Music's UI. The hidden YouTube player is the playback engine: it supplies the real playback state, current time, duration, and error events.
 
-- **React owns:** URL input, metadata display, play/pause trigger, seek slider, duration/time formatting, error states.
-- **Hidden iframe owns:** Audio streaming, decoding, playback position, and true playback status (`playing`, `paused`, `ended`, `buffering`).
-- **No shortcuts:** React does not assume playback succeeds when the user clicks Play. It waits for the iframe's `onStateChange` event.
-- **Embedding restrictions:** Certain videos (errors `101` and `150`) cannot be embedded by owner choice. DOT Music treats this as a genuine playback error.
+## Tech Stack
 
-## Completed Learning Steps
+| Layer | Technology |
+| --- | --- |
+| Desktop application | Tauri 2 |
+| Frontend | React 19, TypeScript, Vite |
+| Native layer | Rust |
+| Icons | Lucide React |
+| Playback | YouTube IFrame Player API |
+| Data and artwork | YouTube Music endpoints and YouTube image CDN |
 
-1. **Parse URL to Video ID (`src/lib/youtube.ts`):**
-   - Validates input locally with RegExp and URL parsing (`watch?v=`, `youtu.be/`, `/shorts/`, `/embed/`, `/live/`, or raw 11-char ID).
-   - Fails fast before making any network request.
+## Local Development
 
-2. **Validate & Fetch Metadata (`src/lib/youtube.ts`):**
-   - Calls YouTube's public oEmbed endpoint (`https://www.youtube.com/oembed`).
-   - Retrieves track title, author name, and thumbnail without requiring a YouTube Data API v3 key.
-   - Note: oEmbed does not provide duration; duration comes from the iframe player once initialized.
+### Prerequisites
 
-3. **Hidden Iframe Controlled by React (`src/components/HiddenYouTubePlayer.tsx` & `src/App.tsx`):**
-   - Loads the YouTube Iframe API script dynamically (`https://www.youtube.com/iframe_api`).
-   - Instantiates a hidden DOM element (`aria-hidden="true"`, offscreen) with `controls: 0` and `enablejsapi: 1`.
-   - React sends imperative commands via a ref (`playVideo()`, `pauseVideo()`, `seekTo()`).
-   - The iframe sends event callbacks back to React (`onReady`, `onStateChange`, `onError`).
-   - React polls `player.getCurrentTime()` and `player.getDuration()` to reconcile the seek slider.
+- Node.js 20 or newer
+- Rust toolchain
+- Xcode Command Line Tools on macOS
 
-4. **Search Service & Track Selection (`src/lib/search.ts` & `src/App.tsx`):**
-   - Standardized `SearchResult` contract decoupling UI from data transport.
-   - Dual-mode input: automatically distinguishes between direct YouTube URLs and keyword searches.
-   - Official YouTube Data API v3 provider (with `videoEmbeddable=true`) when `VITE_YOUTUBE_API_KEY` is present.
-   - Built-in curated catalog fallback for immediate local testing without an API key.
-   - Clicking any result card immediately triggers metadata selection and begins playback.
-
-5. **Tauri Native Backend Search (`src-tauri/` & `src/lib/search.ts`):**
-   - Native Rust backend using `reqwest` to query YouTube search without browser CORS limitations.
-   - Rust command `search_tracks` parses InnerTube results and serializes them into the `SearchResult` struct.
-   - React detects when running inside Tauri via `window.__TAURI_INTERNALS__` and invokes the native command.
-   - Preserves complete backward compatibility: still runs smoothly in standard web browsers!
-
-6. **YouTube Music Login & Home Feed Recommendations (`src-tauri/` & `src/App.tsx`):**
-   - Native Google/YouTube Music login popup (`open_login_window`) with Safari desktop user-agent to bypass Google's webview lock.
-   - Listens to navigation redirecting to `https://music.youtube.com`, captures session cookies, and saves session.
-   - Implements `SAPISIDHASH` SHA-1 authentication required by YouTube for logged-in InnerTube API requests.
-   - Fetches personalized Home recommendation shelves (`FEmusic_home`) and renders playable track/playlist cards.
-
-## Development
+### Run in the browser
 
 ```bash
 npm install
-npm run dev        # Run React in browser (http://127.0.0.1:5173)
-npm run tauri dev  # Run as native desktop app with Rust backend
-npm run build      # Type-check and production frontend build
+npm run dev
 ```
+
+### Run as the desktop app
+
+```bash
+npm run tauri dev
+```
+
+### Validate a production build
+
+```bash
+npm run build
+npm run lint
+cargo check --manifest-path src-tauri/Cargo.toml
+```
+
+## Current Scope
+
+DOT Music is an active personal product project, not a production streaming service. Account connection, persistent session handling, source reliability, desktop packaging, and cross-platform support are still evolving. Do not treat it as a replacement for official music-provider clients.
+
+## Roadmap
+
+- Refine the now-playing and queue experience.
+- Strengthen account-session security with platform credential storage.
+- Improve search resilience and artwork loading performance.
+- Add a macOS companion surface, including an exploration of notch-aware interactions.
+- Evaluate Android support with a mobile-first navigation and playback design.
+- Introduce a source abstraction for local music and future licensed provider integrations.
+
+## Author
+
+**Ansh Bhatt**
+
+Full-stack developer and builder of DOT Music
+
+Email: [anshbhatt140@icloud.com](mailto:anshbhatt140@icloud.com)
+
+## Acknowledgements
+
+DOT Music uses the YouTube IFrame Player API for playback. YouTube and YouTube Music are trademarks of their respective owners. DOT Music is an independent project and is not affiliated with or endorsed by YouTube or Google.
