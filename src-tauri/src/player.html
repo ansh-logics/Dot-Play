@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <title>DOT Music Audio Engine</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: transparent;
+    }
+    #player-container {
+      width: 200px;
+      height: 200px;
+    }
+  </style>
+</head>
+<body>
+  <div id="player-container">
+    <div id="player"></div>
+  </div>
+
+  <script>
+    (function() {
+      var player = null;
+      var isReady = false;
+      var timeInterval = null;
+      var lastVideoId = "";
+
+      function postToParent(data) {
+        try {
+          window.parent.postMessage(data, "*");
+        } catch (e) {
+          console.error("[DOT Player Bridge] postMessage failed:", e);
+        }
+      }
+
+      function startTimeSync() {
+        if (timeInterval) clearInterval(timeInterval);
+        timeInterval = setInterval(function() {
+          if (player && typeof player.getCurrentTime === "function" && typeof player.getDuration === "function") {
+            try {
+              var curr = player.getCurrentTime() || 0;
+              var dur = player.getDuration() || 0;
+              var vol = typeof player.getVolume === "function" ? player.getVolume() : 100;
+              var muted = typeof player.isMuted === "function" ? player.isMuted() : false;
+              postToParent({
+                type: "timeUpdate",
+                currentTime: curr,
+                duration: dur,
+                volume: vol,
+                isMuted: muted
+              });
+            } catch (err) {}
+          }
+        }, 200);
+      }
+
+      function stopTimeSync() {
+        if (timeInterval) {
+          clearInterval(timeInterval);
+          timeInterval = null;
+        }
+      }
+
+      window.addEventListener("message", function(event) {
+        var msg = event.data;
+        if (!msg || typeof msg !== "object" || !msg.action) return;
+
+        switch (msg.action) {
+          case "loadVideo":
+            if (player && typeof player.loadVideoById === "function") {
+              lastVideoId = msg.videoId;
+              player.loadVideoById({
+                videoId: msg.videoId,
+                startSeconds: msg.startSeconds || 0
+              });
+              if (msg.autoplay !== false && typeof player.playVideo === "function") {
+                player.playVideo();
+              }
+            }
+            break;
+
+          case "cueVideo":
+            if (player && typeof player.cueVideoById === "function") {
+              lastVideoId = msg.videoId;
+              player.cueVideoById({
+                videoId: msg.videoId,
+                startSeconds: msg.startSeconds || 0
+              });
+            }
+            break;
+
+          case "play":
+            if (player && typeof player.playVideo === "function") {
+              player.playVideo();
+            }
+            break;
+
+          case "pause":
+            if (player && typeof player.pauseVideo === "function") {
+              player.pauseVideo();
+            }
+            break;
+
+          case "seekTo":
+            if (player && typeof player.seekTo === "function") {
+              player.seekTo(msg.seconds || 0, msg.allowSeekAhead !== false);
+            }
+            break;
+
+          case "setVolume":
+            if (player && typeof player.setVolume === "function") {
+              player.setVolume(msg.volume);
+            }
+            break;
+
+          case "mute":
+            if (player && typeof player.mute === "function") {
+              player.mute();
+            }
+            break;
+
+          case "unMute":
+            if (player && typeof player.unMute === "function") {
+              player.unMute();
+            }
+            break;
+        }
+      });
+
+      // Load YouTube IFrame API
+      var tag = document.createElement("script");
+      tag.src = "https://www.youtube.com/iframe_api";
+      tag.onerror = function() {
+        postToParent({ type: "error", code: -1 });
+      };
+      var firstScriptTag = document.getElementsByTagName("script")[0];
+      firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+      setTimeout(function() {
+        if (!isReady && (!window.YT || !window.YT.Player)) {
+          postToParent({ type: "error", code: -1 });
+        }
+      }, 10000);
+
+      window.onYouTubeIframeAPIReady = function() {
+        // Standard HTTP origin: http://127.0.0.1:<PORT>
+        var origin = window.location.origin;
+
+        player = new YT.Player("player", {
+          width: "200",
+          height: "200",
+          playerVars: {
+            autoplay: 0,
+            controls: 0,
+            enablejsapi: 1,
+            playsinline: 1,
+            rel: 0,
+            origin: origin
+          },
+          events: {
+            onReady: function(e) {
+              isReady = true;
+              startTimeSync();
+              postToParent({ type: "ready" });
+            },
+            onStateChange: function(e) {
+              postToParent({ type: "stateChange", stateCode: e.data });
+
+              if (e.data === 1) { // playing
+                startTimeSync();
+              } else if (e.data === 0 || e.data === 2) { // ended or paused
+                if (player && typeof player.getCurrentTime === "function") {
+                  try {
+                    postToParent({
+                      type: "timeUpdate",
+                      currentTime: player.getCurrentTime() || 0,
+                      duration: player.getDuration() || 0
+                    });
+                  } catch (err) {}
+                }
+              }
+
+              if (player && typeof player.getVideoData === "function") {
+                try {
+                  var vData = player.getVideoData();
+                  if (vData && vData.video_id && vData.video_id !== lastVideoId) {
+                    lastVideoId = vData.video_id;
+                    postToParent({
+                      type: "trackChange",
+                      videoId: vData.video_id,
+                      title: vData.title || "",
+                      artist: vData.author || ""
+                    });
+                  }
+                } catch (err) {}
+              }
+            },
+            onError: function(e) {
+              postToParent({ type: "error", code: e.data });
+            }
+          }
+        });
+      };
+    })();
+  </script>
+</body>
+</html>

@@ -375,3 +375,15 @@ export async function getRelatedRecommendation(
   return null
 }
 
+export async function getPlayerServerUrl(): Promise<string | null> {
+  if (isTauriEnvironment()) {
+    try {
+      return await invoke<string>("get_player_server_url")
+    } catch (e) {
+      console.error("[DOT Music] Failed to get player server url via Tauri:", e)
+      return null
+    }
+  }
+  return null
+}
+

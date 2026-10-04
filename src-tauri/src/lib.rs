@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 use std::collections::HashMap;
+use std::io::{Read, Write};
+use std::net::TcpListener;
 use std::sync::Mutex;
+use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
@@ -1835,10 +1838,82 @@ async fn get_related_recommendation(
     Ok(None)
 }
 
+pub struct PlayerServerState(pub u16);
+
+fn start_player_server() -> u16 {
+    let listener = match TcpListener::bind("127.0.0.1:0") {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("[DOT Music] Failed to bind local player server: {}", e);
+            return 0;
+        }
+    };
+
+    let port = match listener.local_addr() {
+        Ok(addr) => addr.port(),
+        Err(e) => {
+            eprintln!("[DOT Music] Failed to get local player server port: {}", e);
+            return 0;
+        }
+    };
+
+    println!("[DOT Music] Local YouTube player server listening on http://127.0.0.1:{}", port);
+
+    thread::spawn(move || {
+        for stream in listener.incoming() {
+            if let Ok(mut stream) = stream {
+                thread::spawn(move || {
+                    let mut buffer = [0u8; 2048];
+                    let _ = stream.read(&mut buffer);
+                    let req = String::from_utf8_lossy(&buffer);
+
+                    if req.starts_with("OPTIONS") {
+                        let response = "HTTP/1.1 204 No Content\r\n\
+                            Access-Control-Allow-Origin: *\r\n\
+                            Access-Control-Allow-Methods: GET, OPTIONS\r\n\
+                            Access-Control-Allow-Headers: *\r\n\
+                            Connection: close\r\n\r\n";
+                        let _ = stream.write_all(response.as_bytes());
+                    } else if req.starts_with("GET /favicon.ico") {
+                        let response = "HTTP/1.1 404 Not Found\r\n\
+                            Connection: close\r\n\r\n";
+                        let _ = stream.write_all(response.as_bytes());
+                    } else {
+                        let html = include_str!("player.html");
+                        let response = format!(
+                            "HTTP/1.1 200 OK\r\n\
+                            Content-Type: text/html; charset=utf-8\r\n\
+                            Content-Length: {}\r\n\
+                            Access-Control-Allow-Origin: *\r\n\
+                            Referrer-Policy: strict-origin-when-cross-origin\r\n\
+                            Connection: close\r\n\r\n\
+                            {}",
+                            html.len(),
+                            html
+                        );
+                        let _ = stream.write_all(response.as_bytes());
+                    }
+                    let _ = stream.flush();
+                });
+            }
+        }
+    });
+
+    port
+}
+
+#[tauri::command]
+fn get_player_server_url(state: State<PlayerServerState>) -> String {
+    format!("http://127.0.0.1:{}/player.html", state.0)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let player_port = start_player_server();
+
     tauri::Builder::default()
         .manage(SessionState::default())
+        .manage(PlayerServerState(player_port))
         .plugin(tauri_plugin_log::Builder::default().build())
         .setup(|app| {
             // Restore saved session & image cache from disk on startup
@@ -1888,7 +1963,8 @@ pub fn run() {
             record_playback,
             save_queue_session,
             get_queue_session,
-            get_related_recommendation
+            get_related_recommendation,
+            get_player_server_url
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
