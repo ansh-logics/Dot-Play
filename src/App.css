@@ -3207,7 +3207,7 @@ body {
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.035);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  cursor: grab;
+  cursor: pointer;
   transition: background 0.18s ease,
               border-color 0.18s ease,
               box-shadow 0.18s ease;
@@ -3218,6 +3218,7 @@ body {
   text-align: left;
   user-select: none;
   -webkit-user-select: none;
+  touch-action: pan-y;
 }
 
 .sidebar-queue-item:hover {
@@ -3225,31 +3226,17 @@ body {
   border-color: rgba(255, 255, 255, 0.12);
 }
 
+.sidebar-queue-item.is-held-dragging {
+  cursor: grabbing !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(255, 255, 255, 0.22) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6) !important;
+  z-index: 10;
+}
+
 .sidebar-queue-item.active {
   background: rgba(215, 25, 33, 0.1);
   border-color: rgba(215, 25, 33, 0.3);
-}
-
-.sidebar-queue-drag-handle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-tertiary);
-  opacity: 0.35;
-  cursor: grab;
-  appearance: none;
-  border: 0;
-  background: transparent;
-  padding: 2px 0;
-  flex-shrink: 0;
-  touch-action: none;
-  user-select: none;
-  transition: opacity 0.15s ease, color 0.15s ease;
-}
-
-.sidebar-queue-item:hover .sidebar-queue-drag-handle {
-  opacity: 0.85;
-  color: #ffffff;
 }
 
 .sidebar-queue-thumb {

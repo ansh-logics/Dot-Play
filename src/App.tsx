@@ -36,7 +36,6 @@ import {
   VolumeX,
   User,
   Maximize2,
-  GripVertical,
   CornerDownRight,
   ListPlus,
 } from "lucide-react";
@@ -83,38 +82,139 @@ type UpcomingQueueItemProps = {
   track: SearchResult;
   onPlay: (track: SearchResult) => void;
   onRemove: (videoId: string) => void;
+  onDragStateChange?: (isDragging: boolean) => void;
 };
 
-function UpcomingQueueItem({ track, onPlay, onRemove }: UpcomingQueueItemProps) {
+function UpcomingQueueItem({
+  track,
+  onPlay,
+  onRemove,
+  onDragStateChange,
+}: UpcomingQueueItemProps) {
   const dragControls = useDragControls();
+  const [isHeld, setIsHeld] = useState(false);
+  const holdTimerRef = useRef<number | null>(null);
+  const isPointerDownRef = useRef(false);
+  const hasDragStartedRef = useRef(false);
+  const suppressClickRef = useRef(false);
+  const initialPosRef = useRef<{ x: number; y: number } | null>(null);
+
+  const cleanupHold = useCallback(() => {
+    isPointerDownRef.current = false;
+    if (holdTimerRef.current !== null) {
+      window.clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+  }, []);
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    // Only primary button
+    if (event.button !== 0) return;
+
+    // Do not initiate drag if interacting with the remove button
+    if ((event.target as HTMLElement).closest(".sidebar-queue-remove-btn")) {
+      return;
+    }
+
+    cleanupHold();
+    isPointerDownRef.current = true;
+    hasDragStartedRef.current = false;
+    initialPosRef.current = { x: event.clientX, y: event.clientY };
+
+    const nativeEvent = event.nativeEvent;
+
+    holdTimerRef.current = window.setTimeout(() => {
+      if (!isPointerDownRef.current) return;
+      hasDragStartedRef.current = true;
+      suppressClickRef.current = true;
+      setIsHeld(true);
+      onDragStateChange?.(true);
+      dragControls.start(nativeEvent);
+    }, 160);
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!isPointerDownRef.current || hasDragStartedRef.current || !initialPosRef.current) {
+      return;
+    }
+    const dist = Math.hypot(
+      event.clientX - initialPosRef.current.x,
+      event.clientY - initialPosRef.current.y
+    );
+    // If movement is deliberate (> 10px) while held down, initiate drag immediately
+    if (dist > 10) {
+      cleanupHold();
+      hasDragStartedRef.current = true;
+      suppressClickRef.current = true;
+      setIsHeld(true);
+      onDragStateChange?.(true);
+      dragControls.start(event.nativeEvent);
+    }
+  };
+
+  const handlePointerUp = () => {
+    cleanupHold();
+  };
+
+  const handlePointerCancel = () => {
+    cleanupHold();
+    if (hasDragStartedRef.current) {
+      hasDragStartedRef.current = false;
+      setIsHeld(false);
+      onDragStateChange?.(false);
+    }
+  };
+
+  const handleClick = (event: React.MouseEvent) => {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      event.stopPropagation();
+      return;
+    }
+    onPlay(track);
+  };
+
+  const handleKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onPlay(track);
+    }
+  };
+
+  const handleDragEnd = () => {
+    setIsHeld(false);
+    hasDragStartedRef.current = false;
+    onDragStateChange?.(false);
+    // Suppress trailing click event from release
+    suppressClickRef.current = true;
+    window.setTimeout(() => {
+      suppressClickRef.current = false;
+    }, 200);
+  };
 
   return (
     <Reorder.Item
       as="div"
       value={track}
-      className="sidebar-queue-item"
+      className={`sidebar-queue-item ${isHeld ? "is-held-dragging" : ""}`}
       dragListener={false}
       dragControls={dragControls}
-      whileDrag={{ opacity: 0.4, scale: 0.97, zIndex: 1 }}
-      onClick={() => onPlay(track)}
+      whileDrag={{
+        scale: 1.02,
+        boxShadow: "0 8px 24px rgba(0, 0, 0, 0.6)",
+        zIndex: 10,
+      }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
+      onClick={handleClick}
+      onKeyDown={handleKeyDown}
+      onDragEnd={handleDragEnd}
       role="button"
       tabIndex={0}
-      title="Click to play now, or drag the grip to reorder"
+      title="Click to play, hold to reorder"
     >
-      <button
-        type="button"
-        className="sidebar-queue-drag-handle"
-        title="Drag to reorder"
-        aria-label={`Reorder ${track.title}`}
-        onPointerDown={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          dragControls.start(event);
-        }}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <GripVertical size={11} />
-      </button>
       <ArtworkImage
         src={track.thumbnailUrl}
         videoId={track.videoId}
@@ -132,6 +232,7 @@ function UpcomingQueueItem({ track, onPlay, onRemove }: UpcomingQueueItemProps) 
       <button
         type="button"
         className="sidebar-queue-remove-btn"
+        onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => {
           event.stopPropagation();
           onRemove(track.videoId);
@@ -311,6 +412,90 @@ function App() {
       return next;
     });
   }, []);
+
+  // Auto-scroll controller for upcoming queue while dragging
+  const queueListRef = useRef<HTMLDivElement>(null);
+  const isQueueDraggingRef = useRef(false);
+  const queuePointerYRef = useRef<number | null>(null);
+  const autoScrollRafRef = useRef<number | null>(null);
+
+  const stopAutoScroll = useCallback(() => {
+    if (autoScrollRafRef.current !== null) {
+      cancelAnimationFrame(autoScrollRafRef.current);
+      autoScrollRafRef.current = null;
+    }
+    queuePointerYRef.current = null;
+  }, []);
+
+  const startAutoScroll = useCallback(() => {
+    if (autoScrollRafRef.current !== null) return;
+
+    const scrollStep = () => {
+      if (!isQueueDraggingRef.current) {
+        stopAutoScroll();
+        return;
+      }
+
+      const container = queueListRef.current;
+      if (container && queuePointerYRef.current !== null) {
+        const rect = container.getBoundingClientRect();
+        const pointerY = queuePointerYRef.current;
+        const edgeThreshold = 36;
+
+        if (pointerY >= rect.bottom - edgeThreshold && pointerY <= rect.bottom + 50) {
+          // Slowly auto-scroll down
+          const factor = Math.min(1, Math.max(0.2, (pointerY - (rect.bottom - edgeThreshold)) / edgeThreshold));
+          container.scrollTop += 2.5 * factor;
+        } else if (pointerY <= rect.top + edgeThreshold && pointerY >= rect.top - 50) {
+          // Slowly auto-scroll up
+          const factor = Math.min(1, Math.max(0.2, ((rect.top + edgeThreshold) - pointerY) / edgeThreshold));
+          container.scrollTop -= 2.5 * factor;
+        }
+      }
+
+      autoScrollRafRef.current = requestAnimationFrame(scrollStep);
+    };
+
+    autoScrollRafRef.current = requestAnimationFrame(scrollStep);
+  }, [stopAutoScroll]);
+
+  const handleQueueDragStateChange = useCallback(
+    (isDragging: boolean) => {
+      isQueueDraggingRef.current = isDragging;
+      if (isDragging) {
+        startAutoScroll();
+      } else {
+        stopAutoScroll();
+      }
+    },
+    [startAutoScroll, stopAutoScroll],
+  );
+
+  useEffect(() => {
+    const handleWindowPointerMove = (e: PointerEvent) => {
+      if (isQueueDraggingRef.current) {
+        queuePointerYRef.current = e.clientY;
+      }
+    };
+
+    const handleWindowPointerEnd = () => {
+      if (isQueueDraggingRef.current) {
+        isQueueDraggingRef.current = false;
+        stopAutoScroll();
+      }
+    };
+
+    window.addEventListener("pointermove", handleWindowPointerMove, { passive: true });
+    window.addEventListener("pointerup", handleWindowPointerEnd, { passive: true });
+    window.addEventListener("pointercancel", handleWindowPointerEnd, { passive: true });
+
+    return () => {
+      window.removeEventListener("pointermove", handleWindowPointerMove);
+      window.removeEventListener("pointerup", handleWindowPointerEnd);
+      window.removeEventListener("pointercancel", handleWindowPointerEnd);
+      stopAutoScroll();
+    };
+  }, [stopAutoScroll]);
 
   const playerRef = useRef<YouTubePlayerInstance | null>(null);
   const isScrubbingRef = useRef(false);
@@ -1351,6 +1536,7 @@ function App() {
                       values={session.upcoming}
                       onReorder={handleUpcomingReorder}
                       className="sidebar-queue-list"
+                      ref={queueListRef}
                     >
                       {session.upcoming.length === 0 ? (
                         <div className="sidebar-queue-empty">No upcoming tracks</div>
@@ -1366,6 +1552,7 @@ function App() {
                               );
                               if (index >= 0) handleRemoveUpcoming(index);
                             }}
+                            onDragStateChange={handleQueueDragStateChange}
                           />
                         ))
                       )}
