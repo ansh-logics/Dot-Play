@@ -326,3 +326,52 @@ export async function recordPlayback(
     return false
   }
 }
+
+export interface QueueSession {
+  history: SearchResult[]
+  currentTrack: SearchResult | null
+  upcoming: SearchResult[]
+  currentTime: number
+  isAutoplay: boolean
+}
+
+export async function saveQueueSession(session: QueueSession): Promise<boolean> {
+  if (isTauriEnvironment()) {
+    try {
+      return await invoke<boolean>("save_queue_session", { session })
+    } catch (e) {
+      console.error("[DOT Music] Failed to save queue session via Tauri:", e)
+      return false
+    }
+  }
+  return false
+}
+
+export async function getQueueSession(): Promise<QueueSession | null> {
+  if (isTauriEnvironment()) {
+    try {
+      return await invoke<QueueSession | null>("get_queue_session")
+    } catch (e) {
+      console.error("[DOT Music] Failed to get queue session via Tauri:", e)
+      return null
+    }
+  }
+  return null
+}
+
+export async function getRelatedRecommendation(
+  videoId: string,
+): Promise<SearchResult | null> {
+  if (isTauriEnvironment()) {
+    try {
+      return await invoke<SearchResult | null>("get_related_recommendation", {
+        videoId,
+      })
+    } catch (e) {
+      console.error("[DOT Music] Failed to get related recommendation via Tauri:", e)
+      return null
+    }
+  }
+  return null
+}
+

@@ -1684,6 +1684,144 @@ async fn get_highres_thumbnails(
     Ok(results)
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct QueueSession {
+    pub history: Vec<SearchResult>,
+    #[serde(rename = "currentTrack")]
+    pub current_track: Option<SearchResult>,
+    pub upcoming: Vec<SearchResult>,
+    #[serde(rename = "currentTime")]
+    pub current_time: f64,
+    #[serde(rename = "isAutoplay")]
+    pub is_autoplay: bool,
+}
+
+#[tauri::command]
+async fn save_queue_session(app: AppHandle, session: QueueSession) -> Result<bool, String> {
+    if let Ok(app_data) = app.path().app_data_dir() {
+        let _ = std::fs::create_dir_all(&app_data);
+        let queue_file = app_data.join("queue_session.json");
+        let tmp_file = app_data.join("queue_session.json.tmp");
+        let data = serde_json::to_string_pretty(&session)
+            .map_err(|e| format!("Failed to serialize queue session: {}", e))?;
+        std::fs::write(&tmp_file, data)
+            .map_err(|e| format!("Failed to write tmp queue session: {}", e))?;
+        std::fs::rename(&tmp_file, &queue_file)
+            .map_err(|e| format!("Failed to atomically rename queue session: {}", e))?;
+        return Ok(true);
+    }
+    Err("Could not access app data directory".to_string())
+}
+
+#[tauri::command]
+async fn get_queue_session(app: AppHandle) -> Result<Option<QueueSession>, String> {
+    if let Ok(app_data) = app.path().app_data_dir() {
+        let queue_file = app_data.join("queue_session.json");
+        if queue_file.exists() {
+            if let Ok(contents) = std::fs::read_to_string(&queue_file) {
+                if let Ok(session) = serde_json::from_str::<QueueSession>(&contents) {
+                    return Ok(Some(session));
+                } else {
+                    eprintln!("[DOT Music] queue_session.json was malformed, ignoring.");
+                }
+            }
+        }
+    }
+    Ok(None)
+}
+
+#[tauri::command]
+async fn get_related_recommendation(
+    state: State<'_, SessionState>,
+    video_id: String,
+) -> Result<Option<SearchResult>, String> {
+    let clean_id = video_id.trim();
+    if clean_id.is_empty() {
+        return Ok(None);
+    }
+
+    let client = reqwest::Client::new();
+    let maybe_cookies = state.cookies.lock().unwrap().clone();
+
+    let body = serde_json::json!({
+        "context": {
+            "client": {
+                "clientName": "WEB_REMIX",
+                "clientVersion": "1.20240101.01.00"
+            }
+        },
+        "videoId": clean_id,
+        "isAudioOnly": true
+    });
+
+    let mut request = client
+        .post("https://music.youtube.com/youtubei/v1/next")
+        .header(
+            reqwest::header::USER_AGENT,
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        )
+        .header("Referer", "https://music.youtube.com/")
+        .header("Origin", "https://music.youtube.com");
+
+    request = attach_youtube_auth(request, &maybe_cookies);
+
+    if let Ok(res) = request.json(&body).send().await {
+        if let Ok(json) = res.json::<serde_json::Value>().await {
+            let queue_contents = json
+                .pointer("/contents/singleColumnMusicWatchNextResultsRenderer/tabbedRenderer/watchNextTabbedResultsRenderer/tabs/0/tabRenderer/content/musicQueueRenderer/content/playlistPanelRenderer/contents")
+                .and_then(|v| v.as_array());
+
+            if let Some(items) = queue_contents {
+                for item in items {
+                    if let Some(r) = item.get("playlistPanelVideoRenderer") {
+                        let vid = r.get("videoId").and_then(|v| v.as_str()).unwrap_or("");
+                        if !vid.is_empty() && vid != clean_id {
+                            let title = r.pointer("/title/runs/0/text").and_then(|v| v.as_str()).unwrap_or("Unknown Title");
+                            let mut artist_parts = Vec::new();
+                            if let Some(runs) = r.pointer("/longBylineText/runs").or_else(|| r.pointer("/shortBylineText/runs")).and_then(|v| v.as_array()) {
+                                for run in runs {
+                                    if let Some(txt) = run.get("text").and_then(|t| t.as_str()) {
+                                        artist_parts.push(txt);
+                                    }
+                                }
+                            }
+                            let artist = if !artist_parts.is_empty() {
+                                artist_parts.join("")
+                            } else {
+                                "Artist".to_string()
+                            };
+
+                            let thumb = r.pointer("/thumbnail/thumbnails")
+                                .and_then(|arr| arr.as_array())
+                                .and_then(|arr| arr.last().or_else(|| arr.first()))
+                                .and_then(|t| t.get("url"))
+                                .and_then(|u| u.as_str())
+                                .unwrap_or("");
+
+                            let final_thumb = if !thumb.is_empty() {
+                                thumb.to_string()
+                            } else {
+                                format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", vid)
+                            };
+
+                            return Ok(Some(SearchResult {
+                                video_id: vid.to_string(),
+                                title: title.to_string(),
+                                artist,
+                                thumbnail_url: final_thumb,
+                                playlist_id: None,
+                                item_type: Some("song".to_string()),
+                            }));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(None)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1734,7 +1872,10 @@ pub fn run() {
             get_user_profile,
             get_history,
             get_library_playlists,
-            record_playback
+            record_playback,
+            save_queue_session,
+            get_queue_session,
+            get_related_recommendation
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

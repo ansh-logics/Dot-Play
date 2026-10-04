@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Reorder, useDragControls } from "motion/react";
 import "./App.css";
 import {
   HiddenYouTubePlayer,
@@ -55,6 +56,7 @@ import {
   removeRecentSearch,
   clearRecentSearches,
   recordPlayback,
+  getRelatedRecommendation,
   isTauriEnvironment,
   type SearchResult,
   type HomeSection,
@@ -62,6 +64,86 @@ import {
   type UserProfile,
 } from "./lib/search";
 import { cacheTracks, cacheTrack } from "./lib/trackCache";
+import { Toast } from "./components/Toast";
+import {
+  addToUpcoming,
+  playNextUpcoming,
+  appendTracksToUpcoming,
+  removeUpcoming,
+  clearUpcoming,
+  playTrackImmediate,
+  advanceOnTrackEnd,
+  loadPersistedSession,
+  persistQueueSession,
+  DEFAULT_QUEUE_SESSION,
+  type QueueSession,
+} from "./lib/queueManager";
+
+type UpcomingQueueItemProps = {
+  track: SearchResult;
+  onPlay: (track: SearchResult) => void;
+  onRemove: (videoId: string) => void;
+};
+
+function UpcomingQueueItem({ track, onPlay, onRemove }: UpcomingQueueItemProps) {
+  const dragControls = useDragControls();
+
+  return (
+    <Reorder.Item
+      as="div"
+      value={track}
+      className="sidebar-queue-item"
+      dragListener={false}
+      dragControls={dragControls}
+      whileDrag={{ opacity: 0.4, scale: 0.97, zIndex: 1 }}
+      onClick={() => onPlay(track)}
+      role="button"
+      tabIndex={0}
+      title="Click to play now, or drag the grip to reorder"
+    >
+      <button
+        type="button"
+        className="sidebar-queue-drag-handle"
+        title="Drag to reorder"
+        aria-label={`Reorder ${track.title}`}
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          dragControls.start(event);
+        }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <GripVertical size={11} />
+      </button>
+      <ArtworkImage
+        src={track.thumbnailUrl}
+        videoId={track.videoId}
+        alt={track.title}
+        className="sidebar-queue-thumb"
+      />
+      <div className="sidebar-queue-meta">
+        <span className="sidebar-queue-item-title" title={track.title}>
+          {track.title}
+        </span>
+        <span className="sidebar-queue-item-artist" title={track.artist}>
+          {track.artist}
+        </span>
+      </div>
+      <button
+        type="button"
+        className="sidebar-queue-remove-btn"
+        onClick={(event) => {
+          event.stopPropagation();
+          onRemove(track.videoId);
+        }}
+        title="Remove from queue"
+        aria-label={`Remove ${track.title} from queue`}
+      >
+        <X size={10} strokeWidth={2.5} />
+      </button>
+    </Reorder.Item>
+  );
+}
 
 function App() {
   const [activeNav, setActiveNav] = useState<"home" | "search" | "library" | "history">("home");
@@ -115,8 +197,58 @@ function App() {
   const [isLoadingPlaylist, setIsLoadingPlaylist] = useState(false);
   const [playlistError, setPlaylistError] = useState<string | null>(null);
 
+  // Authoritative Queue Session State
+  const [session, setSession] = useState<QueueSession>(DEFAULT_QUEUE_SESSION);
+  const sessionRef = useRef<QueueSession>(DEFAULT_QUEUE_SESSION);
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
+
+  const currentTrack = session.currentTrack;
+
+  const [activeQueueTab, setActiveQueueTab] = useState<"upcoming" | "history">("upcoming");
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [initialPlaybackSeconds, setInitialPlaybackSeconds] = useState(0);
+  const [autoPlayOnMount, setAutoPlayOnMount] = useState(false);
+
+  const showToast = useCallback((msg: string) => {
+    setToastMessage(msg);
+  }, []);
+
+  // Restore local session on startup
+  useEffect(() => {
+    loadPersistedSession().then((restored) => {
+      setSession(restored);
+      sessionRef.current = restored;
+      if (restored.currentTrack) {
+        setInitialPlaybackSeconds(restored.currentTime);
+        setCurrentTime(restored.currentTime);
+        // Remain paused. Never autoplay after launch.
+        setAutoPlayOnMount(false);
+      }
+    });
+  }, []);
+
+  // Best-effort persist on app close / refresh
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      const snap = {
+        ...sessionRef.current,
+        currentTime: currentTimeRef.current,
+      };
+      try {
+        localStorage.setItem("dot_music_queue_session", JSON.stringify(snap));
+      } catch {}
+      void persistQueueSession(snap);
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, []);
+
   // Active track & playback state
-  const [currentTrack, setCurrentTrack] = useState<SearchResult | null>(null);
   const [isPlayerReady, setIsPlayerReady] = useState(false);
   const [playerState, setPlayerState] =
     useState<YouTubePlaybackState>("unstarted");
@@ -128,113 +260,54 @@ function App() {
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [showQueue, setShowQueue] = useState(false);
 
-  // Active playback queue with localStorage persistence
-  const [queueTracks, setQueueTracks] = useState<SearchResult[]>(() => {
-    try {
-      const raw = localStorage.getItem("dot_music_queue");
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (e) {
-      console.error("Failed to load queue from localStorage:", e);
-    }
-    return [];
-  });
+  // Authoritative Queue Operations
+  const handleUpcomingReorder = useCallback((upcoming: SearchResult[]) => {
+    setSession((prev) => {
+      const isUnchanged =
+        prev.upcoming.length === upcoming.length &&
+        prev.upcoming.every((track, index) => track.videoId === upcoming[index]?.videoId);
+      if (isUnchanged) return prev;
 
-  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-  const draggedIndexRef = useRef<number | null>(null);
-  const isDraggingRef = useRef(false);
-
-  // 1. Authoritative Virtual Queue Operations
-  const saveQueue = useCallback((newQueue: SearchResult[]) => {
-    setQueueTracks(newQueue);
-    try {
-      localStorage.setItem("dot_music_queue", JSON.stringify(newQueue));
-    } catch (e) {
-      console.error("Failed to save queue to localStorage:", e);
-    }
-  }, []);
-
-  const handleReorderQueue = useCallback((fromIndex: number, toIndex: number) => {
-    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return;
-    setQueueTracks((prev) => {
-      if (fromIndex >= prev.length || toIndex >= prev.length) return prev;
-      const next = [...prev];
-      const [moved] = next.splice(fromIndex, 1);
-      next.splice(toIndex, 0, moved);
-      try {
-        localStorage.setItem("dot_music_queue", JSON.stringify(next));
-      } catch (err) {
-        console.error("Failed to save queue to localStorage:", err);
-      }
+      const next = { ...prev, upcoming };
+      void persistQueueSession(next);
       return next;
     });
   }, []);
 
-  const handleRemoveFromQueue = useCallback((indexToRemove: number) => {
-    setQueueTracks((prev) => {
-      if (indexToRemove < 0 || indexToRemove >= prev.length) return prev;
-      const next = prev.filter((_, idx) => idx !== indexToRemove);
-      try {
-        localStorage.setItem("dot_music_queue", JSON.stringify(next));
-      } catch (err) {
-        console.error("Failed to save queue to localStorage:", err);
-      }
+  const handleRemoveUpcoming = useCallback((indexToRemove: number) => {
+    setSession((prev) => {
+      const next = removeUpcoming(prev, indexToRemove);
+      void persistQueueSession(next);
       return next;
     });
   }, []);
 
-  const handleClearQueue = useCallback(() => {
-    const next = currentTrack ? [currentTrack] : [];
-    saveQueue(next);
-  }, [currentTrack, saveQueue]);
-
-  const handlePlayNext = useCallback((track: SearchResult) => {
-    if (!track.videoId) return;
-    setQueueTracks((prev) => {
-      const base = [...prev];
-      const currentIdx = currentTrack
-        ? base.findIndex((t) => t.videoId === currentTrack.videoId)
-        : -1;
-
-      // Avoid immediate duplicates
-      const existingIdx = base.findIndex((t) => t.videoId === track.videoId);
-      if (existingIdx !== -1) {
-        base.splice(existingIdx, 1);
-      }
-
-      const insertIdx = currentIdx !== -1 ? currentIdx + 1 : (base.length > 0 ? 1 : 0);
-      base.splice(insertIdx, 0, track);
-      try {
-        localStorage.setItem("dot_music_queue", JSON.stringify(base));
-      } catch {}
-      return base;
+  const handleClearUpcoming = useCallback(() => {
+    setSession((prev) => {
+      const next = clearUpcoming(prev);
+      void persistQueueSession(next);
+      return next;
     });
-  }, [currentTrack]);
+  }, []);
 
   const handleAddToQueue = useCallback((track: SearchResult) => {
     if (!track.videoId) return;
-    setQueueTracks((prev) => {
-      const filtered = prev.filter((t) => t.videoId !== track.videoId);
-      const next = [...filtered, track];
-      try {
-        localStorage.setItem("dot_music_queue", JSON.stringify(next));
-      } catch {}
+    setSession((prev) => {
+      const { session: next, added } = addToUpcoming(prev, track);
+      if (!added) {
+        showToast("Already in your upcoming queue.");
+        return prev;
+      }
+      void persistQueueSession(next);
       return next;
     });
-  }, []);
+  }, [showToast]);
 
   const handleAppendTracksToQueue = useCallback((tracks: SearchResult[]) => {
     if (!tracks || tracks.length === 0) return;
-    setQueueTracks((prev) => {
-      const existingIds = new Set(prev.map((t) => t.videoId));
-      const newTracks = tracks.filter((t) => t.videoId && !existingIds.has(t.videoId));
-      const next = [...prev, ...newTracks];
-      try {
-        localStorage.setItem("dot_music_queue", JSON.stringify(next));
-      } catch {}
+    setSession((prev) => {
+      const next = appendTracksToUpcoming(prev, tracks);
+      void persistQueueSession(next);
       return next;
     });
   }, []);
@@ -272,13 +345,14 @@ function App() {
   const shouldAutoPlayRef = useRef(false);
   const contentRef = useRef<HTMLElement>(null);
   const isLoadingMoreRef = useRef(false);
-  const handleNextTrackRef = useRef<() => void>(() => {});
   const profileMenuRef = useRef<HTMLDivElement>(null);
 
   const togglePlayPause = useCallback(() => {
     if (!playerRef.current || !isPlayerReady) return;
     if (playerStateRef.current === "playing") {
       playerRef.current.pauseVideo();
+      const snap = { ...sessionRef.current, currentTime: currentTimeRef.current };
+      void persistQueueSession(snap);
     } else {
       if (playerStateRef.current === "ended") {
         playerRef.current.seekTo(0, true);
@@ -295,6 +369,8 @@ function App() {
     const target = Math.max(0, Math.min(total > 0 ? total : 999999, current + deltaSeconds));
     playerRef.current.seekTo(target, true);
     setCurrentTime(target);
+    const snap = { ...sessionRef.current, currentTime: target };
+    void persistQueueSession(snap);
   }, [isPlayerReady]);
 
   // Global Keyboard Shortcuts (Space: Play/Pause, Left/Right: Seek -5s/+5s, /: Focus Search, Esc: Dismiss)
@@ -657,7 +733,7 @@ function App() {
             });
           }
         }
-        handleNextTrackRef.current();
+        handleTrackCompletedRef.current();
       }
     },
     [currentTrack, isLoggedIn],
@@ -733,7 +809,6 @@ function App() {
       return;
     }
     recordedTrackIdRef.current = null;
-    setCurrentTrack(track);
     cacheTrack(track);
     setCurrentTime(0);
     setDuration(0);
@@ -749,27 +824,54 @@ function App() {
     }
   }, []);
 
+  const handleSelectUpcoming = useCallback(
+    (track: SearchResult) => {
+      if (!track.videoId) return;
+      setAutoPlayOnMount(true);
+      playTrack(track);
+      setSession((prev) => {
+        const next = playTrackImmediate(prev, track);
+        void persistQueueSession(next);
+        return next;
+      });
+    },
+    [playTrack],
+  );
+
   const selectTrack = useCallback(
     (track: SearchResult, contextList?: SearchResult[]) => {
+      setAutoPlayOnMount(true);
       playTrack(track);
-
-      if (contextList && contextList.length > 0) {
-        saveQueue(contextList);
-      } else {
-        setQueueTracks((prev) => {
-          const exists = prev.some((t) => t.videoId === track.videoId);
-          if (!exists && track.videoId) {
-            const next = [track, ...prev];
-            try {
-              localStorage.setItem("dot_music_queue", JSON.stringify(next));
-            } catch {}
-            return next;
-          }
-          return prev;
+      setSession((prev) => {
+        const next = playTrackImmediate(prev, track, {
+          contextUpcoming: contextList,
+          isAutoplay: false,
         });
-      }
+        void persistQueueSession(next);
+        return next;
+      });
     },
-    [playTrack, saveQueue],
+    [playTrack],
+  );
+
+  const handlePlayNext = useCallback(
+    (track: SearchResult) => {
+      if (!track.videoId) return;
+      setSession((prev) => {
+        const { session: next, added, playedImmediate } = playNextUpcoming(prev, track);
+        if (!added) {
+          showToast("Already in your upcoming queue.");
+          return prev;
+        }
+        if (playedImmediate) {
+          setAutoPlayOnMount(true);
+          playTrack(track);
+        }
+        void persistQueueSession(next);
+        return next;
+      });
+    },
+    [showToast, playTrack],
   );
 
   // 6. Playlist Selection & Navigation
@@ -803,83 +905,119 @@ function App() {
     }
   };
 
-  // 7. Iframe Track Synchronization & Navigation Controls
+  // 7. Authoritative Iframe Track Synchronization
   const handleTrackChangeFromIframe = useCallback(
     (info: { videoId: string; title?: string; artist?: string }) => {
       if (!info.videoId) return;
 
-      setCurrentTrack((prev) => {
-        if (!prev) return null;
-        if (prev.videoId === info.videoId) return prev;
+      setSession((prev) => {
+        if (!prev.currentTrack) return prev;
+        // Authoritative React queue - ignore spurious iframe video changes
+        if (prev.currentTrack.videoId !== info.videoId) {
+          return prev;
+        }
 
-        recordedTrackIdRef.current = null;
-
-        // Check if track matches one from selectedPlaylist
-        const matched = selectedPlaylist?.tracks.find(
-          (t) => t.videoId === info.videoId,
-        );
-
-        if (matched) {
+        if (!prev.currentTrack.title && info.title) {
           return {
-            videoId: matched.videoId,
-            title: matched.title,
-            artist: matched.artist,
-            thumbnailUrl: matched.thumbnailUrl,
-            playlistId: prev.playlistId || selectedPlaylist?.id,
-            itemType: "song",
+            ...prev,
+            currentTrack: {
+              ...prev.currentTrack,
+              title: info.title || prev.currentTrack.title,
+              artist: info.artist || prev.currentTrack.artist,
+            },
           };
         }
-
-        return {
-          videoId: info.videoId,
-          title: info.title || prev.title,
-          artist: info.artist || prev.artist,
-          thumbnailUrl: `https://i.ytimg.com/vi/${info.videoId}/hqdefault.jpg`,
-          playlistId: prev.playlistId,
-          itemType: "song",
-        };
+        return prev;
       });
     },
-    [selectedPlaylist],
+    [],
   );
 
-  const handleNextTrack = useCallback(() => {
-    if (!currentTrack) return;
+  const handleTrackCompleted = useCallback(async () => {
+    const current = sessionRef.current;
+    const { session: nextSession, nextTrack, needsAutoplay } = advanceOnTrackEnd(current);
 
-    // Follow custom virtual queue first
-    if (queueTracks.length > 0) {
-      const idx = queueTracks.findIndex(
-        (t) => t.videoId === currentTrack.videoId,
-      );
-      if (idx !== -1) {
-        if (idx < queueTracks.length - 1) {
-          playTrack(queueTracks[idx + 1]);
-          return;
-        } else {
-          // Loop queue: go to beginning
-          playTrack(queueTracks[0]);
+    if (nextTrack) {
+      setSession(nextSession);
+      void persistQueueSession(nextSession);
+      setAutoPlayOnMount(true);
+      playTrack(nextTrack);
+      return;
+    }
+
+    if (needsAutoplay) {
+      const lastVideoId = current.currentTrack?.videoId;
+      if (lastVideoId) {
+        try {
+          const rec = await getRelatedRecommendation(lastVideoId);
+          if (rec && rec.videoId) {
+            const autoplaySession = playTrackImmediate(nextSession, rec, { isAutoplay: true });
+            setSession(autoplaySession);
+            void persistQueueSession(autoplaySession);
+            setAutoPlayOnMount(true);
+            playTrack(rec);
+            return;
+          }
+        } catch (e) {
+          console.warn("[DOT Music] Autoplay recommendation failed:", e);
+        }
+      }
+      setSession(nextSession);
+      void persistQueueSession(nextSession);
+    }
+  }, [playTrack]);
+
+  const handleTrackCompletedRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    handleTrackCompletedRef.current = handleTrackCompleted;
+  }, [handleTrackCompleted]);
+
+  const handleNextTrack = useCallback(async () => {
+    const current = sessionRef.current;
+    if (current.upcoming.length > 0) {
+      const nextTrack = current.upcoming[0];
+      setAutoPlayOnMount(true);
+      playTrack(nextTrack);
+      setSession((prev) => {
+        const next = playTrackImmediate(prev, nextTrack);
+        void persistQueueSession(next);
+        return next;
+      });
+      return;
+    }
+
+    if (current.currentTrack?.videoId) {
+      try {
+        const rec = await getRelatedRecommendation(current.currentTrack.videoId);
+        if (rec && rec.videoId) {
+          setAutoPlayOnMount(true);
+          playTrack(rec);
+          setSession((prev) => {
+            const next = playTrackImmediate(prev, rec, { isAutoplay: true });
+            void persistQueueSession(next);
+            return next;
+          });
           return;
         }
-      } else {
-        playTrack(queueTracks[0]);
-        return;
-      }
+      } catch {}
     }
 
-    if (selectedPlaylist && selectedPlaylist.tracks.length > 0) {
+    if (selectedPlaylist && selectedPlaylist.tracks.length > 0 && current.currentTrack) {
       const idx = selectedPlaylist.tracks.findIndex(
-        (t) => t.videoId === currentTrack.videoId,
+        (t) => t.videoId === current.currentTrack?.videoId,
       );
       if (idx !== -1 && idx < selectedPlaylist.tracks.length - 1) {
-        playTrack(selectedPlaylist.tracks[idx + 1]);
-        return;
+        const nextTrack = selectedPlaylist.tracks[idx + 1];
+        setAutoPlayOnMount(true);
+        playTrack(nextTrack);
+        setSession((prev) => {
+          const next = playTrackImmediate(prev, nextTrack);
+          void persistQueueSession(next);
+          return next;
+        });
       }
     }
-  }, [queueTracks, selectedPlaylist, currentTrack, playTrack]);
-
-  useEffect(() => {
-    handleNextTrackRef.current = handleNextTrack;
-  }, [handleNextTrack]);
+  }, [selectedPlaylist, playTrack]);
 
   const handlePreviousTrack = useCallback(() => {
     if (currentTime > 3) {
@@ -888,36 +1026,23 @@ function App() {
       return;
     }
 
-    if (!currentTrack) return;
-
-    // Follow custom virtual queue first
-    if (queueTracks.length > 0) {
-      const idx = queueTracks.findIndex(
-        (t) => t.videoId === currentTrack.videoId,
-      );
-      if (idx > 0) {
-        playTrack(queueTracks[idx - 1]);
-        return;
-      } else if (idx === 0) {
-        // Loop queue backwards: jump to last track
-        playTrack(queueTracks[queueTracks.length - 1]);
-        return;
-      } else {
-        playTrack(queueTracks[0]);
-        return;
-      }
+    const current = sessionRef.current;
+    if (current.history.length > 0) {
+      const prevTrack = current.history[current.history.length - 1];
+      setAutoPlayOnMount(true);
+      playTrack(prevTrack);
+      setSession((prev) => {
+        const next = playTrackImmediate(prev, prevTrack);
+        void persistQueueSession(next);
+        return next;
+      });
+      return;
     }
 
-    if (selectedPlaylist && selectedPlaylist.tracks.length > 0) {
-      const idx = selectedPlaylist.tracks.findIndex(
-        (t) => t.videoId === currentTrack.videoId,
-      );
-      if (idx > 0) {
-        playTrack(selectedPlaylist.tracks[idx - 1]);
-        return;
-      }
-    }
-  }, [currentTime, queueTracks, selectedPlaylist, currentTrack, playTrack]);
+    playerRef.current?.seekTo(0, true);
+    setCurrentTime(0);
+  }, [currentTime, playTrack]);
+
 
   const getPlayButtonLabel = () => {
     if (!isPlayerReady) return "Loading...";
@@ -1058,9 +1183,14 @@ function App() {
                   </span>
                 </div>
                 <div className="sidebar-player-meta">
-                  <span className="sidebar-player-title" title={currentTrack.title}>
-                    {currentTrack.title}
-                  </span>
+                  <div style={{ display: "flex", alignItems: "center" }}>
+                    <span className="sidebar-player-title" title={currentTrack.title}>
+                      {currentTrack.title}
+                    </span>
+                    {session.isAutoplay && (
+                      <span className="sidebar-player-autoplay-badge">AUTOPLAY</span>
+                    )}
+                  </div>
                   <span
                     className={`sidebar-player-artist ${playbackError ? "error" : ""}`}
                     title={playbackError || currentTrack.artist}
@@ -1092,6 +1222,8 @@ function App() {
                     isScrubbingRef.current = false;
                     const nextTime = Number(event.currentTarget.value);
                     playerRef.current?.seekTo(nextTime, true);
+                    const snap = { ...sessionRef.current, currentTime: nextTime };
+                    void persistQueueSession(snap);
                   }}
                   disabled={!isPlayerReady || duration <= 0}
                   aria-label="Seek track"
@@ -1179,19 +1311,31 @@ function App() {
               <div className={`sidebar-player-queue ${showQueue ? "open" : "collapsed"}`}>
                 <div className="sidebar-queue-inner">
                   <div className="sidebar-queue-header">
-                    <div className="sidebar-queue-header-left">
-                      <span className="sidebar-queue-title">UPCOMING QUEUE</span>
-                      <span className="sidebar-queue-count">
-                        {queueTracks.length} {queueTracks.length === 1 ? "track" : "tracks"}
-                      </span>
+                    <div className="sidebar-queue-tab-row">
+                      <button
+                        type="button"
+                        className={`sidebar-queue-tab ${activeQueueTab === "upcoming" ? "active" : ""}`}
+                        onClick={() => setActiveQueueTab("upcoming")}
+                      >
+                        <span>UPCOMING</span>
+                        <span className="sidebar-queue-count">{session.upcoming.length}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={`sidebar-queue-tab ${activeQueueTab === "history" ? "active" : ""}`}
+                        onClick={() => setActiveQueueTab("history")}
+                      >
+                        <span>HISTORY</span>
+                        <span className="sidebar-queue-count">{session.history.length}</span>
+                      </button>
                     </div>
-                    {queueTracks.length > 1 && (
+                    {activeQueueTab === "upcoming" && session.upcoming.length > 0 && (
                       <button
                         type="button"
                         className="sidebar-queue-clear-btn"
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleClearQueue();
+                          handleClearUpcoming();
                         }}
                         title="Clear upcoming queue"
                       >
@@ -1199,115 +1343,85 @@ function App() {
                       </button>
                     )}
                   </div>
-                  <div
-                    className="sidebar-queue-list"
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.dataTransfer.dropEffect = "move";
-                    }}
-                  >
-                    {queueTracks.length === 0 ? (
-                      <div className="sidebar-queue-empty">Queue is empty</div>
-                    ) : (
-                      queueTracks.map((track, qIdx) => {
-                        const isCurrentPlaying = currentTrack.videoId === track.videoId;
-                        return (
-                          <div
-                            key={track.videoId || qIdx}
-                            className={`sidebar-queue-item ${isCurrentPlaying ? "active" : ""} ${draggedIndex === qIdx ? "dragging" : ""} ${dragOverIndex === qIdx ? "drag-over" : ""}`}
-                            onClick={() => {
-                              if (isDraggingRef.current) return;
-                              playTrack(track);
+
+                  {activeQueueTab === "upcoming" ? (
+                    <Reorder.Group
+                      as="div"
+                      axis="y"
+                      values={session.upcoming}
+                      onReorder={handleUpcomingReorder}
+                      className="sidebar-queue-list"
+                    >
+                      {session.upcoming.length === 0 ? (
+                        <div className="sidebar-queue-empty">No upcoming tracks</div>
+                      ) : (
+                        session.upcoming.map((track) => (
+                          <UpcomingQueueItem
+                            key={track.videoId}
+                            track={track}
+                            onPlay={handleSelectUpcoming}
+                            onRemove={(videoId) => {
+                              const index = session.upcoming.findIndex(
+                                (queuedTrack) => queuedTrack.videoId === videoId,
+                              );
+                              if (index >= 0) handleRemoveUpcoming(index);
                             }}
-                            draggable
-                            onDragStart={(e) => {
-                              draggedIndexRef.current = qIdx;
-                              isDraggingRef.current = true;
-                              e.dataTransfer.effectAllowed = "move";
-                              try {
-                                e.dataTransfer.setData("text/plain", String(qIdx));
-                              } catch {}
-                              setDraggedIndex(qIdx);
-                            }}
-                            onDragOver={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              e.dataTransfer.dropEffect = "move";
-                              if (dragOverIndex !== qIdx) {
-                                setDragOverIndex(qIdx);
-                              }
-                            }}
-                            onDragLeave={(e) => {
-                              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                                if (dragOverIndex === qIdx) {
-                                  setDragOverIndex(null);
-                                }
-                              }
-                            }}
-                            onDrop={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              const sourceIdx = draggedIndexRef.current;
-                              if (sourceIdx !== null && sourceIdx !== qIdx) {
-                                handleReorderQueue(sourceIdx, qIdx);
-                              }
-                              draggedIndexRef.current = null;
-                              setDraggedIndex(null);
-                              setDragOverIndex(null);
-                            }}
-                            onDragEnd={() => {
-                              draggedIndexRef.current = null;
-                              setDraggedIndex(null);
-                              setDragOverIndex(null);
-                              setTimeout(() => {
-                                isDraggingRef.current = false;
-                              }, 120);
-                            }}
-                            role="button"
-                            tabIndex={0}
-                            title="Drag to reorder queue"
-                          >
+                          />
+                        ))
+                      )}
+                    </Reorder.Group>
+                  ) : (
+                    /* History Tab: Read-only, capped at 50, FIFO, Add to Queue and Play next */
+                    <div className="sidebar-queue-list">
+                      {session.history.length === 0 ? (
+                        <div className="sidebar-queue-empty">No playback history</div>
+                      ) : (
+                        session.history.slice().reverse().map((track, hIdx) => {
+                          return (
                             <div
-                              className="sidebar-queue-drag-handle"
-                              title="Drag to reorder"
-                              onClick={(e) => e.stopPropagation()}
+                              key={`${track.videoId}-${hIdx}`}
+                              className="sidebar-queue-item history-item"
                             >
-                              <GripVertical size={11} />
+                              <ArtworkImage
+                                src={track.thumbnailUrl}
+                                videoId={track.videoId}
+                                alt={track.title}
+                                className="sidebar-queue-thumb"
+                              />
+                              <div className="sidebar-queue-meta">
+                                <span className="sidebar-queue-item-title" title={track.title}>
+                                  {track.title}
+                                </span>
+                                <span className="sidebar-queue-item-artist" title={track.artist}>
+                                  {track.artist}
+                                </span>
+                              </div>
+                              <div className="sidebar-history-actions" onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  type="button"
+                                  className="sidebar-history-btn"
+                                  onClick={() => handlePlayNext(track)}
+                                  title="Play next"
+                                  aria-label="Play next"
+                                >
+                                  <CornerDownRight size={11} />
+                                </button>
+                                <button
+                                  type="button"
+                                  className="sidebar-history-btn"
+                                  onClick={() => handleAddToQueue(track)}
+                                  title="Add to queue"
+                                  aria-label="Add to queue"
+                                >
+                                  <ListPlus size={12} />
+                                </button>
+                              </div>
                             </div>
-                            <ArtworkImage
-                              src={track.thumbnailUrl}
-                              videoId={track.videoId}
-                              alt={track.title}
-                              className="sidebar-queue-thumb"
-                            />
-                            <div className="sidebar-queue-meta">
-                              <span className="sidebar-queue-item-title" title={track.title}>
-                                {track.title}
-                              </span>
-                              <span className="sidebar-queue-item-artist" title={track.artist}>
-                                {track.artist}
-                              </span>
-                            </div>
-                            {isCurrentPlaying && (
-                              <span className="sidebar-queue-active-dot" />
-                            )}
-                            <button
-                              type="button"
-                              className="sidebar-queue-remove-btn"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRemoveFromQueue(qIdx);
-                              }}
-                              title="Remove from queue"
-                              aria-label="Remove track from queue"
-                            >
-                              <X size={10} strokeWidth={2.5} />
-                            </button>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -2441,6 +2555,8 @@ function App() {
       <HiddenYouTubePlayer
         key="global-audio-engine"
         videoId={currentTrack?.videoId}
+        initialSeconds={initialPlaybackSeconds}
+        autoPlayOnMount={autoPlayOnMount}
         onReady={handlePlayerReady}
         onStateChange={handlePlayerStateChange}
         onError={handlePlayerError}
@@ -2587,6 +2703,9 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* Accessible Non-Blocking Toast Notification */}
+      <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
     </div>
   );
 }

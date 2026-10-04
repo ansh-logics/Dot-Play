@@ -9,6 +9,7 @@ export interface YouTubePlayerInstance {
   seekTo: (seconds: number, allowSeekAhead: boolean) => void
   nextVideo: () => void
   previousVideo: () => void
+  cueVideoById?: (videoId: string | { videoId: string; startSeconds?: number }) => void
   loadVideoById?: (videoId: string | { videoId: string; startSeconds?: number }) => void
   playVideoAt?: (index: number) => void
   getVideoData: () => { video_id?: string; title?: string; author?: string }
@@ -108,6 +109,8 @@ interface HiddenYouTubePlayerProps {
   onStateChange: (state: YouTubePlaybackState) => void
   onTrackChange?: (trackInfo: { videoId: string; title?: string; artist?: string }) => void
   videoId?: string
+  initialSeconds?: number
+  autoPlayOnMount?: boolean
 }
 
 function getPlaybackState(stateCode: number): YouTubePlaybackState {
@@ -125,11 +128,14 @@ export function HiddenYouTubePlayer({
   onStateChange,
   onTrackChange,
   videoId,
+  initialSeconds = 0,
+  autoPlayOnMount = true,
 }: HiddenYouTubePlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const playerRef = useRef<YouTubePlayerInstance | null>(null)
   const currentVideoIdRef = useRef<string | undefined>(undefined)
   const isInitializingRef = useRef(false)
+  const isFirstMountPlaybackHandled = useRef(false)
 
   const callbacksRef = useRef({ onError, onReady, onStateChange, onTrackChange })
   useEffect(() => {
@@ -162,7 +168,7 @@ export function HiddenYouTubePlayer({
         if (!window.YT?.Player) return
 
         const playerVars: Record<string, number | string> = {
-          autoplay: 1,
+          autoplay: autoPlayOnMount ? 1 : 0,
           controls: 0,
           enablejsapi: 1,
           playsinline: 1,
@@ -195,10 +201,20 @@ export function HiddenYouTubePlayer({
                 currentVideoIdRef.current = targetVideoId
                 callbacksRef.current.onReady(instance)
 
-                if (typeof instance.loadVideoById === "function") {
-                  instance.loadVideoById({ videoId: targetVideoId, startSeconds: 0 })
+                if (autoPlayOnMount) {
+                  if (typeof instance.loadVideoById === "function") {
+                    instance.loadVideoById({ videoId: targetVideoId, startSeconds: initialSeconds })
+                  }
+                  instance.playVideo?.()
+                } else {
+                  if (typeof instance.cueVideoById === "function") {
+                    instance.cueVideoById({ videoId: targetVideoId, startSeconds: initialSeconds })
+                  } else if (typeof instance.loadVideoById === "function") {
+                    instance.loadVideoById({ videoId: targetVideoId, startSeconds: initialSeconds })
+                    instance.pauseVideo?.()
+                  }
                 }
-                instance.playVideo?.()
+                isFirstMountPlaybackHandled.current = true
 
                 checkTrackChange(instance)
               }
@@ -218,7 +234,7 @@ export function HiddenYouTubePlayer({
         callbacksRef.current.onError(-1)
         console.error("Failed to load YouTube iframe API:", err)
       })
-  }, [checkTrackChange])
+  }, [checkTrackChange, autoPlayOnMount, initialSeconds])
 
   // Track watcher: initialize persistent player on first track, or smoothly load next tracks
   useEffect(() => {
@@ -241,7 +257,7 @@ export function HiddenYouTubePlayer({
 
   // Watchdog: ensure track doesn't freeze in unstarted/paused state when auto-advancing
   useEffect(() => {
-    if (!videoId) return
+    if (!videoId || !autoPlayOnMount || !isFirstMountPlaybackHandled.current) return
     const timer = setTimeout(() => {
       const instance = playerRef.current
       if (instance && typeof instance.playVideo === "function") {
@@ -249,7 +265,7 @@ export function HiddenYouTubePlayer({
       }
     }, 1500)
     return () => clearTimeout(timer)
-  }, [videoId])
+  }, [videoId, autoPlayOnMount])
 
   // Clean up on component unmount
   useEffect(() => {
