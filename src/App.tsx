@@ -144,6 +144,8 @@ function App() {
 
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const draggedIndexRef = useRef<number | null>(null);
+  const isDraggingRef = useRef(false);
 
   // 1. Authoritative Virtual Queue Operations
   const saveQueue = useCallback((newQueue: SearchResult[]) => {
@@ -1197,7 +1199,13 @@ function App() {
                       </button>
                     )}
                   </div>
-                  <div className="sidebar-queue-list">
+                  <div
+                    className="sidebar-queue-list"
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "move";
+                    }}
+                  >
                     {queueTracks.length === 0 ? (
                       <div className="sidebar-queue-empty">Queue is empty</div>
                     ) : (
@@ -1207,37 +1215,53 @@ function App() {
                           <div
                             key={track.videoId || qIdx}
                             className={`sidebar-queue-item ${isCurrentPlaying ? "active" : ""} ${draggedIndex === qIdx ? "dragging" : ""} ${dragOverIndex === qIdx ? "drag-over" : ""}`}
-                            onClick={() => playTrack(track)}
+                            onClick={() => {
+                              if (isDraggingRef.current) return;
+                              playTrack(track);
+                            }}
                             draggable
                             onDragStart={(e) => {
+                              draggedIndexRef.current = qIdx;
+                              isDraggingRef.current = true;
                               e.dataTransfer.effectAllowed = "move";
-                              e.dataTransfer.setData("text/plain", String(qIdx));
+                              try {
+                                e.dataTransfer.setData("text/plain", String(qIdx));
+                              } catch {}
                               setDraggedIndex(qIdx);
                             }}
                             onDragOver={(e) => {
                               e.preventDefault();
+                              e.stopPropagation();
                               e.dataTransfer.dropEffect = "move";
                               if (dragOverIndex !== qIdx) {
                                 setDragOverIndex(qIdx);
                               }
                             }}
-                            onDragLeave={() => {
-                              if (dragOverIndex === qIdx) {
-                                setDragOverIndex(null);
+                            onDragLeave={(e) => {
+                              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                                if (dragOverIndex === qIdx) {
+                                  setDragOverIndex(null);
+                                }
                               }
                             }}
                             onDrop={(e) => {
                               e.preventDefault();
-                              const sourceIdx = Number(e.dataTransfer.getData("text/plain"));
-                              if (!Number.isNaN(sourceIdx) && sourceIdx !== qIdx) {
+                              e.stopPropagation();
+                              const sourceIdx = draggedIndexRef.current;
+                              if (sourceIdx !== null && sourceIdx !== qIdx) {
                                 handleReorderQueue(sourceIdx, qIdx);
                               }
+                              draggedIndexRef.current = null;
                               setDraggedIndex(null);
                               setDragOverIndex(null);
                             }}
                             onDragEnd={() => {
+                              draggedIndexRef.current = null;
                               setDraggedIndex(null);
                               setDragOverIndex(null);
+                              setTimeout(() => {
+                                isDraggingRef.current = false;
+                              }, 120);
                             }}
                             role="button"
                             tabIndex={0}

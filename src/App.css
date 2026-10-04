@@ -3207,7 +3207,7 @@ body {
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.035);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  cursor: pointer;
+  cursor: grab;
   transition: transform 0.38s cubic-bezier(0.32, 0.72, 0, 1),
               opacity 0.32s cubic-bezier(0.32, 0.72, 0, 1),
               background 0.18s ease,
@@ -3221,6 +3221,15 @@ body {
   transform: translateY(12px) scale(0.97);
   opacity: 0;
   user-select: none;
+  -webkit-user-select: none;
+}
+
+.sidebar-queue-item * {
+  pointer-events: none;
+}
+
+.sidebar-queue-item .sidebar-queue-remove-btn {
+  pointer-events: auto;
 }
 
 .sidebar-player-queue.open .sidebar-queue-item {
@@ -3287,6 +3296,17 @@ body {
   background: #111114;
   border: 1px solid rgba(255, 255, 255, 0.08);
   flex-shrink: 0;
+  -webkit-user-drag: none;
+  user-drag: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.sidebar-queue-thumb img {
+  -webkit-user-drag: none;
+  user-drag: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .sidebar-queue-meta {
