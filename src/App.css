@@ -3490,15 +3490,22 @@ body {
   position: fixed;
   z-index: 1000;
   width: 230px;
-  background: rgba(14, 14, 18, 0.94);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.09) 0%,
+    rgba(255, 255, 255, 0.02) 35%,
+    rgba(14, 14, 18, 0.65) 100%
+  ), rgba(16, 16, 20, 0.68);
+  backdrop-filter: blur(28px) saturate(190%) contrast(105%);
+  -webkit-backdrop-filter: blur(28px) saturate(190%) contrast(105%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 14px;
   padding: 6px;
   box-shadow:
-    0 16px 40px rgba(0, 0, 0, 0.8),
-    0 0 0 1px rgba(255, 255, 255, 0.04);
+    0 24px 50px rgba(0, 0, 0, 0.75),
+    0 8px 20px rgba(0, 0, 0, 0.45),
+    inset 0 1px 1px rgba(255, 255, 255, 0.22),
+    inset 0 0 16px rgba(255, 255, 255, 0.02);
   animation: context-menu-in 0.12s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
 }
@@ -3560,7 +3567,7 @@ body {
 
 .music-context-divider {
   height: 1px;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.1);
   margin: 4px 6px;
 }
 
@@ -3590,7 +3597,7 @@ body {
 }
 
 .music-context-item:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.11);
   color: #ffffff;
 }
 
