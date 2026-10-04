@@ -1552,6 +1552,7 @@ async fn get_playlist_details(
                     .and_then(|t| t.get("url"))
                     .and_then(|u| u.as_str())
                     .unwrap_or(thumb);
+                let final_track_thumb = upscale_thumbnail_url(track_thumb);
 
                 if let (Some(id), Some(t)) = (video_id, track_title) {
                     tracks.push(PlaylistTrack {
@@ -1559,7 +1560,7 @@ async fn get_playlist_details(
                         title: t.to_string(),
                         artist: track_artist,
                         duration: duration.to_string(),
-                        thumbnail_url: track_thumb.to_string(),
+                        thumbnail_url: final_track_thumb,
                     });
                 }
             }
@@ -1571,7 +1572,7 @@ async fn get_playlist_details(
         title: title.to_string(),
         description,
         author,
-        thumbnail_url: thumb.to_string(),
+        thumbnail_url: upscale_thumbnail_url(thumb),
         track_count,
         tracks,
     })
@@ -1811,7 +1812,7 @@ async fn get_related_recommendation(
                                 .unwrap_or("");
 
                             let final_thumb = if !thumb.is_empty() {
-                                thumb.to_string()
+                                upscale_thumbnail_url(thumb)
                             } else {
                                 format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", vid)
                             };

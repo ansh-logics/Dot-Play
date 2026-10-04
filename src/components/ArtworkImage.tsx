@@ -22,13 +22,14 @@ export const ArtworkImage: React.FC<ArtworkImageProps> = ({
   variant = "card",
 }) => {
   const imgRef = useRef<HTMLImageElement | null>(null);
+  const isPriority = priority || variant === "hero";
 
   const { currentUrl, isLoaded, hasError, onLoad, onError } = useArtwork({
     sourceUrl: src,
     videoId,
     artworkKey,
     variant,
-    priority,
+    priority: isPriority,
   });
 
   return (
@@ -51,7 +52,7 @@ export const ArtworkImage: React.FC<ArtworkImageProps> = ({
           alt={alt}
           className={`artwork-img-element ${isLoaded ? "loaded" : ""}`}
           referrerPolicy="no-referrer"
-          loading={priority ? "eager" : "lazy"}
+          loading={isPriority ? "eager" : "lazy"}
           onLoad={onLoad}
           onError={onError}
         />

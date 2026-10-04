@@ -212,11 +212,11 @@ export function getFallbackArtwork(
 }
 
 /**
- * Verifies candidate image URL with a bounded Image load check and 5s timeout.
+ * Verifies candidate image URL with a bounded Image load check and 2.5s timeout.
  * YouTube returns a 120x90 placeholder when an image is unavailable; this verifies
  * the natural dimensions exceed that threshold.
  */
-export function verifyImageUrl(url: string, timeoutMs = 5000): Promise<boolean> {
+export function verifyImageUrl(url: string, timeoutMs = 2500): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     if (typeof Image === "undefined") {
       resolve(false);
@@ -324,7 +324,7 @@ async function processArtworkUpgrade(videoId: string) {
 
   let verifiedUrl: string | null = null;
   for (const candidate of candidates) {
-    const isValid = await verifyImageUrl(candidate, 5000);
+    const isValid = await verifyImageUrl(candidate, 2500);
     if (isValid) {
       verifiedUrl = candidate;
       break;
@@ -534,8 +534,9 @@ export function useArtwork({
       variant === "thumbnail" &&
       (currentUrl.includes("hqdefault.jpg") || currentUrl.includes("=w160"));
 
+    const isPriority = priority || variant === "hero";
     if (!isLightweightThumbnail) {
-      queueArtworkUpgrade(effectiveId, sourceUrl, { priority });
+      queueArtworkUpgrade(effectiveId, sourceUrl, { priority: isPriority });
     }
 
     const unsubscribe = subscribeToArtwork(effectiveId, (hdUrl) => {
