@@ -7,6 +7,7 @@ interface TopPicksCarouselProps {
   items: SearchResult[];
   onPlay: (item: SearchResult) => void;
   onOpenPlaylist?: (playlistId: string) => void;
+  onContextMenu?: (e: React.MouseEvent, item: SearchResult) => void;
   currentTrackId?: string;
   isPlaying?: boolean;
 }
@@ -22,6 +23,7 @@ interface CarouselCardItemProps {
   transformStyle: React.CSSProperties;
   onPlay: (item: SearchResult) => void;
   onOpenPlaylist?: (playlistId: string) => void;
+  onContextMenu?: (e: React.MouseEvent, item: SearchResult) => void;
   setActiveIndex: React.Dispatch<React.SetStateAction<number>>;
 }
 
@@ -35,6 +37,7 @@ const CarouselCardItem: React.FC<CarouselCardItemProps> = ({
   transformStyle,
   onPlay,
   onOpenPlaylist,
+  onContextMenu,
   setActiveIndex,
 }) => {
   const { currentUrl, isLoaded, onLoad, onError } = useArtwork({
@@ -70,6 +73,13 @@ const CarouselCardItem: React.FC<CarouselCardItemProps> = ({
       className={`carousel-card ${isCenter ? "is-center" : "is-side"}`}
       style={transformStyle}
       onClick={handleCardClick}
+      onContextMenu={(e) => {
+        if (onContextMenu) {
+          e.preventDefault();
+          e.stopPropagation();
+          onContextMenu(e, item);
+        }
+      }}
     >
       {/* Shimmering Skeleton Loader until Image Loads */}
       {!isLoaded && <div className="carousel-shimmer-skeleton" />}
@@ -119,6 +129,7 @@ export const TopPicksCarousel: React.FC<TopPicksCarouselProps> = ({
   items,
   onPlay,
   onOpenPlaylist,
+  onContextMenu,
   currentTrackId,
   isPlaying,
 }) => {
@@ -259,6 +270,7 @@ export const TopPicksCarousel: React.FC<TopPicksCarouselProps> = ({
                 transformStyle={transformStyle}
                 onPlay={onPlay}
                 onOpenPlaylist={onOpenPlaylist}
+                onContextMenu={onContextMenu}
                 setActiveIndex={setActiveIndex}
               />
             );

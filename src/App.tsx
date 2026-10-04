@@ -8,6 +8,7 @@ import {
 } from "./components/HiddenYouTubePlayer";
 import { TopPicksCarousel } from "./components/TopPicksCarousel";
 import { ArtworkImage } from "./components/ArtworkImage";
+import { MusicContextMenu, type MusicContextTarget } from "./components/MusicContextMenu";
 import { listen } from "@tauri-apps/api/event";
 import {
   Home,
@@ -82,6 +83,7 @@ type UpcomingQueueItemProps = {
   track: SearchResult;
   onPlay: (track: SearchResult) => void;
   onRemove: (videoId: string) => void;
+  onContextMenu?: (event: React.MouseEvent, track: SearchResult) => void;
   onDragStateChange?: (isDragging: boolean) => void;
 };
 
@@ -89,6 +91,7 @@ function UpcomingQueueItem({
   track,
   onPlay,
   onRemove,
+  onContextMenu,
   onDragStateChange,
 }: UpcomingQueueItemProps) {
   const dragControls = useDragControls();
@@ -209,6 +212,13 @@ function UpcomingQueueItem({
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
       onClick={handleClick}
+      onContextMenu={(event) => {
+        if (onContextMenu) {
+          event.preventDefault();
+          event.stopPropagation();
+          onContextMenu(event, track);
+        }
+      }}
       onKeyDown={handleKeyDown}
       onDragEnd={handleDragEnd}
       role="button"
@@ -315,6 +325,33 @@ function App() {
 
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
+  }, []);
+
+  const [contextTarget, setContextTarget] = useState<MusicContextTarget | null>(null);
+
+  const handleContextMenu = useCallback(
+    (
+      e: React.MouseEvent,
+      track: SearchResult,
+      source: MusicContextTarget["source"],
+      extra?: { upcomingIndex?: number; contextList?: SearchResult[] },
+    ) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setContextTarget({
+        track,
+        source,
+        upcomingIndex: extra?.upcomingIndex,
+        contextList: extra?.contextList,
+        x: e.clientX,
+        y: e.clientY,
+      });
+    },
+    [],
+  );
+
+  const handleCloseContextMenu = useCallback(() => {
+    setContextTarget(null);
   }, []);
 
   // Restore local session on startup
@@ -1543,17 +1580,15 @@ function App() {
                       {session.upcoming.length === 0 ? (
                         <div className="sidebar-queue-empty">No upcoming tracks</div>
                       ) : (
-                        session.upcoming.map((track) => (
+                        session.upcoming.map((track, index) => (
                           <UpcomingQueueItem
                             key={track.videoId}
                             track={track}
                             onPlay={handleSelectUpcoming}
-                            onRemove={(videoId) => {
-                              const index = session.upcoming.findIndex(
-                                (queuedTrack) => queuedTrack.videoId === videoId,
-                              );
-                              if (index >= 0) handleRemoveUpcoming(index);
-                            }}
+                            onRemove={() => handleRemoveUpcoming(index)}
+                            onContextMenu={(e) =>
+                              handleContextMenu(e, track, "upcoming", { upcomingIndex: index })
+                            }
                             onDragStateChange={handleQueueDragStateChange}
                           />
                         ))
@@ -1570,6 +1605,7 @@ function App() {
                             <div
                               key={`${track.videoId}-${hIdx}`}
                               className="sidebar-queue-item history-item"
+                              onContextMenu={(e) => handleContextMenu(e, track, "history")}
                             >
                               <ArtworkImage
                                 src={track.thumbnailUrl}
@@ -1913,18 +1949,25 @@ function App() {
               <div className="tracklist-rows">
                 {selectedPlaylist.tracks.map((track, idx) => {
                   const isTrackActive = currentTrack?.videoId === track.videoId;
+                  const trackItem: SearchResult = {
+                    videoId: track.videoId,
+                    title: track.title,
+                    artist: track.artist,
+                    thumbnailUrl: track.thumbnailUrl,
+                    playlistId: selectedPlaylist.id,
+                    itemType: "song",
+                  };
                   return (
                     <div
                       key={track.videoId || idx}
                       className={`tracklist-row ${isTrackActive ? "active" : ""}`}
                       onClick={() => {
-                        selectTrack({
-                          videoId: track.videoId,
-                          title: track.title,
-                          artist: track.artist,
-                          thumbnailUrl: track.thumbnailUrl,
-                          playlistId: selectedPlaylist.id,
-                        }, selectedPlaylist.tracks);
+                        selectTrack(trackItem, selectedPlaylist.tracks);
+                      }}
+                      onContextMenu={(e) => {
+                        handleContextMenu(e, trackItem, "playlist", {
+                          contextList: selectedPlaylist.tracks,
+                        });
                       }}
                     >
                       <span className="col-num">
@@ -2089,6 +2132,11 @@ function App() {
                     <div
                       className="top-match-card"
                       onClick={() => handleCardClick(filteredSearchResults[0])}
+                      onContextMenu={(e) =>
+                        handleContextMenu(e, filteredSearchResults[0], "card", {
+                          contextList: filteredSearchResults.filter((i) => Boolean(i.videoId)),
+                        })
+                      }
                       role="button"
                       tabIndex={0}
                     >
@@ -2152,6 +2200,11 @@ function App() {
                               item,
                               filteredSearchResults.filter((i) => Boolean(i.videoId)),
                             )
+                          }
+                          onContextMenu={(e) =>
+                            handleContextMenu(e, item, "card", {
+                              contextList: filteredSearchResults.filter((i) => Boolean(i.videoId)),
+                            })
                           }
                         >
                           <div className="card-thumb-wrap">
@@ -2345,6 +2398,11 @@ function App() {
                                 section.items.filter((i) => Boolean(i.videoId)),
                               )
                             }
+                            onContextMenu={(e) =>
+                              handleContextMenu(e, item, "card", {
+                                contextList: section.items.filter((i) => Boolean(i.videoId)),
+                              })
+                            }
                           >
                             <div className="card-thumb-wrap">
                               <ArtworkImage
@@ -2466,6 +2524,7 @@ function App() {
                           type="button"
                           className={`track-card ${isActive ? "active" : ""}`}
                           onClick={() => handleCardClick(item)}
+                          onContextMenu={(e) => handleContextMenu(e, item, "card")}
                         >
                           <div className="card-thumb-wrap">
                             <ArtworkImage
@@ -2517,6 +2576,7 @@ function App() {
                         type="button"
                         className={`track-card ${isActive ? "active" : ""}`}
                         onClick={() => handleCardClick(item)}
+                        onContextMenu={(e) => handleContextMenu(e, item, "card")}
                       >
                         <div className="card-thumb-wrap">
                           <ArtworkImage
@@ -2634,6 +2694,11 @@ function App() {
                             historySections[0].items.filter((i) => Boolean(i.videoId)),
                           )
                         }
+                        onContextMenu={(e) =>
+                          handleContextMenu(e, item, "card", {
+                            contextList: historySections[0].items.filter((i) => Boolean(i.videoId)),
+                          })
+                        }
                       >
                         <div className="card-thumb-wrap">
                           <ArtworkImage
@@ -2679,6 +2744,11 @@ function App() {
                   )
                 }
                 onOpenPlaylist={openPlaylist}
+                onContextMenu={(e, item) =>
+                  handleContextMenu(e, item, "top-picks", {
+                    contextList: topPicksItems.filter((i) => Boolean(i.videoId)),
+                  })
+                }
                 currentTrackId={currentTrack?.videoId}
                 isPlaying={playerState === "playing"}
               />
@@ -2705,6 +2775,11 @@ function App() {
                             item,
                             section.items.filter((i) => Boolean(i.videoId)),
                           )
+                        }
+                        onContextMenu={(e) =>
+                          handleContextMenu(e, item, "card", {
+                            contextList: section.items.filter((i) => Boolean(i.videoId)),
+                          })
                         }
                       >
                         <div className="card-thumb-wrap">
@@ -2895,6 +2970,17 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* Custom Music Context Menu */}
+      <MusicContextMenu
+        target={contextTarget}
+        onClose={handleCloseContextMenu}
+        onPlayNow={selectTrack}
+        onPlayNext={handlePlayNext}
+        onAddToQueue={handleAddToQueue}
+        onRemoveFromQueue={handleRemoveUpcoming}
+        onOpenPlaylist={openPlaylist}
+      />
 
       {/* Accessible Non-Blocking Toast Notification */}
       <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
