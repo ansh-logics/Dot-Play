@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { ChevronLeft, ChevronRight, Play, Pause } from "lucide-react";
-import { isTauriEnvironment, type SearchResult } from "../lib/search";
+import type { SearchResult } from "../lib/search";
+import { useArtwork } from "../lib/imagePipeline";
 
 interface TopPicksCarouselProps {
   items: SearchResult[];
@@ -11,21 +11,109 @@ interface TopPicksCarouselProps {
   isPlaying?: boolean;
 }
 
-function getOptimisticHighResUrl(rawUrl: string, videoId?: string): string {
-  if (!rawUrl) {
-    return videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : "";
-  }
-  // If it has Google CDN sizing params like =w120-h120 or =s120, upgrade to 800x800
-  if (rawUrl.includes("googleusercontent.com") || rawUrl.includes("ggpht.com")) {
-    if (rawUrl.includes("=w")) {
-      return rawUrl.replace(/=w\d+-h\d+[^"]*/, "=w800-h800-l90-rj");
-    }
-    if (rawUrl.includes("=s")) {
-      return rawUrl.replace(/=s\d+[^"]*/, "=s800-l90-rj");
-    }
-  }
-  return rawUrl;
+interface CarouselCardItemProps {
+  item: SearchResult;
+  index: number;
+  offset: number;
+  absOffset: number;
+  total: number;
+  isCenter: boolean;
+  isItemPlaying: boolean;
+  transformStyle: React.CSSProperties;
+  onPlay: (item: SearchResult) => void;
+  onOpenPlaylist?: (playlistId: string) => void;
+  setActiveIndex: React.Dispatch<React.SetStateAction<number>>;
 }
+
+const CarouselCardItem: React.FC<CarouselCardItemProps> = ({
+  item,
+  offset,
+  absOffset,
+  total,
+  isCenter,
+  isItemPlaying,
+  transformStyle,
+  onPlay,
+  onOpenPlaylist,
+  setActiveIndex,
+}) => {
+  const { currentUrl, isLoaded, onLoad, onError } = useArtwork({
+    sourceUrl: item.thumbnailUrl,
+    videoId: item.videoId,
+    variant: "hero",
+    priority: isCenter || absOffset <= 1,
+  });
+
+  const handleCardClick = () => {
+    if (!isCenter) {
+      setActiveIndex((prev) => (prev + offset + total) % total);
+    } else {
+      if (item.itemType === "playlist" && item.playlistId && onOpenPlaylist) {
+        onOpenPlaylist(item.playlistId);
+      } else {
+        onPlay(item);
+      }
+    }
+  };
+
+  const handlePlayClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (item.itemType === "playlist" && item.playlistId && onOpenPlaylist) {
+      onOpenPlaylist(item.playlistId);
+    } else {
+      onPlay(item);
+    }
+  };
+
+  return (
+    <div
+      className={`carousel-card ${isCenter ? "is-center" : "is-side"}`}
+      style={transformStyle}
+      onClick={handleCardClick}
+    >
+      {/* Shimmering Skeleton Loader until Image Loads */}
+      {!isLoaded && <div className="carousel-shimmer-skeleton" />}
+
+      <img
+        src={currentUrl}
+        alt={item.title}
+        className={`carousel-card-img ${isLoaded ? "loaded" : ""}`}
+        referrerPolicy="no-referrer"
+        onLoad={onLoad}
+        onError={onError}
+        loading={absOffset <= 1 ? "eager" : "lazy"}
+      />
+
+      {/* Center card info overlay */}
+      {isCenter && (
+        <div className="carousel-card-overlay">
+          <div className="carousel-meta-content">
+            <h3 className="carousel-card-title">{item.title}</h3>
+            <p className="carousel-card-artist">{item.artist}</p>
+          </div>
+
+          <button
+            type="button"
+            className={`carousel-play-btn ${isItemPlaying ? "playing" : ""}`}
+            onClick={handlePlayClick}
+            aria-label={isItemPlaying ? "Pause" : "Play"}
+          >
+            {isItemPlaying ? (
+              <Pause size={18} fill="currentColor" strokeWidth={0} />
+            ) : (
+              <Play
+                size={18}
+                fill="currentColor"
+                strokeWidth={0}
+                style={{ marginLeft: 2 }}
+              />
+            )}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const TopPicksCarousel: React.FC<TopPicksCarouselProps> = ({
   items,
@@ -35,32 +123,10 @@ export const TopPicksCarousel: React.FC<TopPicksCarouselProps> = ({
   isPlaying,
 }) => {
   const [activeIndex, setActiveIndex] = useState(0);
-  const [highResMap, setHighResMap] = useState<Record<string, string>>({});
-  const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({});
   const containerRef = useRef<HTMLDivElement>(null);
   const lastScrollTimeRef = useRef(0);
 
   const total = items.length;
-
-  // Background multi-threaded high-res probing via Rust backend
-  useEffect(() => {
-    if (!items || items.length === 0) return;
-
-    if (isTauriEnvironment()) {
-      const queries = items.map((i) => ({
-        videoId: i.videoId || "",
-        currentUrl: i.thumbnailUrl || "",
-      }));
-
-      invoke<Record<string, string>>("get_highres_thumbnails", { tracks: queries })
-        .then((map) => {
-          setHighResMap((prev) => ({ ...prev, ...map }));
-        })
-        .catch((err) => {
-          console.warn("Background highres thumbnail probe failed:", err);
-        });
-    }
-  }, [items]);
 
   // Keep active index in bounds if items change
   useEffect(() => {
@@ -69,7 +135,7 @@ export const TopPicksCarousel: React.FC<TopPicksCarouselProps> = ({
     }
   }, [total, activeIndex]);
 
-  // Infinite Linked List circular navigation (10 -> 0, 0 -> 10)
+  // Infinite circular navigation (10 -> 0, 0 -> 10)
   const handlePrev = useCallback(() => {
     if (total === 0) return;
     setActiveIndex((prev) => (prev - 1 + total) % total);
@@ -157,11 +223,12 @@ export const TopPicksCarousel: React.FC<TopPicksCarouselProps> = ({
             if (!isVisible) return null;
 
             const isCenter = offset === 0;
-            const isItemPlaying =
+            const isItemPlaying = Boolean(
               isCenter &&
-              isPlaying &&
-              (currentTrackId === item.videoId ||
-                (item.playlistId && currentTrackId === item.playlistId));
+                isPlaying &&
+                (currentTrackId === item.videoId ||
+                  (item.playlistId && currentTrackId === item.playlistId)),
+            );
 
             // 3D positioning calculation
             const translateX = offset * 220; // px spacing
@@ -179,88 +246,21 @@ export const TopPicksCarousel: React.FC<TopPicksCarouselProps> = ({
               filter: `brightness(${brightness})`,
             };
 
-            const rawUrl = item.thumbnailUrl;
-            const bestUrl =
-              highResMap[item.videoId] ||
-              getOptimisticHighResUrl(rawUrl, item.videoId);
-            const isLoaded = Boolean(loadedImages[bestUrl] || loadedImages[rawUrl]);
-
-            const handleCardClick = () => {
-              if (!isCenter) {
-                // Clicking side card smoothly moves it to center along the ring
-                setActiveIndex((prev) => (prev + offset + total) % total);
-              } else {
-                if (item.itemType === "playlist" && item.playlistId && onOpenPlaylist) {
-                  onOpenPlaylist(item.playlistId);
-                } else {
-                  onPlay(item);
-                }
-              }
-            };
-
-            const handlePlayClick = (e: React.MouseEvent) => {
-              e.stopPropagation();
-              if (item.itemType === "playlist" && item.playlistId && onOpenPlaylist) {
-                onOpenPlaylist(item.playlistId);
-              } else {
-                onPlay(item);
-              }
-            };
-
             return (
-              <div
+              <CarouselCardItem
                 key={item.videoId || item.playlistId || index}
-                className={`carousel-card ${isCenter ? "is-center" : "is-side"}`}
-                style={transformStyle}
-                onClick={handleCardClick}
-              >
-                {/* Shimmering Skeleton Loader until Image Loads */}
-                {!isLoaded && <div className="carousel-shimmer-skeleton" />}
-
-                <img
-                  src={bestUrl}
-                  alt={item.title}
-                  className={`carousel-card-img ${isLoaded ? "loaded" : ""}`}
-                  referrerPolicy="no-referrer"
-                  onLoad={() =>
-                    setLoadedImages((prev) => ({ ...prev, [bestUrl]: true }))
-                  }
-                  onError={(e) => {
-                    if (
-                      item.videoId &&
-                      e.currentTarget.src !==
-                        `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`
-                    ) {
-                      e.currentTarget.src = `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`;
-                    }
-                    setLoadedImages((prev) => ({ ...prev, [bestUrl]: true }));
-                  }}
-                  loading={absOffset <= 1 ? "eager" : "lazy"}
-                />
-
-                {/* Center card info overlay */}
-                {isCenter && (
-                  <div className="carousel-card-overlay">
-                    <div className="carousel-meta-content">
-                      <h3 className="carousel-card-title">{item.title}</h3>
-                      <p className="carousel-card-artist">{item.artist}</p>
-                    </div>
-
-                    <button
-                      type="button"
-                      className={`carousel-play-btn ${isItemPlaying ? "playing" : ""}`}
-                      onClick={handlePlayClick}
-                      aria-label={isItemPlaying ? "Pause" : "Play"}
-                    >
-                      {isItemPlaying ? (
-                        <Pause size={18} fill="currentColor" strokeWidth={0} />
-                      ) : (
-                        <Play size={18} fill="currentColor" strokeWidth={0} style={{ marginLeft: 2 }} />
-                      )}
-                    </button>
-                  </div>
-                )}
-              </div>
+                item={item}
+                index={index}
+                offset={offset}
+                absOffset={absOffset}
+                total={total}
+                isCenter={isCenter}
+                isItemPlaying={isItemPlaying}
+                transformStyle={transformStyle}
+                onPlay={onPlay}
+                onOpenPlaylist={onOpenPlaylist}
+                setActiveIndex={setActiveIndex}
+              />
             );
           })}
         </div>

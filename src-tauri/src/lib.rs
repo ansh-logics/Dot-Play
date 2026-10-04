@@ -157,10 +157,16 @@ async fn search_tracks(query: String) -> Result<Vec<SearchResult>, String> {
             .pointer("/title/runs/0/navigationEndpoint/watchEndpoint/videoId")
             .and_then(|v| v.as_str());
         let title = card.pointer("/title/runs/0/text").and_then(|v| v.as_str());
-        let thumb = card
-            .pointer("/thumbnail/musicThumbnailRenderer/thumbnail/thumbnails/0/url")
-            .and_then(|v| v.as_str())
+        let raw_thumb = card
+            .pointer("/thumbnailRenderer/musicThumbnailRenderer/thumbnail/thumbnails")
+            .or_else(|| card.pointer("/thumbnail/musicThumbnailRenderer/thumbnail/thumbnails"))
+            .or_else(|| card.pointer("/thumbnail/thumbnails"))
+            .and_then(|v| v.as_array())
+            .and_then(|arr| arr.last().or_else(|| arr.first()))
+            .and_then(|t| t.get("url"))
+            .and_then(|u| u.as_str())
             .unwrap_or("");
+        let thumb = upscale_thumbnail_url(raw_thumb);
 
         let mut artist_parts = Vec::new();
         if let Some(subtitle_runs) = card.pointer("/subtitle/runs").and_then(|v| v.as_array()) {
@@ -216,10 +222,16 @@ async fn search_tracks(query: String) -> Result<Vec<SearchResult>, String> {
                             .and_then(|v| v.as_str())
                             .unwrap_or("Artist");
 
-                        let thumb = item_renderer
-                            .pointer("/thumbnail/musicThumbnailRenderer/thumbnail/thumbnails/0/url")
-                            .and_then(|v| v.as_str())
+                        let raw_thumb = item_renderer
+                            .pointer("/thumbnailRenderer/musicThumbnailRenderer/thumbnail/thumbnails")
+                            .or_else(|| item_renderer.pointer("/thumbnail/musicThumbnailRenderer/thumbnail/thumbnails"))
+                            .or_else(|| item_renderer.pointer("/thumbnail/thumbnails"))
+                            .and_then(|v| v.as_array())
+                            .and_then(|arr| arr.last().or_else(|| arr.first()))
+                            .and_then(|t| t.get("url"))
+                            .and_then(|u| u.as_str())
                             .unwrap_or("");
+                        let thumb = upscale_thumbnail_url(raw_thumb);
 
                         if let (Some(id), Some(t)) = (video_id, title) {
                             if !results.iter().any(|r| r.video_id == id) {

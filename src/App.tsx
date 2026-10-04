@@ -220,6 +220,7 @@ function UpcomingQueueItem({
         videoId={track.videoId}
         alt={track.title}
         className="sidebar-queue-thumb"
+        variant="thumbnail"
       />
       <div className="sidebar-queue-meta">
         <span className="sidebar-queue-item-title" title={track.title}>
@@ -1361,6 +1362,7 @@ function App() {
                     videoId={currentTrack.videoId}
                     alt={currentTrack.title}
                     className="sidebar-player-thumb"
+                    variant="hero"
                     priority
                   />
                   <span className="sidebar-artwork-hint-badge">
@@ -1574,6 +1576,7 @@ function App() {
                                 videoId={track.videoId}
                                 alt={track.title}
                                 className="sidebar-queue-thumb"
+                                variant="thumbnail"
                               />
                               <div className="sidebar-queue-meta">
                                 <span className="sidebar-queue-item-title" title={track.title}>
@@ -1830,6 +1833,7 @@ function App() {
                   src={selectedPlaylist.thumbnailUrl}
                   alt={selectedPlaylist.title}
                   className="playlist-cover"
+                  variant="hero"
                   priority
                 />
               </div>
@@ -1936,6 +1940,7 @@ function App() {
                           videoId={track.videoId}
                           alt={track.title}
                           className="track-row-thumb"
+                          variant="thumbnail"
                         />
                         <span className="track-row-title">{track.title}</span>
                       </div>
