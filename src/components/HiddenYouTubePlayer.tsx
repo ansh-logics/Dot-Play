@@ -149,18 +149,39 @@ export function HiddenYouTubePlayer({
   const [bridgeUrl, setBridgeUrl] = useState<string | null>(null)
   const [useFallbackDirect, setUseFallbackDirect] = useState(false)
 
+  const bridgeOriginRef = useRef<string | null>(null)
+
   const callbacksRef = useRef({ onError, onReady, onStateChange, onTrackChange })
   useEffect(() => {
     callbacksRef.current = { onError, onReady, onStateChange, onTrackChange }
   })
 
-  // Detect loopback server in Tauri environment
+  // Use the bridge only for Tauri's custom protocol. Both Vite and the packaged
+  // localhost server can use the direct IFrame API with their own HTTP origin.
   useEffect(() => {
+    const needsBridge =
+      window.location.protocol === "tauri:" ||
+      window.location.hostname === "tauri.localhost"
+
+    if (!needsBridge) {
+      setUseFallbackDirect(true)
+      return
+    }
+
     let isMounted = true
     getPlayerServerUrl().then((url) => {
       if (!isMounted) return
       if (url) {
-        setBridgeUrl(url)
+        try {
+          const parentOrigin = window.location.origin
+          const parsed = new URL(url)
+          parsed.searchParams.set("parentOrigin", parentOrigin)
+          bridgeOriginRef.current = parsed.origin
+          setBridgeUrl(parsed.toString())
+        } catch {
+          bridgeOriginRef.current = null
+          setBridgeUrl(url)
+        }
       } else {
         setUseFallbackDirect(true)
       }
@@ -171,8 +192,8 @@ export function HiddenYouTubePlayer({
   }, [])
 
   const postToBridge = useCallback((actionObj: Record<string, unknown>) => {
-    if (isBridgeReadyRef.current && iframeRef.current?.contentWindow) {
-      iframeRef.current.contentWindow.postMessage(actionObj, "*")
+    if (isBridgeReadyRef.current && iframeRef.current?.contentWindow && bridgeOriginRef.current) {
+      iframeRef.current.contentWindow.postMessage(actionObj, bridgeOriginRef.current)
     } else {
       pendingActionsRef.current.push(actionObj)
     }
@@ -184,7 +205,7 @@ export function HiddenYouTubePlayer({
     pauseVideo: () => postToBridge({ action: "pause" }),
     seekTo: (seconds, allowSeekAhead) => {
       currentTimeRef.current = seconds
-      postToBridge({ action: "seekTo", seconds, allowSeekAhead })
+      postToBridge({ action: "seekTo", seconds, allowSeekAhead: allowSeekAhead !== false })
     },
     getCurrentTime: () => currentTimeRef.current,
     getDuration: () => durationRef.current,
@@ -219,7 +240,9 @@ export function HiddenYouTubePlayer({
       isMutedRef.current = false
       postToBridge({ action: "unMute" })
     },
-    destroy: () => {},
+    destroy: () => {
+      postToBridge({ action: "destroy" })
+    },
   }).current
 
   // Listen to messages from bridge iframe
@@ -227,6 +250,10 @@ export function HiddenYouTubePlayer({
     if (!bridgeUrl) return
 
     const handleMessage = (event: MessageEvent) => {
+      if (bridgeOriginRef.current && event.origin !== bridgeOriginRef.current) {
+        return
+      }
+
       const data = event.data
       if (!data || typeof data !== "object" || !data.type) return
 
@@ -239,14 +266,14 @@ export function HiddenYouTubePlayer({
           // Flush queued actions
           while (pendingActionsRef.current.length > 0) {
             const act = pendingActionsRef.current.shift()
-            if (act && iframeRef.current?.contentWindow) {
-              iframeRef.current.contentWindow.postMessage(act, "*")
+            if (act && iframeRef.current?.contentWindow && bridgeOriginRef.current) {
+              iframeRef.current.contentWindow.postMessage(act, bridgeOriginRef.current)
             }
           }
 
           // Initial track playback if available
           const cleanId = videoId?.trim()
-          if (cleanId) {
+          if (cleanId && !isFirstMountPlaybackHandled.current) {
             currentVideoIdRef.current = cleanId
             if (autoPlayOnMount) {
               bridgePlayerInstance.loadVideoById?.({ videoId: cleanId, startSeconds: initialSeconds })
@@ -309,13 +336,14 @@ export function HiddenYouTubePlayer({
     const cleanId = videoId?.trim()
     if (!cleanId) return
 
-    if (cleanId === currentVideoIdRef.current && isFirstMountPlaybackHandled.current) return
+    if (cleanId === currentVideoIdRef.current) return
     currentVideoIdRef.current = cleanId
+
+    if (!isFirstMountPlaybackHandled.current) return
 
     if (isBridgeReadyRef.current) {
       bridgePlayerInstance.loadVideoById?.({ videoId: cleanId, startSeconds: 0 })
       bridgePlayerInstance.playVideo?.()
-      isFirstMountPlaybackHandled.current = true
     } else {
       postToBridge({ action: "loadVideo", videoId: cleanId, startSeconds: 0, autoplay: true })
     }
@@ -458,6 +486,7 @@ export function HiddenYouTubePlayer({
           src={bridgeUrl}
           title="DOT Music Audio Engine"
           allow="autoplay; encrypted-media"
+          referrerPolicy="strict-origin-when-cross-origin"
           tabIndex={-1}
           style={{
             width: 200,

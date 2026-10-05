@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-player-server-url"
+description = "Enables the get_player_server_url command without any pre-configured scope."
+commands.allow = ["get_player_server_url"]
+
+[[permission]]
+identifier = "deny-get-player-server-url"
+description = "Denies the get_player_server_url command without any pre-configured scope."
+commands.deny = ["get_player_server_url"]

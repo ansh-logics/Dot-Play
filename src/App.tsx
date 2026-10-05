@@ -63,7 +63,7 @@ import {
   type PlaylistDetails,
   type UserProfile,
 } from "./lib/search";
-import { cacheTracks, cacheTrack } from "./lib/trackCache";
+import { cacheTracks, cacheTrack, clearAccountSpecificCache } from "./lib/trackCache";
 import { Toast } from "./components/Toast";
 import {
   addToUpcoming,
@@ -280,6 +280,8 @@ function App() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [authSyncError, setAuthSyncError] = useState<string | null>(null);
+  const isRefreshingAuthRef = useRef(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
 
   // Top picks carousel items computed from first shelf
@@ -711,64 +713,249 @@ function App() {
     };
   }, [showProfileMenu]);
 
+  const refreshAuthSession = useCallback(async () => {
+    if (isRefreshingAuthRef.current) return;
+    isRefreshingAuthRef.current = true;
+    setIsLoggingIn(false);
+    setAuthSyncError(null);
+
+    try {
+      const authenticated = await getAuthStatus();
+      if (!authenticated) {
+        setIsLoggedIn(false);
+        setUserProfile(null);
+        return;
+      }
+
+      // Step A: Invalidate/clear stale guest state immediately and mark authenticated
+      setIsLoggedIn(true);
+
+      // Step B: Concurrently fetch profile, library playlists, history, and personalized home feed
+      setIsLoadingLibrary(true);
+      setIsLoadingHistory(true);
+
+      const [profileRes, libraryRes, historyRes, homeRes] = await Promise.allSettled([
+        getUserProfile(),
+        getLibraryPlaylists(),
+        getHistory(),
+        getHomeFeed(),
+      ]);
+
+      // Handle Profile
+      if (profileRes.status === "fulfilled" && profileRes.value) {
+        setUserProfile(profileRes.value);
+      } else {
+        console.warn("[DOT Music] Profile fetch returned empty or failed:", profileRes);
+        setUserProfile((prev) => prev ?? {
+          name: "YouTube Music Account",
+          email: "Connected",
+          avatarUrl: "",
+        });
+      }
+
+      // Handle Library Playlists
+      if (libraryRes.status === "fulfilled") {
+        setLibrarySections(libraryRes.value.sections);
+        cacheTracks(libraryRes.value.sections.flatMap((s) => s.items));
+      } else {
+        console.error("[DOT Music] Failed to fetch library playlists:", libraryRes.reason);
+      }
+
+      // Handle History
+      if (historyRes.status === "fulfilled") {
+        setHistorySections(historyRes.value.sections);
+        cacheTracks(historyRes.value.sections.flatMap((s) => s.items));
+      } else {
+        console.error("[DOT Music] Failed to fetch history:", historyRes.reason);
+      }
+
+      // Handle Home Feed
+      if (homeRes.status === "fulfilled") {
+        setHomeSections(homeRes.value.sections);
+        setContinuationToken(homeRes.value.continuationToken ?? null);
+        cacheTracks(homeRes.value.sections.flatMap((s) => s.items));
+      } else {
+        console.error("[DOT Music] Failed to fetch home feed:", homeRes.reason);
+      }
+    } catch (err) {
+      console.error("[DOT Music] Error during post-login auth refresh:", err);
+      setAuthSyncError("Unable to sync account data. Tap to retry.");
+      showToast("Account sync encountered an issue. Tap retry to refresh.");
+    } finally {
+      setIsLoadingLibrary(false);
+      setIsLoadingHistory(false);
+      isRefreshingAuthRef.current = false;
+    }
+  }, [showToast]);
+
+  const handleInitiateLogin = useCallback(async (clean = false) => {
+    setIsLoggingIn(true);
+    setAuthSyncError(null);
+    try {
+      await openLoginWindow(clean);
+    } catch (err) {
+      console.error("[DOT Music] Failed to open login window:", err);
+      setIsLoggingIn(false);
+      showToast("Could not open sign-in window");
+    }
+  }, [showToast]);
+
+  const handleSignOut = useCallback(async () => {
+    setShowProfileMenu(false);
+    setIsLoggingIn(false);
+    setAuthSyncError(null);
+
+    try {
+      await logoutUser();
+    } catch (e) {
+      console.error("[DOT Music] Failed to logout:", e);
+    }
+
+    // 1. Clear authenticated React state
+    setIsLoggedIn(false);
+    setUserProfile(null);
+    setLibrarySections([]);
+    setHistorySections([]);
+
+    // 2. Clear any active account-specific playlist view
+    setSelectedPlaylist(null);
+
+    // 3. Navigate away from authenticated tabs back to home
+    setActiveNav((current) => (current === "library" || current === "history" ? "home" : current));
+
+    // 4. Clear account-specific listening history in queue session
+    setSession((prev) => {
+      const updated = {
+        ...prev,
+        history: [],
+      };
+      sessionRef.current = updated;
+      void persistQueueSession(updated);
+      return updated;
+    });
+
+    // 5. Purge account-specific library and playlist metadata from memory & disk cache
+    clearAccountSpecificCache();
+
+    // 6. Clear session storage (preserving user preferences in localStorage)
+    try {
+      sessionStorage.clear();
+    } catch {
+      // ignore
+    }
+
+    // 7. Refresh clean guest home feed
+    try {
+      const res = await getHomeFeed();
+      setHomeSections(res.sections);
+      setContinuationToken(res.continuationToken ?? null);
+      cacheTracks(res.sections.flatMap((s) => s.items));
+    } catch (e) {
+      console.error("[DOT Music] Failed to fetch guest home feed:", e);
+    }
+
+    showToast("Signed out successfully.");
+  }, [showToast]);
+
   // 1. App Startup & Auth event listeners
   useEffect(() => {
-    let unlistenSuccess: (() => void) | undefined;
-    let unlistenCancel: (() => void) | undefined;
+    let isCancelled = false;
+    let unlistenSuccess: (() => void) | null = null;
+    let unlistenCancel: (() => void) | null = null;
 
     getAuthStatus().then((status) => {
-      setIsLoggedIn(status);
+      if (isCancelled) return;
       if (status) {
-        getUserProfile().then((profile) => setUserProfile(profile));
-        getLibraryPlaylists().then((res) => {
-          setLibrarySections(res.sections);
+        void refreshAuthSession();
+      } else {
+        setIsLoggedIn(false);
+        setUserProfile(null);
+        getHomeFeed().then((res) => {
+          if (isCancelled) return;
+          setHomeSections(res.sections);
+          setContinuationToken(res.continuationToken ?? null);
           cacheTracks(res.sections.flatMap((s) => s.items));
         });
       }
     });
 
-    getHomeFeed().then((res) => {
-      setHomeSections(res.sections);
-      setContinuationToken(res.continuationToken ?? null);
-      cacheTracks(res.sections.flatMap((s) => s.items));
-    });
-
     if (isTauriEnvironment()) {
       listen("login_success", () => {
-        setIsLoggedIn(true);
-        setIsLoggingIn(false);
-        getUserProfile().then((profile) => setUserProfile(profile));
-        getHomeFeed().then((res) => {
-          setHomeSections(res.sections);
-          setContinuationToken(res.continuationToken ?? null);
-          cacheTracks(res.sections.flatMap((s) => s.items));
+        if (!isCancelled) {
+          void refreshAuthSession();
+        }
+      })
+        .then((un) => {
+          if (isCancelled) {
+            un();
+          } else {
+            unlistenSuccess = un;
+          }
+        })
+        .catch((err) => {
+          console.warn("[DOT Music] Failed to register login_success listener:", err);
         });
-        getHistory().then((res) => {
-          setHistorySections(res.sections);
-          cacheTracks(res.sections.flatMap((s) => s.items));
-        });
-        getLibraryPlaylists().then((res) => {
-          setLibrarySections(res.sections);
-          cacheTracks(res.sections.flatMap((s) => s.items));
-        });
-      }).then((un) => {
-        unlistenSuccess = un;
-      });
 
       listen("login_cancelled", () => {
-        setIsLoggingIn(false);
-      }).then((un) => {
-        unlistenCancel = un;
-      });
+        if (!isCancelled) {
+          setIsLoggingIn(false);
+        }
+      })
+        .then((un) => {
+          if (isCancelled) {
+            un();
+          } else {
+            unlistenCancel = un;
+          }
+        })
+        .catch((err) => {
+          console.warn("[DOT Music] Failed to register login_cancelled listener:", err);
+        });
     }
 
     setRecentSearches(getRecentSearches());
 
     return () => {
+      isCancelled = true;
       unlistenSuccess?.();
       unlistenCancel?.();
     };
-  }, []);
+  }, [refreshAuthSession]);
+
+  // Window focus listener: if user completed login in external popup and returned
+  useEffect(() => {
+    const handleWindowFocus = async () => {
+      try {
+        const status = await getAuthStatus();
+        if (status && !isLoggedIn) {
+          await refreshAuthSession();
+        }
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener("focus", handleWindowFocus);
+    return () => {
+      window.removeEventListener("focus", handleWindowFocus);
+    };
+  }, [isLoggedIn, refreshAuthSession]);
+
+  // Active login polling failsafe while login window is open
+  useEffect(() => {
+    if (!isLoggingIn) return;
+    const interval = setInterval(async () => {
+      try {
+        const status = await getAuthStatus();
+        if (status) {
+          clearInterval(interval);
+          await refreshAuthSession();
+        }
+      } catch {
+        // ignore
+      }
+    }, 600);
+    return () => clearInterval(interval);
+  }, [isLoggingIn, refreshAuthSession]);
 
   const fetchHistory = useCallback(async () => {
     if (!isLoggedIn) return;
@@ -1690,35 +1877,39 @@ function App() {
 
                 <div className="popover-divider" />
 
+                {authSyncError && (
+                  <div className="popover-sync-error" style={{ padding: "8px 12px", fontSize: "11px", color: "var(--red-primary, #ff0055)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span>{authSyncError}</span>
+                    <button
+                      type="button"
+                      onClick={() => void refreshAuthSession()}
+                      style={{ background: "rgba(255,255,255,0.1)", border: "none", color: "#fff", borderRadius: 4, padding: "2px 8px", cursor: "pointer", fontSize: "10px" }}
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+
                 <div className="popover-actions">
                   {isLoggedIn ? (
                     <>
                       <button
                         type="button"
                         className="popover-switch-btn"
+                        disabled={isLoggingIn}
                         onClick={async () => {
                           setShowProfileMenu(false);
-                          setIsLoggingIn(true);
-                          await openLoginWindow(true);
+                          await handleInitiateLogin(true);
                         }}
                       >
                         <UserPlus size={14} strokeWidth={2} />
-                        <span>Switch Account</span>
+                        <span>{isLoggingIn ? "CONNECTING..." : "Switch Account"}</span>
                       </button>
 
                       <button
                         type="button"
                         className="popover-signout-btn"
-                        onClick={async () => {
-                          setShowProfileMenu(false);
-                          await logoutUser();
-                          setIsLoggedIn(false);
-                          setUserProfile(null);
-                          getHomeFeed().then((res) => {
-                            setHomeSections(res.sections);
-                            setContinuationToken(res.continuationToken ?? null);
-                          });
-                        }}
+                        onClick={handleSignOut}
                       >
                         <LogOut size={14} strokeWidth={2} />
                         <span>Sign Out</span>
@@ -1731,8 +1922,7 @@ function App() {
                       disabled={isLoggingIn}
                       onClick={async () => {
                         setShowProfileMenu(false);
-                        setIsLoggingIn(true);
-                        await openLoginWindow(false);
+                        await handleInitiateLogin(false);
                       }}
                     >
                       <UserPlus size={14} strokeWidth={2} />
@@ -1747,10 +1937,13 @@ function App() {
               className={`sidebar-account-card ${isLoggedIn ? "connected" : "guest"}`}
               onClick={() => {
                 if (isLoggedIn) {
-                  setShowProfileMenu((prev) => !prev);
+                  if (authSyncError) {
+                    void refreshAuthSession();
+                  } else {
+                    setShowProfileMenu((prev) => !prev);
+                  }
                 } else {
-                  setIsLoggingIn(true);
-                  openLoginWindow(false);
+                  void handleInitiateLogin(false);
                 }
               }}
               role="button"
@@ -1775,10 +1968,22 @@ function App() {
 
               <div className="account-details-col">
                 <span className="account-display-name">
-                  {isLoggedIn ? (userProfile?.name || "Connected User") : "Sign In"}
+                  {isLoggingIn
+                    ? "Connecting..."
+                    : authSyncError
+                    ? "Sync Incomplete"
+                    : isLoggedIn
+                    ? (userProfile?.name || "Connected User")
+                    : "Sign In"}
                 </span>
                 <span className="account-sub-label">
-                  {isLoggedIn ? (userProfile?.email || "YouTube Music") : "Personalize feed & history"}
+                  {isLoggingIn
+                    ? "Authenticating with Google"
+                    : authSyncError
+                    ? "Tap to retry"
+                    : isLoggedIn
+                    ? (userProfile?.email || "YouTube Music")
+                    : "Personalize feed & history"}
                 </span>
               </div>
 
@@ -2333,8 +2538,7 @@ function App() {
                   className="history-signin-btn"
                   disabled={isLoggingIn}
                   onClick={async () => {
-                    setIsLoggingIn(true);
-                    await openLoginWindow();
+                    await handleInitiateLogin(false);
                   }}
                 >
                   {isLoggingIn ? "CONNECTING..." : "CONNECT WITH YOUTUBE MUSIC"}
@@ -2488,8 +2692,7 @@ function App() {
                   className="history-signin-btn"
                   disabled={isLoggingIn}
                   onClick={() => {
-                    setIsLoggingIn(true);
-                    openLoginWindow(false);
+                    void handleInitiateLogin(false);
                   }}
                 >
                   <UserPlus size={14} />
@@ -2872,7 +3075,8 @@ function App() {
                     type="button"
                     className="settings-action-btn"
                     onClick={() => {
-                      localStorage.clear();
+                      localStorage.removeItem("dot_verified_artwork_cache");
+                      localStorage.removeItem("dot_music_track_metadata_cache");
                       window.location.reload();
                     }}
                   >
@@ -2890,9 +3094,23 @@ function App() {
                       {isLoggedIn ? (userProfile?.email || "Connected to YouTube Music") : "Offline (Guest Mode)"}
                     </span>
                   </div>
-                  <span className={`settings-status-pill ${isLoggedIn ? "online" : "offline"}`}>
-                    {isLoggedIn ? "CONNECTED" : "OFFLINE"}
-                  </span>
+                  {isLoggedIn ? (
+                    <button
+                      type="button"
+                      className="settings-action-btn"
+                      onClick={() => {
+                        setShowSettingsModal(false);
+                        void handleSignOut();
+                      }}
+                      style={{ color: "var(--red-primary, #ff0055)" }}
+                    >
+                      Sign Out
+                    </button>
+                  ) : (
+                    <span className="settings-status-pill offline">
+                      OFFLINE
+                    </span>
+                  )}
                 </div>
               </div>
 

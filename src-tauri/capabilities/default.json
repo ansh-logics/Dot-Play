@@ -6,6 +6,24 @@
     "main"
   ],
   "permissions": [
-    "core:default"
+    "core:default",
+    "core:event:default",
+    "allow-search-tracks",
+    "allow-open-login-window",
+    "allow-save-session",
+    "allow-get-auth-status",
+    "allow-logout",
+    "allow-get-home-feed",
+    "allow-get-home-feed-continuation",
+    "allow-get-playlist-details",
+    "allow-get-highres-thumbnails",
+    "allow-get-user-profile",
+    "allow-get-history",
+    "allow-get-library-playlists",
+    "allow-record-playback",
+    "allow-save-queue-session",
+    "allow-get-queue-session",
+    "allow-get-related-recommendation",
+    "allow-get-player-server-url"
   ]
 }

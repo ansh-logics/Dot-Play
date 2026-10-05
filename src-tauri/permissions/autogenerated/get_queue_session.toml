@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-queue-session"
+description = "Enables the get_queue_session command without any pre-configured scope."
+commands.allow = ["get_queue_session"]
+
+[[permission]]
+identifier = "deny-get-queue-session"
+description = "Denies the get_queue_session command without any pre-configured scope."
+commands.deny = ["get_queue_session"]

@@ -236,3 +236,19 @@ export function findTracksInCache(query: string): TrackMetadata[] {
   }
   return matches;
 }
+
+/**
+ * Clears account-specific library and playlist metadata from the cache on logout,
+ * while preserving general public track artwork and metadata.
+ */
+export function clearAccountSpecificCache(): void {
+  for (const [key, item] of Array.from(trackMap.entries())) {
+    if (item.itemType === "playlist" || item.playlistId) {
+      trackMap.delete(key);
+      if (item.title) {
+        nameMap.delete(normalizeTrackKey(item.title, item.artist));
+      }
+    }
+  }
+  schedulePersist();
+}

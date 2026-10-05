@@ -7,6 +7,8 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
+#[cfg(not(debug_assertions))]
+use tauri::{ipc::CapabilityBuilder, Url};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SearchResult {
@@ -305,14 +307,14 @@ fn trigger_native_cookie_sync(app: &AppHandle) {
                             if name == "LOGIN_INFO" && !val.trim().is_empty() {
                                 has_login_info = true;
                             }
-                            if name == "SAPISID" || name == "__Secure-3PAPISID" {
+                            if name == "SAPISID" || name == "__Secure-3PAPISID" || name == "__Secure-1PAPISID" {
                                 has_yt_sapisid = true;
                             }
                             yt_cookie_map.insert(name.clone(), val.clone());
                         }
 
                         if domain.contains("google.com") {
-                            if name == "SAPISID" || name == "__Secure-3PAPISID" {
+                            if name == "SAPISID" || name == "__Secure-3PAPISID" || name == "__Secure-1PAPISID" {
                                 has_google_sapisid = true;
                             }
                             google_cookie_map.insert(name, val);
@@ -343,15 +345,21 @@ fn trigger_native_cookie_sync(app: &AppHandle) {
 
                         let app = app_cb.clone();
                         tauri::async_runtime::spawn(async move {
-                            if let Some(win) = app.get_webview_window("yt_login") {
-                                let _ = win.hide();
-                                let _ = win.destroy();
-                            }
+                            // Update session state FIRST so any window close events see authenticated session
                             if let Some(state) = app.try_state::<SessionState>() {
                                 *state.cookies.lock().unwrap() = Some(full_cookie_str.clone());
                             }
                             let _ = persist_session(&app, &full_cookie_str);
+
+                            // Emit success events immediately to all listeners
                             let _ = app.emit("login_success", ());
+                            let _ = app.emit_to("main", "login_success", ());
+
+                            // Only now close and destroy the login window
+                            if let Some(win) = app.get_webview_window("yt_login") {
+                                let _ = win.hide();
+                                let _ = win.destroy();
+                            }
                         });
                     }
                 });
@@ -382,14 +390,10 @@ fn attach_youtube_auth(mut req: reqwest::RequestBuilder, cookies_opt: &Option<St
 }
 
 #[tauri::command]
-async fn open_login_window(app: AppHandle, clean: Option<bool>) -> Result<(), String> {
+async fn open_login_window(app: AppHandle, _clean: Option<bool>) -> Result<(), String> {
     if let Some(existing) = app.get_webview_window("yt_login") {
         let _ = existing.set_focus();
         return Ok(());
-    }
-
-    if clean.unwrap_or(false) {
-        clear_native_webkit_data(&app);
     }
 
     let url = "https://accounts.google.com/AccountChooser?continue=https%3A%2F%2Fmusic.youtube.com%2F&prompt=select_account&hl=en"
@@ -415,34 +419,39 @@ async fn open_login_window(app: AppHandle, clean: Option<bool>) -> Result<(), St
     "#;
 
     let app_nav_handle = app.clone();
+    let app_page_handle = app.clone();
     let login_window = WebviewWindowBuilder::new(&app, "yt_login", WebviewUrl::External(url))
         .title("Sign in to YouTube Music")
         .inner_size(520.0, 700.0)
+        // Keep Google login cookies isolated from the app's persisted API session.
+        // DOT Music stores only the verified cookies it needs in session.json.
+        .incognito(true)
         .user_agent(
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
         )
         .initialization_script(init_script)
         .on_navigation(move |nav_url| {
             let host = nav_url.host_str().unwrap_or("");
-            if host == "music.youtube.com" || host.ends_with(".music.youtube.com") {
-                // Instantly hide the window upon entering YouTube Music so user never sees web player
-                if let Some(win) = app_nav_handle.get_webview_window("yt_login") {
-                    let _ = win.hide();
-                }
-                trigger_native_cookie_sync(&app_nav_handle);
-            } else if host.ends_with(".youtube.com") || host == "myaccount.google.com" {
+            if host == "music.youtube.com"
+                || host.ends_with(".music.youtube.com")
+                || host.ends_with(".youtube.com")
+                || host == "myaccount.google.com"
+            {
                 trigger_native_cookie_sync(&app_nav_handle);
             }
             true
         })
+        .on_page_load(move |_url, _payload| {
+            trigger_native_cookie_sync(&app_page_handle);
+        })
         .build()
         .map_err(|e| format!("Failed to create login window: {}", e))?;
 
-    // Continuous heartbeat while yt_login is open (poll every 400ms for instant completion)
+    // Continuous heartbeat while yt_login is open (poll every 250ms for instant completion)
     let app_poll_handle = app.clone();
     tauri::async_runtime::spawn(async move {
-        for _ in 0..750 {
-            std::thread::sleep(std::time::Duration::from_millis(400));
+        for _ in 0..1200 {
+            std::thread::sleep(std::time::Duration::from_millis(250));
             if app_poll_handle.get_webview_window("yt_login").is_some() {
                 trigger_native_cookie_sync(&app_poll_handle);
             } else {
@@ -458,6 +467,7 @@ async fn open_login_window(app: AppHandle, clean: Option<bool>) -> Result<(), St
                 let guard = state.cookies.lock().unwrap();
                 if guard.is_none() {
                     let _ = app_close_handle.emit("login_cancelled", ());
+                    let _ = app_close_handle.emit_to("main", "login_cancelled", ());
                 }
             }
         }
@@ -482,6 +492,7 @@ async fn save_session(
         }
 
         let _ = app.emit("login_success", ());
+        let _ = app.emit_to("main", "login_success", ());
         Ok(())
     } else {
         Err("Incomplete cookies: missing LOGIN_INFO".to_string())
@@ -498,34 +509,6 @@ async fn get_auth_status(state: State<'_, SessionState>) -> Result<bool, String>
     }
 }
 
-#[cfg(target_os = "macos")]
-fn clear_native_webkit_data(_app: &AppHandle) {
-    use objc2::runtime::AnyObject;
-    use objc2::rc::Retained;
-    use objc2::msg_send;
-    use block2::RcBlock;
-
-    unsafe {
-        let data_store: Retained<AnyObject> = msg_send![objc2::class!(WKWebsiteDataStore), defaultDataStore];
-        let data_types: Retained<AnyObject> = msg_send![objc2::class!(WKWebsiteDataStore), allWebsiteDataTypes];
-        let date_past: Retained<AnyObject> = msg_send![objc2::class!(NSDate), distantPast];
-
-        let block = RcBlock::new(|| {
-            println!("[DOT Music] All WebKit website data, cookies, and cache cleared!");
-        });
-
-        let _: () = msg_send![
-            &data_store,
-            removeDataOfTypes: &*data_types,
-            modifiedSince: &*date_past,
-            completionHandler: &*block
-        ];
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-fn clear_native_webkit_data(_app: &AppHandle) {}
-
 #[tauri::command]
 async fn logout(app: AppHandle, state: State<'_, SessionState>) -> Result<(), String> {
     {
@@ -533,13 +516,18 @@ async fn logout(app: AppHandle, state: State<'_, SessionState>) -> Result<(), St
         *guard = None;
     }
 
-    // Delete session file from disk
+    // session.json is DOT Music's only persisted authentication record.
+    // Removing it is safe; the app must treat a missing session as signed out.
     if let Ok(app_data) = app.path().app_data_dir() {
         let session_file = app_data.join("session.json");
-        let _ = std::fs::remove_file(session_file);
+        if session_file.exists() {
+            let _ = std::fs::remove_file(&session_file);
+        }
+        let tmp_file = app_data.join("session.json.tmp");
+        if tmp_file.exists() {
+            let _ = std::fs::remove_file(&tmp_file);
+        }
     }
-
-    clear_native_webkit_data(&app);
 
     Ok(())
 }
@@ -550,6 +538,26 @@ pub struct UserProfile {
     pub email: String,
     #[serde(rename = "avatarUrl")]
     pub avatar_url: String,
+}
+
+fn find_active_account_header<'a>(v: &'a serde_json::Value) -> Option<&'a serde_json::Value> {
+    if let Some(obj) = v.as_object() {
+        if let Some(header) = obj.get("activeAccountHeaderRenderer") {
+            return Some(header);
+        }
+        for (_, val) in obj {
+            if let Some(found) = find_active_account_header(val) {
+                return Some(found);
+            }
+        }
+    } else if let Some(arr) = v.as_array() {
+        for val in arr {
+            if let Some(found) = find_active_account_header(val) {
+                return Some(found);
+            }
+        }
+    }
+    None
 }
 
 #[tauri::command]
@@ -583,29 +591,58 @@ async fn get_user_profile(state: State<'_, SessionState>) -> Result<Option<UserP
 
     let res = match request.send().await {
         Ok(r) => r,
-        Err(_) => return Ok(None),
+        Err(e) => {
+            eprintln!("[DOT Music] Failed to send account_menu request: {}", e);
+            return Ok(Some(UserProfile {
+                name: "YouTube Music Account".to_string(),
+                email: "Connected".to_string(),
+                avatar_url: "".to_string(),
+            }));
+        }
     };
 
     let json: serde_json::Value = match res.json().await {
         Ok(j) => j,
-        Err(_) => return Ok(None),
+        Err(e) => {
+            eprintln!("[DOT Music] Failed to parse account_menu JSON: {}", e);
+            return Ok(Some(UserProfile {
+                name: "YouTube Music Account".to_string(),
+                email: "Connected".to_string(),
+                avatar_url: "".to_string(),
+            }));
+        }
     };
 
-    let header_opt = json.pointer("/actions/0/openPopupAction/popup/multiPageMenuRenderer/header/activeAccountHeaderRenderer");
+    let header_opt = json
+        .pointer("/actions/0/openPopupAction/popup/multiPageMenuRenderer/header/activeAccountHeaderRenderer")
+        .or_else(|| json.pointer("/header/activeAccountHeaderRenderer"))
+        .or_else(|| find_active_account_header(&json));
+
     if let Some(h) = header_opt {
-        let name = h.pointer("/accountName/runs/0/text")
+        let name = h
+            .pointer("/accountName/runs/0/text")
+            .or_else(|| h.pointer("/accountName/simpleText"))
             .or_else(|| h.pointer("/channelHandle/runs/0/text"))
+            .or_else(|| h.pointer("/channelHandle/simpleText"))
+            .or_else(|| h.pointer("/title/runs/0/text"))
             .and_then(|v| v.as_str())
-            .unwrap_or("User")
+            .unwrap_or("YouTube User")
             .to_string();
 
-        let email = h.pointer("/email/runs/0/text")
+        let email = h
+            .pointer("/email/runs/0/text")
+            .or_else(|| h.pointer("/email/simpleText"))
             .or_else(|| h.pointer("/channelHandle/runs/0/text"))
+            .or_else(|| h.pointer("/channelHandle/simpleText"))
+            .or_else(|| h.pointer("/subtitle/runs/0/text"))
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
 
-        let raw_avatar = h.pointer("/accountPhoto/thumbnails")
+        let raw_avatar = h
+            .pointer("/accountPhoto/thumbnails")
+            .or_else(|| h.pointer("/thumbnail/thumbnails"))
+            .or_else(|| h.pointer("/avatar/thumbnails"))
             .and_then(|v| v.as_array())
             .and_then(|arr| arr.last().or_else(|| arr.first()))
             .and_then(|t| t.get("url"))
@@ -621,7 +658,11 @@ async fn get_user_profile(state: State<'_, SessionState>) -> Result<Option<UserP
         }));
     }
 
-    Ok(None)
+    Ok(Some(UserProfile {
+        name: "YouTube Music Account".to_string(),
+        email: "Connected".to_string(),
+        avatar_url: "".to_string(),
+    }))
 }
 
 pub fn upscale_thumbnail_url(raw_url: &str) -> String {
@@ -1879,7 +1920,7 @@ fn start_player_server() -> u16 {
                             Connection: close\r\n\r\n";
                         let _ = stream.write_all(response.as_bytes());
                     } else {
-                        let html = include_str!("player.html");
+                        let html = include_str!("../resources/player-bridge.html");
                         let response = format!(
                             "HTTP/1.1 200 OK\r\n\
                             Content-Type: text/html; charset=utf-8\r\n\
@@ -1903,19 +1944,80 @@ fn start_player_server() -> u16 {
 }
 
 #[tauri::command]
-fn get_player_server_url(state: State<PlayerServerState>) -> String {
-    format!("http://127.0.0.1:{}/player.html", state.0)
+fn get_player_server_url(state: State<PlayerServerState>) -> Option<String> {
+    if state.0 > 0 {
+        Some(format!("http://127.0.0.1:{}/player.html", state.0))
+    } else {
+        None
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let player_port = start_player_server();
+    let local_app_port = if cfg!(debug_assertions) {
+        None
+    } else {
+        Some(portpicker::pick_unused_port().expect("Failed to find an available localhost port"))
+    };
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .manage(SessionState::default())
         .manage(PlayerServerState(player_port))
-        .plugin(tauri_plugin_log::Builder::default().build())
-        .setup(|app| {
+        .plugin(tauri_plugin_log::Builder::default().build());
+
+    let builder = if let Some(port) = local_app_port {
+        builder.plugin(
+            tauri_plugin_localhost::Builder::new(port)
+                .host("localhost")
+                .on_request(|_, response| {
+                    response.add_header("Referrer-Policy", "strict-origin-when-cross-origin");
+                })
+                .build(),
+        )
+    } else {
+        builder
+    };
+
+    builder
+        .setup(move |app| {
+            #[cfg(not(debug_assertions))]
+            if let Some(port) = local_app_port {
+                let app_url: Url = format!("http://localhost:{port}")
+                    .parse()
+                    .map_err(|error| format!("Invalid local app URL: {error}"))?;
+
+                app.add_capability(
+                    CapabilityBuilder::new("localhost-app")
+                        .remote(app_url.to_string())
+                        .local(false)
+                        .window("main")
+                        .permission("core:default")
+                        .permission("core:event:default")
+                        .permission("allow-search-tracks")
+                        .permission("allow-open-login-window")
+                        .permission("allow-save-session")
+                        .permission("allow-get-auth-status")
+                        .permission("allow-logout")
+                        .permission("allow-get-home-feed")
+                        .permission("allow-get-home-feed-continuation")
+                        .permission("allow-get-playlist-details")
+                        .permission("allow-get-highres-thumbnails")
+                        .permission("allow-get-user-profile")
+                        .permission("allow-get-history")
+                        .permission("allow-get-library-playlists")
+                        .permission("allow-record-playback")
+                        .permission("allow-save-queue-session")
+                        .permission("allow-get-queue-session")
+                        .permission("allow-get-related-recommendation")
+                        .permission("allow-get-player-server-url"),
+                )?;
+
+                app.get_webview_window("main")
+                    .ok_or("Main window was not available")?
+                    .navigate(app_url)?;
+            }
+
             // Restore saved session & image cache from disk on startup
             if let Ok(app_data) = app.path().app_data_dir() {
                 let session_file = app_data.join("session.json");
@@ -1969,4 +2071,3 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-
