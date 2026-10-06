@@ -359,20 +359,22 @@ export async function getQueueSession(): Promise<QueueSession | null> {
   return null
 }
 
-export async function getRelatedRecommendation(
+export async function getRelatedRecommendations(
   videoId: string,
-): Promise<SearchResult | null> {
+  limit = 10,
+): Promise<SearchResult[]> {
   if (isTauriEnvironment()) {
     try {
-      return await invoke<SearchResult | null>("get_related_recommendation", {
+      return await invoke<SearchResult[]>("get_related_recommendations", {
         videoId,
+        limit,
       })
     } catch (e) {
-      console.error("[DOT Music] Failed to get related recommendation via Tauri:", e)
-      return null
+      console.error("[DOT Music] Failed to get related recommendations via Tauri:", e)
+      return []
     }
   }
-  return null
+  return []
 }
 
 export async function getPlayerServerUrl(): Promise<string | null> {
@@ -386,4 +388,3 @@ export async function getPlayerServerUrl(): Promise<string | null> {
   }
   return null
 }
-

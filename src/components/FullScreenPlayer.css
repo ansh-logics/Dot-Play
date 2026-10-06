@@ -1,0 +1,926 @@
+/* ==========================================================================
+   DOT Music - Full Screen Mode (Nothing OS & Teenage Engineering Aesthetic)
+   ========================================================================== */
+
+.fullscreen-player-root {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background-color: var(--bg-oled, #000000);
+  color: var(--text-primary, #ffffff);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+  font-family: var(--font-body, "Inter", sans-serif);
+  animation: fsFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes fsFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Ambient Backdrop & Cinematic Aura
+   -------------------------------------------------------------------------- */
+.fullscreen-backdrop {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.fullscreen-backdrop-art {
+  position: absolute;
+  inset: -15%;
+  background-size: cover;
+  background-position: center;
+  filter: blur(85px) saturate(190%) brightness(0.24);
+  transform: scale(1.15);
+  transition: background-image 0.8s ease, opacity 0.8s ease;
+  opacity: 0.55;
+}
+
+/* Crimson Ambient Halo */
+.fullscreen-backdrop-halo {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at 50% 48%,
+    rgba(215, 25, 33, 0.28) 0%,
+    rgba(215, 25, 33, 0.1) 32%,
+    rgba(0, 0, 0, 0.85) 68%,
+    #000000 100%
+  );
+  mix-blend-mode: screen;
+}
+
+/* Nothing OS Signature Dotted Grid Overlay */
+.fullscreen-backdrop-grid {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+  background-size: 24px 24px;
+  opacity: 0.65;
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------------------------
+   Top Bar
+   -------------------------------------------------------------------------- */
+.fullscreen-topbar {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 36px 12px;
+  transition: opacity 0.4s ease;
+}
+
+.fullscreen-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.fullscreen-brand-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: default;
+  user-select: none;
+}
+
+.fullscreen-topbar-center {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.fullscreen-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-dot, "Doto", monospace);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 6px 14px;
+  border-radius: 9999px;
+  backdrop-filter: blur(16px);
+}
+
+.fullscreen-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.fullscreen-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary, #8e8e93);
+  font-family: var(--font-dot, "Doto", monospace);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  backdrop-filter: blur(20px);
+}
+
+.fullscreen-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.25);
+  transform: translateY(-1px);
+}
+
+.fullscreen-icon-btn.active {
+  background: rgba(215, 25, 33, 0.18);
+  border-color: rgba(215, 25, 33, 0.5);
+  color: #ffffff;
+}
+
+.fullscreen-close-btn {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+.fullscreen-esc-hint {
+  font-size: 9px;
+  opacity: 0.6;
+  margin-left: 2px;
+}
+
+/* --------------------------------------------------------------------------
+   Stage Main Layout (Grid / Split Columns)
+   -------------------------------------------------------------------------- */
+.fullscreen-stage {
+  position: relative;
+  z-index: 5;
+  flex: 1;
+  display: grid;
+  grid-template-columns: 360px 1fr 380px;
+  gap: 36px;
+  padding: 12px 42px 210px;
+  align-items: center;
+  max-width: 1720px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* When queue or lyrics is hidden, adjust grid */
+.fullscreen-stage.hide-queue {
+  grid-template-columns: 0px 1fr 420px;
+}
+
+.fullscreen-stage.hide-lyrics {
+  grid-template-columns: 380px 1fr 0px;
+}
+
+.fullscreen-stage.hide-queue.hide-lyrics {
+  grid-template-columns: 1fr;
+}
+
+/* --------------------------------------------------------------------------
+   Left: Floating Smoked-Glass Queue Card
+   -------------------------------------------------------------------------- */
+.fullscreen-queue-panel {
+  position: relative;
+  height: 100%;
+  max-height: 580px;
+  background: rgba(14, 14, 18, 0.68);
+  backdrop-filter: blur(34px) saturate(180%);
+  -webkit-backdrop-filter: blur(34px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 22px;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.fullscreen-queue-header {
+  padding: 18px 20px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.fullscreen-queue-title {
+  font-family: var(--font-heading, "Space Grotesk", sans-serif);
+  font-size: 15px;
+  font-weight: 700;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fullscreen-queue-count {
+  font-family: var(--font-dot, "Doto", monospace);
+  font-size: 10.5px;
+  color: var(--text-secondary, #8e8e93);
+  letter-spacing: 0.1em;
+}
+
+.fullscreen-queue-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Custom Nothing OS Scrollbar */
+.fullscreen-queue-list::-webkit-scrollbar {
+  width: 4px;
+}
+.fullscreen-queue-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 2px;
+}
+
+.fullscreen-queue-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  text-align: left;
+}
+
+.fullscreen-queue-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+  transform: translateX(3px);
+}
+
+/* Active Track Row (Highlighted with Nothing Red) */
+.fullscreen-queue-item.active {
+  background: rgba(215, 25, 33, 0.12);
+  border: 1px solid rgba(215, 25, 33, 0.45);
+  box-shadow: 0 0 20px rgba(215, 25, 33, 0.22), inset 0 0 10px rgba(215, 25, 33, 0.08);
+}
+
+.fullscreen-queue-thumb {
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+  position: relative;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.fullscreen-queue-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fullscreen-queue-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fullscreen-queue-track-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fullscreen-queue-track-artist {
+  font-size: 11.5px;
+  color: var(--text-secondary, #8e8e93);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fullscreen-queue-active-tag {
+  font-family: var(--font-dot, "Doto", monospace);
+  font-size: 8.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent-red, #d71921);
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.fullscreen-queue-duration {
+  font-family: var(--font-dot, "Doto", monospace);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary, #525258);
+  flex-shrink: 0;
+}
+
+.fullscreen-queue-item.active .fullscreen-queue-duration {
+  color: var(--accent-red, #d71921);
+  font-weight: 700;
+}
+
+/* --------------------------------------------------------------------------
+   Center Stage: Artwork & Dynamic Hero
+   -------------------------------------------------------------------------- */
+.fullscreen-center-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  width: 100%;
+}
+
+.fullscreen-artwork-wrap {
+  position: relative;
+  width: min(380px, 34vw);
+  aspect-ratio: 1 / 1;
+  border-radius: 26px;
+  padding: 4px;
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.14) 0%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.85);
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.fullscreen-artwork-wrap.playing {
+  animation: fsArtFloat 6s ease-in-out infinite alternate;
+}
+
+@keyframes fsArtFloat {
+  0% {
+    transform: translateY(0px) scale(1);
+    box-shadow: 0 28px 70px rgba(0, 0, 0, 0.85), 0 0 30px rgba(215, 25, 33, 0.25);
+  }
+  100% {
+    transform: translateY(-8px) scale(1.015);
+    box-shadow: 0 36px 85px rgba(0, 0, 0, 0.9), 0 0 45px rgba(215, 25, 33, 0.4);
+  }
+}
+
+.fullscreen-artwork-inner {
+  width: 100%;
+  height: 100%;
+  border-radius: 22px;
+  overflow: hidden;
+  position: relative;
+  background: #0d0d10;
+}
+
+.fullscreen-artwork-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* --------------------------------------------------------------------------
+   Right: Large-Format Floating Synchronized Lyrics
+   -------------------------------------------------------------------------- */
+.fullscreen-lyrics-panel {
+  position: relative;
+  height: 100%;
+  max-height: 620px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 0, 0, 0.05) 5%,
+    rgba(0, 0, 0, 0.45) 14%,
+    black 25%,
+    black 75%,
+    rgba(0, 0, 0, 0.45) 86%,
+    rgba(0, 0, 0, 0.05) 95%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 0, 0, 0.05) 5%,
+    rgba(0, 0, 0, 0.45) 14%,
+    black 25%,
+    black 75%,
+    rgba(0, 0, 0, 0.45) 86%,
+    rgba(0, 0, 0, 0.05) 95%,
+    transparent 100%
+  );
+}
+
+.fullscreen-lyrics-scroll {
+  flex: 1;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  padding: 180px 0 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.fullscreen-lyrics-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.fullscreen-lyric-line {
+  font-family: var(--font-heading, "Space Grotesk", sans-serif);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: -0.015em;
+  padding: 6px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  transform-origin: left center;
+  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.45s cubic-bezier(0.16, 1, 0.3, 1),
+              filter 0.45s cubic-bezier(0.16, 1, 0.3, 1),
+              color 0.3s ease;
+  will-change: transform, opacity, filter;
+  user-select: none;
+}
+
+.fullscreen-lyric-line.active {
+  color: #ffffff;
+  font-weight: 700;
+  opacity: 1;
+  filter: blur(0px);
+  transform: scale(1.06);
+  text-shadow: 0 0 26px rgba(255, 255, 255, 0.65), 0 0 50px rgba(215, 25, 33, 0.38);
+}
+
+.fullscreen-lyric-line.near {
+  color: rgba(255, 255, 255, 0.72);
+  opacity: 0.58;
+  filter: blur(0.7px);
+  transform: scale(0.98);
+}
+
+.fullscreen-lyric-line.mid {
+  color: rgba(255, 255, 255, 0.45);
+  opacity: 0.32;
+  filter: blur(1.4px);
+  transform: scale(0.95);
+}
+
+.fullscreen-lyric-line.far {
+  color: rgba(255, 255, 255, 0.28);
+  opacity: 0.16;
+  filter: blur(2.2px);
+  transform: scale(0.92);
+}
+
+.fullscreen-lyric-line:hover {
+  opacity: 0.9;
+  filter: blur(0px);
+  color: #ffffff;
+}
+
+.fullscreen-lyric-line.plain {
+  cursor: default;
+  color: rgba(255, 255, 255, 0.78);
+  opacity: 1;
+  filter: none;
+  transform: none;
+}
+
+.fullscreen-lyric-line.plain:hover {
+  color: rgba(255, 255, 255, 0.78);
+  opacity: 1;
+  filter: none;
+}
+
+/* --------------------------------------------------------------------------
+   Fluid Syllable-Level Karaoke Typography (Apple Music-style)
+   -------------------------------------------------------------------------- */
+.fullscreen-karaoke-words {
+  display: inline;
+  white-space: pre-wrap;
+}
+
+.fullscreen-karaoke-word {
+  display: inline-block;
+  white-space: pre-wrap;
+  transition: color 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+              text-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+              filter 0.18s ease;
+  will-change: color, text-shadow, transform;
+}
+
+/* Active line syllable states */
+.fullscreen-lyric-line.active .fullscreen-karaoke-word.upcoming {
+  color: rgba(255, 255, 255, 0.38);
+  text-shadow: none;
+  transform: scale(1);
+  filter: blur(0.3px);
+}
+
+.fullscreen-lyric-line.active .fullscreen-karaoke-word.singing {
+  color: #ffffff;
+  font-weight: 700;
+  transform: scale(1.04);
+  filter: blur(0px);
+  text-shadow:
+    0 0 16px rgba(255, 255, 255, 0.95),
+    0 0 32px rgba(215, 25, 33, 0.85),
+    0 0 54px rgba(215, 25, 33, 0.45);
+}
+
+.fullscreen-lyric-line.active .fullscreen-karaoke-word.passed {
+  color: rgba(255, 255, 255, 0.96);
+  filter: blur(0px);
+  text-shadow: 0 0 12px rgba(255, 255, 255, 0.35);
+  transform: scale(1);
+}
+
+/* Non-active lines */
+.fullscreen-lyric-line:not(.active) .fullscreen-karaoke-word {
+  color: inherit;
+  text-shadow: none;
+  transform: none;
+}
+
+.fullscreen-provider-attribution {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-family: var(--font-dot, "Doto", monospace);
+  font-size: 10px;
+  color: var(--text-secondary, #8e8e93);
+  letter-spacing: 0.12em;
+}
+
+.fullscreen-provider-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 3px 8px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.fullscreen-provider-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent-red, #d71921);
+  box-shadow: 0 0 8px rgba(215, 25, 33, 0.9);
+}
+
+.fullscreen-lyrics-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 100%;
+  color: var(--text-secondary, #8e8e93);
+  font-family: var(--font-dot, "Doto", monospace);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+}
+
+.fullscreen-no-lyrics-hint {
+  font-size: 13px;
+  color: var(--text-secondary, #8e8e93);
+  margin-top: 4px;
+}
+
+/* When lyrics aren't active / Visualizer Alternate Mode */
+.fullscreen-visualizer-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 20px;
+  text-align: center;
+}
+
+.fullscreen-spectrum-canvas {
+  width: 100%;
+  height: 220px;
+}
+
+/* --------------------------------------------------------------------------
+   Monumental Typography (Bottom Right Stage)
+   -------------------------------------------------------------------------- */
+.fullscreen-track-hero-meta {
+  position: absolute;
+  bottom: 24px;
+  right: 48px;
+  z-index: 10;
+  text-align: right;
+  max-width: 480px;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+}
+
+.fullscreen-hero-title {
+  font-family: var(--font-heading, "Space Grotesk", sans-serif);
+  font-size: clamp(28px, 3.6vw, 50px);
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+  text-transform: uppercase;
+  margin: 0 0 6px 0;
+  text-shadow: 0 4px 24px rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fullscreen-hero-subtitle {
+  font-family: var(--font-dot, "Doto", monospace);
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  color: var(--text-secondary, #8e8e93);
+  text-transform: uppercase;
+  margin: 0;
+}
+
+/* --------------------------------------------------------------------------
+   Center: Floating Industrial Control Capsule
+   -------------------------------------------------------------------------- */
+.fullscreen-control-capsule-wrapper {
+  position: absolute;
+  bottom: 120px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  transition: opacity 0.4s ease;
+}
+
+/* Scrubber Bar above capsule */
+.fullscreen-timeline-wrap {
+  width: min(580px, 70vw);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 10px;
+}
+
+.fullscreen-timeline-time {
+  font-family: var(--font-dot, "Doto", monospace);
+  font-size: 11.5px;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.7);
+  flex-shrink: 0;
+}
+
+.fullscreen-scrubber-track {
+  position: relative;
+  flex: 1;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+  cursor: pointer;
+  overflow: visible;
+  transition: height 0.15s ease;
+}
+
+.fullscreen-scrubber-track:hover {
+  height: 8px;
+}
+
+.fullscreen-scrubber-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, #ffffff 0%, var(--accent-red, #d71921) 100%);
+  border-radius: 9999px;
+  pointer-events: none;
+}
+
+.fullscreen-scrubber-thumb {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent-red, #d71921);
+  box-shadow: 0 0 12px rgba(215, 25, 33, 0.9);
+  pointer-events: none;
+  transition: transform 0.1s ease;
+}
+
+.fullscreen-scrubber-track:hover .fullscreen-scrubber-thumb {
+  transform: translate(-50%, -50%) scale(1.3);
+}
+
+/* Main Capsule Container */
+.fullscreen-capsule-container {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 10px 22px;
+  background: rgba(16, 16, 21, 0.82);
+  backdrop-filter: blur(34px) saturate(190%);
+  -webkit-backdrop-filter: blur(34px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 9999px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+/* Transport Circular Buttons */
+.fullscreen-capsule-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.fullscreen-capsule-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.fullscreen-capsule-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: scale(1.08);
+}
+
+.fullscreen-capsule-btn:active {
+  transform: scale(0.95);
+}
+
+.fullscreen-capsule-btn.active {
+  color: var(--accent-red, #d71921);
+  border-color: rgba(215, 25, 33, 0.4);
+}
+
+/* Signature Nothing Red Play/Pause Button */
+.fullscreen-capsule-play-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-red, #d71921);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+  cursor: pointer;
+  box-shadow: 0 0 24px rgba(215, 25, 33, 0.6);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.fullscreen-capsule-play-btn:hover {
+  background: var(--accent-red-hover, #e5242c);
+  transform: scale(1.08);
+  box-shadow: 0 0 32px rgba(215, 25, 33, 0.85);
+}
+
+.fullscreen-capsule-play-btn:active {
+  transform: scale(0.96);
+}
+
+/* Vertical Capsule Separator */
+.fullscreen-capsule-sep {
+  width: 1px;
+  height: 24px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* Dotted Soundwave Equalizer Inside Capsule */
+.fullscreen-capsule-visualizer {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 28px;
+  padding: 0 4px;
+}
+
+.fullscreen-visualizer-bar {
+  width: 3px;
+  background: rgba(255, 255, 255, 0.4);
+  border-radius: 2px;
+  transition: height 0.08s ease, background-color 0.15s ease;
+  min-height: 4px;
+}
+
+.fullscreen-visualizer-bar.peak {
+  background: var(--accent-red, #d71921);
+  box-shadow: 0 0 6px rgba(215, 25, 33, 0.8);
+}
+
+/* Volume Sub-control */
+.fullscreen-capsule-volume {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fullscreen-capsule-vol-slider {
+  width: 70px;
+  height: 4px;
+  border-radius: 2px;
+  accent-color: var(--accent-red, #d71921);
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* --------------------------------------------------------------------------
+   Idle Autohide / Dimming
+   -------------------------------------------------------------------------- */
+.fullscreen-player-root.idle .fullscreen-topbar,
+.fullscreen-player-root.idle .fullscreen-track-hero-meta,
+.fullscreen-player-root.idle .fullscreen-control-capsule-wrapper {
+  opacity: 0.28;
+}
+
+.fullscreen-player-root.idle .fullscreen-control-capsule-wrapper:hover,
+.fullscreen-player-root.idle .fullscreen-topbar:hover {
+  opacity: 1;
+}
+
+/* --------------------------------------------------------------------------
+   Responsive Adaptations
+   -------------------------------------------------------------------------- */
+@media (max-width: 1200px) {
+  .fullscreen-stage {
+    grid-template-columns: 280px 1fr 300px;
+    gap: 20px;
+    padding: 10px 24px 130px;
+  }
+  .fullscreen-track-hero-meta {
+    right: 24px;
+    bottom: 20px;
+  }
+}
+
+@media (max-width: 900px) {
+  .fullscreen-stage {
+    grid-template-columns: 1fr;
+    padding: 10px 16px 140px;
+  }
+  .fullscreen-queue-panel {
+    display: none;
+  }
+  .fullscreen-lyrics-panel {
+    display: none;
+  }
+}

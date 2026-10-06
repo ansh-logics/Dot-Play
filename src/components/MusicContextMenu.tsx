@@ -153,7 +153,9 @@ export const MusicContextMenu: React.FC<MusicContextMenuProps> = ({
             role="menuitem"
             onClick={() => {
               onClose();
-              onPlayNow(track, contextList);
+              // Only playlist rows establish a playback context. Search, Home,
+              // history, and recommendation cards should play just one track.
+              onPlayNow(track, source === "playlist" ? contextList : undefined);
             }}
           >
             <Play size={14} fill="currentColor" strokeWidth={0} className="music-context-icon" />

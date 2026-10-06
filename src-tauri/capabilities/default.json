@@ -23,7 +23,8 @@
     "allow-record-playback",
     "allow-save-queue-session",
     "allow-get-queue-session",
-    "allow-get-related-recommendation",
-    "allow-get-player-server-url"
+    "allow-get-related-recommendations",
+    "allow-get-player-server-url",
+    "allow-get-lyrics"
   ]
 }

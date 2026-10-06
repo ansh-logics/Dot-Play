@@ -1788,14 +1788,17 @@ async fn get_queue_session(app: AppHandle) -> Result<Option<QueueSession>, Strin
 }
 
 #[tauri::command]
-async fn get_related_recommendation(
+async fn get_related_recommendations(
     state: State<'_, SessionState>,
     video_id: String,
-) -> Result<Option<SearchResult>, String> {
+    limit: Option<usize>,
+) -> Result<Vec<SearchResult>, String> {
     let clean_id = video_id.trim();
     if clean_id.is_empty() {
-        return Ok(None);
+        return Ok(Vec::new());
     }
+
+    let limit = limit.unwrap_or(10).clamp(1, 20);
 
     let client = reqwest::Client::new();
     let maybe_cookies = state.cookies.lock().unwrap().clone();
@@ -1808,6 +1811,7 @@ async fn get_related_recommendation(
             }
         },
         "videoId": clean_id,
+        "playlistId": format!("RDAMVM{}", clean_id),
         "isAudioOnly": true
     });
 
@@ -1829,6 +1833,7 @@ async fn get_related_recommendation(
                 .and_then(|v| v.as_array());
 
             if let Some(items) = queue_contents {
+                let mut recommendations = Vec::with_capacity(limit);
                 for item in items {
                     if let Some(r) = item.get("playlistPanelVideoRenderer") {
                         let vid = r.get("videoId").and_then(|v| v.as_str()).unwrap_or("");
@@ -1861,16 +1866,566 @@ async fn get_related_recommendation(
                                 format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", vid)
                             };
 
-                            return Ok(Some(SearchResult {
+                            recommendations.push(SearchResult {
                                 video_id: vid.to_string(),
                                 title: title.to_string(),
                                 artist,
                                 thumbnail_url: final_thumb,
                                 playlist_id: None,
                                 item_type: Some("song".to_string()),
+                            });
+
+                            if recommendations.len() == limit {
+                                break;
+                            }
+                        }
+                    }
+                }
+                return Ok(recommendations);
+            }
+        }
+    }
+
+    Ok(Vec::new())
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct LyricsPayload {
+    pub source: String,
+    pub isrc: Option<String>,
+    pub ttml: Option<String>,
+    pub synced_lyrics: Option<String>,
+    pub plain_lyrics: Option<String>,
+    pub rich_sync_json: Option<String>,
+    pub instrumental: Option<bool>,
+}
+
+static LAST_LYRICS_PLUS_MIRROR: Mutex<Option<String>> = Mutex::new(None);
+
+const LYRICS_PLUS_MIRRORS: &[&str] = &[
+    "https://lyricsplus.prjktla.my.id",
+    "https://lyricsplus.atomix.one",
+    "https://lyricsplus.binimum.org",
+    "https://lyricsplus.prjktla.workers.dev",
+    "https://lyricsplus-seven.vercel.app",
+];
+
+fn clean_query_title(title: &str) -> String {
+    let t = title.trim();
+    let re_markers = [
+        "(official video)",
+        "(official audio)",
+        "(official music video)",
+        "[official video]",
+        "[official audio]",
+        "(audio)",
+        "(lyrics)",
+        "(lyric video)",
+        "[lyric video]",
+        "(visualizer)",
+        "[visualizer]",
+        "(clean version)",
+        "(extended mix)",
+        "(full video)",
+        "(full song)",
+    ];
+    let lower = t.to_lowercase();
+    for marker in re_markers {
+        if let Some(pos) = lower.find(marker) {
+            return t[..pos].trim().to_string();
+        }
+    }
+    t.to_string()
+}
+
+fn clean_query_artist(artist: &str) -> (String, String) {
+    let base = artist
+        .split('•')
+        .next()
+        .unwrap_or(artist)
+        .split('|')
+        .next()
+        .unwrap_or(artist)
+        .replace("- Topic", "")
+        .trim()
+        .to_string();
+    let primary = base
+        .split('&')
+        .next()
+        .unwrap_or(&base)
+        .split(',')
+        .next()
+        .unwrap_or(&base)
+        .split("feat.")
+        .next()
+        .unwrap_or(&base)
+        .split("ft.")
+        .next()
+        .unwrap_or(&base)
+        .trim()
+        .to_string();
+    (base, primary)
+}
+
+fn urlencoding_lite(s: &str) -> String {
+    let mut out = String::new();
+    for b in s.as_bytes() {
+        match *b {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(*b as char);
+            }
+            b' ' => out.push_str("%20"),
+            byte => out.push_str(&format!("%{:02X}", byte)),
+        }
+    }
+    out
+}
+
+fn normalized_lyrics_key(value: &str) -> String {
+    value
+        .to_lowercase()
+        .chars()
+        .filter(|character| character.is_alphanumeric())
+        .collect()
+}
+
+fn lyric_version_markers(value: &str) -> Vec<&'static str> {
+    const MARKERS: &[&str] = &[
+        "live", "remix", "remixed", "acoustic", "unplugged", "instrumental", "karaoke",
+        "cover", "sped", "slowed", "reverb", "nightcore", "extended", "remaster",
+        "remastered", "demo", "edit",
+    ];
+    let lower = value.to_lowercase();
+    MARKERS
+        .iter()
+        .copied()
+        .filter(|marker| lower.contains(marker))
+        .collect()
+}
+
+fn json_string<'a>(value: &'a serde_json::Value, names: &[&str]) -> Option<&'a str> {
+    names.iter().find_map(|name| value.get(*name)?.as_str())
+}
+
+fn json_seconds(value: &serde_json::Value) -> Option<f64> {
+    value
+        .get("duration")
+        .or_else(|| value.get("durationSeconds"))
+        .and_then(|duration| duration.as_f64().or_else(|| duration.as_str()?.parse().ok()))
+}
+
+fn is_matching_lyrics_candidate(
+    candidate: &serde_json::Value,
+    title: &str,
+    artist: &str,
+    duration_seconds: i64,
+) -> bool {
+    let Some(candidate_title) = json_string(candidate, &["track_name", "title", "trackName"]) else {
+        return false;
+    };
+    let wanted_title = normalized_lyrics_key(title);
+    let found_title = normalized_lyrics_key(candidate_title);
+    if wanted_title.is_empty()
+        || found_title.is_empty()
+        || !(found_title == wanted_title
+            || found_title.contains(&wanted_title)
+            || wanted_title.contains(&found_title))
+    {
+        return false;
+    }
+
+    if lyric_version_markers(title) != lyric_version_markers(candidate_title) {
+        return false;
+    }
+
+    if let Some(candidate_artist) = json_string(candidate, &["artist_name", "artist", "artistName"]) {
+        let wanted_artist = normalized_lyrics_key(artist);
+        let found_artist = normalized_lyrics_key(candidate_artist);
+        if !wanted_artist.is_empty()
+            && !found_artist.is_empty()
+            && !found_artist.contains(&wanted_artist)
+            && !wanted_artist.contains(&found_artist)
+        {
+            return false;
+        }
+    }
+
+    if duration_seconds > 0 {
+        if let Some(candidate_duration) = json_seconds(candidate) {
+            if (candidate_duration - duration_seconds as f64).abs() > 6.0 {
+                return false;
+            }
+        }
+    }
+
+    true
+}
+
+fn best_lyrics_candidate<'a>(
+    candidates: &'a [serde_json::Value],
+    title: &str,
+    artist: &str,
+    duration_seconds: i64,
+) -> Option<&'a serde_json::Value> {
+    candidates
+        .iter()
+        .filter(|candidate| is_matching_lyrics_candidate(candidate, title, artist, duration_seconds))
+        .min_by(|left, right| {
+            let left_distance = json_seconds(left)
+                .map(|duration| (duration - duration_seconds as f64).abs())
+                .unwrap_or(f64::MAX);
+            let right_distance = json_seconds(right)
+                .map(|duration| (duration - duration_seconds as f64).abs())
+                .unwrap_or(f64::MAX);
+            left_distance.total_cmp(&right_distance)
+        })
+}
+
+#[tauri::command]
+async fn get_lyrics(
+    video_id: Option<String>,
+    title: String,
+    artist: String,
+    album: Option<String>,
+    duration: Option<f64>,
+) -> Result<Option<LyricsPayload>, String> {
+    let client = match reqwest::Client::builder()
+        .user_agent("DotMusic/0.1.0 (https://github.com/dot-music)")
+        .timeout(std::time::Duration::from_millis(3200))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => return Err(e.to_string()),
+    };
+
+    let clean_title = clean_query_title(&title);
+    let (_clean_artist, primary_artist) = clean_query_artist(&artist);
+    let dur_secs = duration.map(|d| d.round() as i64).unwrap_or(0);
+    let dur_str = if dur_secs > 0 {
+        dur_secs.to_string()
+    } else {
+        String::new()
+    };
+    let album_clean = album.unwrap_or_default();
+
+    // -------------------------------------------------------------
+    // 1. SimpMusic by YouTube Video ID
+    // -------------------------------------------------------------
+    if let Some(ref vid) = video_id {
+        let clean_vid = vid.trim();
+        if !clean_vid.is_empty() {
+            let simp_url = format!("https://api-lyrics.simpmusic.org/v1/{}", clean_vid);
+            if let Ok(res) = client.get(&simp_url).send().await {
+                if res.status().is_success() {
+                    if let Ok(val) = res.json::<serde_json::Value>().await {
+                        let tracks = val
+                            .get("data")
+                            .and_then(|data| data.as_array())
+                            .cloned()
+                            .unwrap_or_default();
+                        let track = tracks
+                            .iter()
+                            .filter(|track| {
+                                dur_secs <= 0
+                                    || json_seconds(track)
+                                        .is_some_and(|seconds| (seconds - dur_secs as f64).abs() <= 10.0)
+                            })
+                            .min_by(|left, right| {
+                                let left_distance = json_seconds(left)
+                                    .map(|seconds| (seconds - dur_secs as f64).abs())
+                                    .unwrap_or(f64::MAX);
+                                let right_distance = json_seconds(right)
+                                    .map(|seconds| (seconds - dur_secs as f64).abs())
+                                    .unwrap_or(f64::MAX);
+                                left_distance.total_cmp(&right_distance)
+                            });
+                        let rich_sync = track
+                            .and_then(|value| value.get("richSyncLyrics"))
+                            .and_then(|value| value.as_str())
+                            .map(str::to_string);
+                        let synced = track
+                            .and_then(|value| value.get("syncedLyrics"))
+                            .and_then(|value| value.as_str())
+                            .map(str::to_string);
+                        let plain = track
+                            .and_then(|value| value.get("plainLyrics").or_else(|| value.get("lyrics")))
+                            .and_then(|value| value.as_str())
+                            .map(str::to_string);
+
+                        if rich_sync.is_some() || synced.is_some() || plain.is_some() {
+                            return Ok(Some(LyricsPayload {
+                                source: "SimpMusic".to_string(),
+                                isrc: None,
+                                ttml: None,
+                                synced_lyrics: synced,
+                                plain_lyrics: plain,
+                                rich_sync_json: rich_sync,
+                                instrumental: None,
                             }));
                         }
                     }
+                }
+            }
+        }
+    }
+
+    // -------------------------------------------------------------
+    // 2. BiniLyrics (Identification / ISRC & TTML)
+    // -------------------------------------------------------------
+    let mut detected_isrc: Option<String> = None;
+    let mut bini_req = client
+        .get("https://lyrics-api.binimum.org/")
+        .query(&[("track", &clean_title), ("artist", &primary_artist)]);
+    if !dur_str.is_empty() {
+        bini_req = bini_req.query(&[("duration", &dur_str)]);
+    }
+    if !album_clean.is_empty() {
+        bini_req = bini_req.query(&[("album", &album_clean)]);
+    }
+
+    if let Ok(res) = bini_req.send().await {
+        if res.status().is_success() {
+            if let Ok(val) = res.json::<serde_json::Value>().await {
+                let results = val
+                    .get("results")
+                    .and_then(|results| results.as_array())
+                    .cloned()
+                    .unwrap_or_default();
+                if let Some(result) = best_lyrics_candidate(&results, &clean_title, &primary_artist, dur_secs) {
+                if let Some(isrc_str) = result.get("isrc").and_then(|v| v.as_str()) {
+                    if !isrc_str.trim().is_empty() {
+                        detected_isrc = Some(isrc_str.trim().to_string());
+                    }
+                }
+
+                if let Some(ttml_content) = result.get("ttml").and_then(|v| v.as_str()) {
+                    if ttml_content.contains("<tt") || ttml_content.contains("<p") {
+                        return Ok(Some(LyricsPayload {
+                            source: "BiniLyrics".to_string(),
+                            isrc: detected_isrc,
+                            ttml: Some(ttml_content.to_string()),
+                            synced_lyrics: None,
+                            plain_lyrics: None,
+                            rich_sync_json: None,
+                            instrumental: None,
+                        }));
+                    }
+                }
+
+                if let Some(lyrics_url) = result.get("lyricsUrl").and_then(|v| v.as_str()) {
+                    if let Ok(l_res) = client.get(lyrics_url).send().await {
+                        if l_res.status().is_success() {
+                            if let Ok(body) = l_res.text().await {
+                                if body.contains("<tt") || body.contains("<p") {
+                                    return Ok(Some(LyricsPayload {
+                                        source: "BiniLyrics".to_string(),
+                                        isrc: detected_isrc,
+                                        ttml: Some(body),
+                                        synced_lyrics: None,
+                                        plain_lyrics: None,
+                                        rich_sync_json: None,
+                                        instrumental: None,
+                                    }));
+                                }
+                            }
+                        }
+                    }
+                }
+                }
+            }
+        }
+    }
+
+    // -------------------------------------------------------------
+    // 3. lrc.red (Apple-style TTML / Syllable timing by ISRC or search)
+    // -------------------------------------------------------------
+    let mut isrc_to_try = detected_isrc.clone();
+    if isrc_to_try.is_none() {
+        let lrc_search_url = format!(
+            "https://lrc.red/search.json?q={}%20{}",
+            urlencoding_lite(&clean_title),
+            urlencoding_lite(&primary_artist)
+        );
+        if let Ok(res) = client.get(&lrc_search_url).send().await {
+            if res.status().is_success() {
+                if let Ok(val) = res.json::<serde_json::Value>().await {
+                    let items = val
+                        .get("hits")
+                        .and_then(|hits| hits.as_array())
+                        .cloned()
+                        .or_else(|| val.as_array().cloned())
+                        .unwrap_or_default();
+                    if let Some(first_match) = best_lyrics_candidate(&items, &clean_title, &primary_artist, dur_secs) {
+                        if let Some(i_val) = first_match.get("isrc").and_then(|v| v.as_str()) {
+                            isrc_to_try = Some(i_val.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(ref isrc) = isrc_to_try {
+        let ttml_url = format!("https://lrc.red/s/{}.ttml", isrc);
+        if let Ok(res) = client.get(&ttml_url).send().await {
+            if res.status().is_success() {
+                if let Ok(body) = res.text().await {
+                    if body.contains("<tt") || body.contains("<p") {
+                        return Ok(Some(LyricsPayload {
+                            source: "lrc.red".to_string(),
+                            isrc: Some(isrc.clone()),
+                            ttml: Some(body),
+                            synced_lyrics: None,
+                            plain_lyrics: None,
+                            rich_sync_json: None,
+                            instrumental: None,
+                        }));
+                    }
+                }
+            }
+        }
+    }
+
+    // -------------------------------------------------------------
+    // 4. BetterLyrics & QQ Karaoke
+    // -------------------------------------------------------------
+    let mut bl_req = client
+        .get("https://lyrics-api.boidu.dev/getLyrics")
+        .query(&[("s", &clean_title), ("a", &primary_artist)]);
+    if !dur_str.is_empty() {
+        bl_req = bl_req.query(&[("d", &dur_str)]);
+    }
+    if !album_clean.is_empty() {
+        bl_req = bl_req.query(&[("al", &album_clean)]);
+    }
+
+    if let Ok(res) = bl_req.send().await {
+        if res.status().is_success() {
+            if let Ok(val) = res.json::<serde_json::Value>().await {
+                let ttml = val
+                    .get("ttml")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let synced = val
+                    .get("syncedLyrics")
+                    .or_else(|| val.get("karaoke"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let plain = val
+                    .get("lyrics")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+
+                if ttml.is_some() || synced.is_some() || plain.is_some() {
+                    return Ok(Some(LyricsPayload {
+                        source: "BetterLyrics".to_string(),
+                        isrc: detected_isrc,
+                        ttml,
+                        synced_lyrics: synced,
+                        plain_lyrics: plain,
+                        rich_sync_json: None,
+                        instrumental: None,
+                    }));
+                }
+            }
+        }
+    }
+
+    // -------------------------------------------------------------
+    // 5. LyricsPlus Mirrors (with last-working-mirror cache)
+    // -------------------------------------------------------------
+    let mut mirror_candidates = Vec::new();
+    if let Ok(guard) = LAST_LYRICS_PLUS_MIRROR.lock() {
+        if let Some(ref m) = *guard {
+            mirror_candidates.push(m.clone());
+        }
+    }
+    for &m in LYRICS_PLUS_MIRRORS {
+        if !mirror_candidates.iter().any(|existing| existing == m) {
+            mirror_candidates.push(m.to_string());
+        }
+    }
+
+    for mirror in mirror_candidates {
+        let ep = format!("{}/v2/lyrics/get", mirror);
+        let mut lp_req = client
+            .get(&ep)
+            .query(&[("title", &clean_title), ("artist", &primary_artist)]);
+        if !dur_str.is_empty() {
+            lp_req = lp_req.query(&[("duration", &dur_str)]);
+        }
+        if let Some(ref i) = detected_isrc {
+            lp_req = lp_req.query(&[("isrc", i)]);
+        }
+
+        if let Ok(res) = lp_req.send().await {
+            if res.status().is_success() {
+                if let Ok(val) = res.json::<serde_json::Value>().await {
+                    let ttml = val
+                        .get("ttml")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    let synced = val
+                        .get("syncedLyrics")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    let plain = val
+                        .get("lyrics")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+
+                    if ttml.is_some() || synced.is_some() || plain.is_some() {
+                        if let Ok(mut guard) = LAST_LYRICS_PLUS_MIRROR.lock() {
+                            *guard = Some(mirror);
+                        }
+                        return Ok(Some(LyricsPayload {
+                            source: "LyricsPlus".to_string(),
+                            isrc: detected_isrc,
+                            ttml,
+                            synced_lyrics: synced,
+                            plain_lyrics: plain,
+                            rich_sync_json: None,
+                            instrumental: None,
+                        }));
+                    }
+                }
+            }
+        }
+    }
+
+    // -------------------------------------------------------------
+    // 6. Unison Fallback
+    // -------------------------------------------------------------
+    let mut uni_req = client
+        .get("https://unison.boidu.dev/lyrics")
+        .query(&[("song", &clean_title), ("artist", &primary_artist)]);
+    if !dur_str.is_empty() {
+        uni_req = uni_req.query(&[("duration", &dur_str)]);
+    }
+
+    if let Ok(res) = uni_req.send().await {
+        if res.status().is_success() {
+            if let Ok(val) = res.json::<serde_json::Value>().await {
+                let synced = val
+                    .get("syncedLyrics")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let plain = val
+                    .get("lyrics")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+
+                if synced.is_some() || plain.is_some() {
+                    return Ok(Some(LyricsPayload {
+                        source: "Unison".to_string(),
+                        isrc: detected_isrc,
+                        ttml: None,
+                        synced_lyrics: synced,
+                        plain_lyrics: plain,
+                        rich_sync_json: None,
+                        instrumental: None,
+                    }));
                 }
             }
         }
@@ -2009,7 +2564,7 @@ pub fn run() {
                         .permission("allow-record-playback")
                         .permission("allow-save-queue-session")
                         .permission("allow-get-queue-session")
-                        .permission("allow-get-related-recommendation")
+                        .permission("allow-get-related-recommendations")
                         .permission("allow-get-player-server-url"),
                 )?;
 
@@ -2065,8 +2620,9 @@ pub fn run() {
             record_playback,
             save_queue_session,
             get_queue_session,
-            get_related_recommendation,
-            get_player_server_url
+            get_related_recommendations,
+            get_player_server_url,
+            get_lyrics
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

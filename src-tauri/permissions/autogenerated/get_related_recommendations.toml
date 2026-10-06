@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-related-recommendations"
+description = "Enables the get_related_recommendations command without any pre-configured scope."
+commands.allow = ["get_related_recommendations"]
+
+[[permission]]
+identifier = "deny-get-related-recommendations"
+description = "Denies the get_related_recommendations command without any pre-configured scope."
+commands.deny = ["get_related_recommendations"]

@@ -17,7 +17,7 @@ fn main() {
         "record_playback",
         "save_queue_session",
         "get_queue_session",
-        "get_related_recommendation",
+        "get_related_recommendations",
         "get_player_server_url",
       ]),
     ),

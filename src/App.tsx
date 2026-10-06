@@ -8,6 +8,7 @@ import {
 } from "./components/HiddenYouTubePlayer";
 import { TopPicksCarousel } from "./components/TopPicksCarousel";
 import { ArtworkImage } from "./components/ArtworkImage";
+import { FullScreenPlayer } from "./components/FullScreenPlayer";
 import { MusicContextMenu, type MusicContextTarget } from "./components/MusicContextMenu";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -56,7 +57,7 @@ import {
   removeRecentSearch,
   clearRecentSearches,
   recordPlayback,
-  getRelatedRecommendation,
+  getRelatedRecommendations,
   isTauriEnvironment,
   type SearchResult,
   type HomeSection,
@@ -324,10 +325,64 @@ function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [initialPlaybackSeconds, setInitialPlaybackSeconds] = useState(0);
   const [autoPlayOnMount, setAutoPlayOnMount] = useState(false);
+  const queueFetchForRef = useRef<string | null>(null);
 
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
   }, []);
+
+  // Fetch next 10 recommended songs and display them in the upcoming queue
+  useEffect(() => {
+    const sourceVideoId = currentTrack?.videoId;
+    if (!sourceVideoId) {
+      queueFetchForRef.current = null;
+      return;
+    }
+
+    // If upcoming queue already has tracks, keep them
+    if (session.upcoming.length > 0) return;
+
+    if (queueFetchForRef.current === sourceVideoId) return;
+    queueFetchForRef.current = sourceVideoId;
+
+    let isCancelled = false;
+    void getRelatedRecommendations(sourceVideoId, 10)
+      .then((tracks) => {
+        if (isCancelled) return;
+        if (
+          sessionRef.current.currentTrack?.videoId === sourceVideoId &&
+          sessionRef.current.upcoming.length === 0 &&
+          tracks.length > 0
+        ) {
+          cacheTracks(tracks);
+          setSession((prev) => {
+            if (prev.currentTrack?.videoId !== sourceVideoId || prev.upcoming.length > 0) {
+              return prev;
+            }
+            const next = {
+              ...prev,
+              upcoming: tracks,
+              isAutoplay: false,
+            };
+            sessionRef.current = next;
+            void persistQueueSession(next);
+            return next;
+          });
+        }
+      })
+      .catch((err) => {
+        console.warn("[DOT Music] Failed to fetch queue recommendations:", err);
+      })
+      .finally(() => {
+        if (queueFetchForRef.current === sourceVideoId) {
+          queueFetchForRef.current = null;
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [currentTrack?.videoId, session.upcoming.length]);
 
   const [contextTarget, setContextTarget] = useState<MusicContextTarget | null>(null);
 
@@ -400,6 +455,7 @@ function App() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [showQueue, setShowQueue] = useState(false);
+  const [showFullScreen, setShowFullScreen] = useState(false);
 
   // Authoritative Queue Operations
   const handleUpcomingReorder = useCallback((upcoming: SearchResult[]) => {
@@ -624,6 +680,11 @@ function App() {
           e.preventDefault();
           return;
         }
+        if (showFullScreen) {
+          setShowFullScreen(false);
+          e.preventDefault();
+          return;
+        }
         if (showProfileMenu) {
           setShowProfileMenu(false);
           e.preventDefault();
@@ -648,6 +709,15 @@ function App() {
 
       // Ignore playback/navigation shortcuts if user is typing
       if (isTyping(e.target)) return;
+
+      // Fullscreen shortcut (F)
+      if ((e.key === "f" || e.key === "F") && !e.metaKey && !e.ctrlKey) {
+        if (currentTrack) {
+          e.preventDefault();
+          setShowFullScreen((prev) => !prev);
+          return;
+        }
+      }
 
       // 2. Space: Play / Pause
       if (e.code === "Space") {
@@ -690,6 +760,8 @@ function App() {
     showSupportModal,
     showProfileMenu,
     showQueue,
+    showFullScreen,
+    currentTrack,
     selectedPlaylist,
     activeNav,
     togglePlayPause,
@@ -1303,7 +1375,7 @@ function App() {
     }
   };
 
-  const handleCardClick = (item: SearchResult, contextList?: SearchResult[]) => {
+  const handleCardClick = (item: SearchResult, _contextList?: SearchResult[]) => {
     if (searchQuery.trim()) {
       const updated = saveRecentSearch(searchQuery.trim());
       setRecentSearches(updated);
@@ -1311,7 +1383,7 @@ function App() {
     if (item.itemType === "playlist" && item.playlistId) {
       openPlaylist(item.playlistId);
     } else if (item.videoId) {
-      selectTrack(item, contextList);
+      selectTrack(item);
     }
   };
 
@@ -1359,13 +1431,22 @@ function App() {
       const lastVideoId = current.currentTrack?.videoId;
       if (lastVideoId) {
         try {
-          const rec = await getRelatedRecommendation(lastVideoId);
-          if (rec && rec.videoId) {
-            const autoplaySession = playTrackImmediate(nextSession, rec, { isAutoplay: true });
+          const recs = await getRelatedRecommendations(lastVideoId, 10);
+          if (recs.length > 0) {
+            const nextPlay = recs[0];
+            const remaining = recs.slice(1);
+            cacheTracks(recs);
+            const autoplaySession = {
+              ...nextSession,
+              currentTrack: nextPlay,
+              upcoming: remaining,
+              currentTime: 0,
+              isAutoplay: false,
+            };
             setSession(autoplaySession);
             void persistQueueSession(autoplaySession);
             setAutoPlayOnMount(true);
-            playTrack(rec);
+            playTrack(nextPlay);
             return;
           }
         } catch (e) {
@@ -1398,18 +1479,27 @@ function App() {
 
     if (current.currentTrack?.videoId) {
       try {
-        const rec = await getRelatedRecommendation(current.currentTrack.videoId);
-        if (rec && rec.videoId) {
+        const recs = await getRelatedRecommendations(current.currentTrack.videoId, 10);
+        if (recs.length > 0) {
+          const nextPlay = recs[0];
+          const remaining = recs.slice(1);
+          cacheTracks(recs);
           setAutoPlayOnMount(true);
-          playTrack(rec);
+          playTrack(nextPlay);
           setSession((prev) => {
-            const next = playTrackImmediate(prev, rec, { isAutoplay: true });
+            const next = {
+              ...playTrackImmediate(prev, nextPlay),
+              upcoming: remaining,
+              isAutoplay: false,
+            };
             void persistQueueSession(next);
             return next;
           });
           return;
         }
-      } catch {}
+      } catch (e) {
+        console.warn("[DOT Music] Failed to fetch next track recommendation:", e);
+      }
     }
 
     if (selectedPlaylist && selectedPlaylist.tracks.length > 0 && current.currentTrack) {
@@ -1594,14 +1684,9 @@ function App() {
                   </span>
                 </div>
                 <div className="sidebar-player-meta">
-                  <div style={{ display: "flex", alignItems: "center" }}>
-                    <span className="sidebar-player-title" title={currentTrack.title}>
-                      {currentTrack.title}
-                    </span>
-                    {session.isAutoplay && (
-                      <span className="sidebar-player-autoplay-badge">AUTOPLAY</span>
-                    )}
-                  </div>
+                  <span className="sidebar-player-title" title={currentTrack.title}>
+                    {currentTrack.title}
+                  </span>
                   <span
                     className={`sidebar-player-artist ${playbackError ? "error" : ""}`}
                     title={playbackError || currentTrack.artist}
@@ -1715,6 +1800,16 @@ function App() {
                   aria-label="Upcoming queue"
                 >
                   <ListMusic size={15} />
+                </button>
+
+                <button
+                  type="button"
+                  className={`sidebar-ctrl-btn fullscreen ${showFullScreen ? "active" : ""}`}
+                  onClick={() => setShowFullScreen(true)}
+                  title="Full Screen Mode (F)"
+                  aria-label="Full screen mode"
+                >
+                  <Maximize2 size={15} />
                 </button>
               </div>
 
@@ -2940,12 +3035,7 @@ function App() {
             {topPicksItems.length > 0 && (
               <TopPicksCarousel
                 items={topPicksItems}
-                onPlay={(item) =>
-                  selectTrack(
-                    item,
-                    topPicksItems.filter((i) => Boolean(i.videoId)),
-                  )
-                }
+                onPlay={selectTrack}
                 onOpenPlaylist={openPlaylist}
                 onContextMenu={(e, item) =>
                   handleContextMenu(e, item, "top-picks", {
@@ -3193,11 +3283,44 @@ function App() {
       <MusicContextMenu
         target={contextTarget}
         onClose={handleCloseContextMenu}
-        onPlayNow={selectTrack}
+        onPlayNow={(track, contextList) =>
+          selectTrack(
+            track,
+            contextTarget?.source === "playlist" ? contextList : undefined,
+          )
+        }
         onPlayNext={handlePlayNext}
         onAddToQueue={handleAddToQueue}
         onRemoveFromQueue={handleRemoveUpcoming}
         onOpenPlaylist={openPlaylist}
+      />
+
+      {/* Immersive Full Screen Player Mode */}
+      <FullScreenPlayer
+        isOpen={showFullScreen}
+        onClose={() => setShowFullScreen(false)}
+        currentTrack={currentTrack}
+        session={session}
+        isPlaying={playerState === "playing"}
+        isBuffering={playerState === "buffering"}
+        currentTime={currentTime}
+        duration={duration}
+        isMuted={isMuted}
+        playbackError={playbackError}
+        onPlayPause={togglePlayPause}
+        onNext={handleNextTrack}
+        onPrevious={handlePreviousTrack}
+        onSeek={(seconds) => {
+          playerRef.current?.seekTo(seconds, true);
+          setCurrentTime(seconds);
+          const snap = { ...sessionRef.current, currentTime: seconds };
+          void persistQueueSession(snap);
+        }}
+        onToggleMute={toggleMute}
+        onSelectTrack={handleSelectUpcoming}
+        onContextMenu={(e, track, source) =>
+          handleContextMenu(e, track, source)
+        }
       />
 
       {/* Accessible Non-Blocking Toast Notification */}
