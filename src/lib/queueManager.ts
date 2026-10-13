@@ -9,6 +9,8 @@ import {
 export type { QueueSession }
 
 export const MAX_PLAYBACK_HISTORY = 50
+
+export type RepeatMode = "off" | "all" | "one"
 const FALLBACK_STORAGE_KEY = "dot_music_queue_session"
 
 export const DEFAULT_QUEUE_SESSION: QueueSession = {
@@ -289,6 +291,7 @@ export function playTrackImmediate(
  */
 export function advanceOnTrackEnd(
   session: QueueSession,
+  options?: { repeat?: RepeatMode },
 ): {
   session: QueueSession
   nextTrack: SearchResult | null
@@ -299,9 +302,13 @@ export function advanceOnTrackEnd(
     nextHistory = pushToHistory(session.history, session.currentTrack)
   }
 
-  if (session.upcoming.length > 0) {
-    const nextTrack = session.upcoming[0]
-    const remainingUpcoming = session.upcoming.slice(1)
+  // Repeat-all: the finished track rejoins the end of Upcoming so the queue cycles.
+  const upcoming =
+    options?.repeat === "all" ? cycleTrackToEnd(session.upcoming, session.currentTrack) : session.upcoming
+
+  if (upcoming.length > 0) {
+    const nextTrack = upcoming[0]
+    const remainingUpcoming = upcoming.slice(1)
     return {
       session: {
         ...session,
@@ -377,4 +384,51 @@ export async function persistQueueSession(session: QueueSession): Promise<void> 
       console.error("[DOT Music] Failed to persist queue session via Tauri:", e)
     }
   }
+}
+
+/**
+ * Appends `track` to the end of `upcoming` (repeat-all cycling), skipping duplicates.
+ */
+export function cycleTrackToEnd(upcoming: SearchResult[], track: SearchResult | null): SearchResult[] {
+  if (!track || !isValidTrack(track)) return upcoming
+  if (upcoming.some((t) => t.videoId === track.videoId)) return upcoming
+  return [...upcoming, track]
+}
+
+/**
+ * Shuffles Upcoming (Fisher–Yates). Returns the shuffled session and the
+ * original order so shuffle can be undone later.
+ */
+export function shuffleUpcoming(session: QueueSession): {
+  session: QueueSession
+  originalOrder: SearchResult[]
+} {
+  const originalOrder = session.upcoming
+  const shuffled = [...originalOrder]
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+  }
+  return { session: { ...session, upcoming: shuffled }, originalOrder }
+}
+
+/**
+ * Restores Upcoming to `originalOrder`, keeping only tracks that are still
+ * queued and appending anything that was added while shuffled.
+ */
+export function unshuffleUpcoming(session: QueueSession, originalOrder: SearchResult[]): QueueSession {
+  const stillQueued = new Map(session.upcoming.map((t) => [t.videoId, t]))
+  const restored: SearchResult[] = []
+  for (const t of originalOrder) {
+    const current = stillQueued.get(t.videoId)
+    if (current) {
+      restored.push(current)
+      stillQueued.delete(t.videoId)
+    }
+  }
+  // Tracks added after shuffling keep their current relative order at the end.
+  for (const t of session.upcoming) {
+    if (stillQueued.has(t.videoId)) restored.push(t)
+  }
+  return { ...session, upcoming: restored }
 }

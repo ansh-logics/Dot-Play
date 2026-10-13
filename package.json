@@ -11,6 +11,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@samasante/liquid-glass": "^0.1.1",
     "lucide-react": "^1.50.0",
     "motion": "^14.0.0",
     "react": "^19.2.8",

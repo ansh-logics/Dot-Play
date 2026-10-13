@@ -1,5 +1,6 @@
 import { useEffect } from "react"
 import { Info } from "lucide-react"
+import { LiquidGlassSurface } from "./ui/LiquidGlassSurface"
 
 interface ToastProps {
   message: string | null
@@ -27,11 +28,16 @@ export function Toast({ message, onDismiss, duration = 3000 }: ToastProps) {
       aria-live="polite"
       onClick={onDismiss}
     >
-      <div className="nothing-toast-card">
+      <LiquidGlassSurface
+        as="div"
+        variant="toast"
+        radius={12}
+        className="nothing-toast-card"
+      >
         <span className="dot-red-accent small" />
         <Info size={14} className="nothing-toast-icon" />
         <span className="nothing-toast-text">{message}</span>
-      </div>
+      </LiquidGlassSurface>
     </div>
   )
 }

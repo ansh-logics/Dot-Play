@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Reorder, useDragControls } from "motion/react";
+import { Reorder } from "motion/react";
+import { UpcomingQueueItem } from "./components/queue/UpcomingQueueItem";
+import { useDragAutoScroll } from "./components/queue/useDragAutoScroll";
 import "./App.css";
 import {
   HiddenYouTubePlayer,
@@ -8,7 +10,6 @@ import {
 } from "./components/HiddenYouTubePlayer";
 import { TopPicksCarousel } from "./components/TopPicksCarousel";
 import { ArtworkImage } from "./components/ArtworkImage";
-import { FullScreenPlayer } from "./components/FullScreenPlayer";
 import { MusicContextMenu, type MusicContextTarget } from "./components/MusicContextMenu";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -37,9 +38,9 @@ import {
   Volume2,
   VolumeX,
   User,
-  Maximize2,
   CornerDownRight,
   ListPlus,
+  Maximize2,
 } from "lucide-react";
 import {
   searchTracks,
@@ -77,186 +78,20 @@ import {
   loadPersistedSession,
   persistQueueSession,
   DEFAULT_QUEUE_SESSION,
+  shuffleUpcoming,
+  unshuffleUpcoming,
+  cycleTrackToEnd,
   type QueueSession,
 } from "./lib/queueManager";
-
-type UpcomingQueueItemProps = {
-  track: SearchResult;
-  onPlay: (track: SearchResult) => void;
-  onRemove: (videoId: string) => void;
-  onContextMenu?: (event: React.MouseEvent, track: SearchResult) => void;
-  onDragStateChange?: (isDragging: boolean) => void;
-};
-
-function UpcomingQueueItem({
-  track,
-  onPlay,
-  onRemove,
-  onContextMenu,
-  onDragStateChange,
-}: UpcomingQueueItemProps) {
-  const dragControls = useDragControls();
-  const [isHeld, setIsHeld] = useState(false);
-  const holdTimerRef = useRef<number | null>(null);
-  const isPointerDownRef = useRef(false);
-  const hasDragStartedRef = useRef(false);
-  const suppressClickRef = useRef(false);
-  const initialPosRef = useRef<{ x: number; y: number } | null>(null);
-
-  const cleanupHold = useCallback(() => {
-    isPointerDownRef.current = false;
-    if (holdTimerRef.current !== null) {
-      window.clearTimeout(holdTimerRef.current);
-      holdTimerRef.current = null;
-    }
-  }, []);
-
-  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    // Only primary button
-    if (event.button !== 0) return;
-
-    // Do not initiate drag if interacting with the remove button
-    if ((event.target as HTMLElement).closest(".sidebar-queue-remove-btn")) {
-      return;
-    }
-
-    cleanupHold();
-    isPointerDownRef.current = true;
-    hasDragStartedRef.current = false;
-    initialPosRef.current = { x: event.clientX, y: event.clientY };
-
-    const nativeEvent = event.nativeEvent;
-
-    holdTimerRef.current = window.setTimeout(() => {
-      if (!isPointerDownRef.current) return;
-      hasDragStartedRef.current = true;
-      suppressClickRef.current = true;
-      setIsHeld(true);
-      onDragStateChange?.(true);
-      dragControls.start(nativeEvent);
-    }, 160);
-  };
-
-  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!isPointerDownRef.current || hasDragStartedRef.current || !initialPosRef.current) {
-      return;
-    }
-    const dist = Math.hypot(
-      event.clientX - initialPosRef.current.x,
-      event.clientY - initialPosRef.current.y
-    );
-    // If movement is deliberate (> 10px) while held down, initiate drag immediately
-    if (dist > 10) {
-      cleanupHold();
-      hasDragStartedRef.current = true;
-      suppressClickRef.current = true;
-      setIsHeld(true);
-      onDragStateChange?.(true);
-      dragControls.start(event.nativeEvent);
-    }
-  };
-
-  const handlePointerUp = () => {
-    cleanupHold();
-  };
-
-  const handlePointerCancel = () => {
-    cleanupHold();
-    if (hasDragStartedRef.current) {
-      hasDragStartedRef.current = false;
-      setIsHeld(false);
-      onDragStateChange?.(false);
-    }
-  };
-
-  const handleClick = (event: React.MouseEvent) => {
-    if (suppressClickRef.current) {
-      suppressClickRef.current = false;
-      event.stopPropagation();
-      return;
-    }
-    onPlay(track);
-  };
-
-  const handleKeyDown = (event: React.KeyboardEvent) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      onPlay(track);
-    }
-  };
-
-  const handleDragEnd = () => {
-    setIsHeld(false);
-    hasDragStartedRef.current = false;
-    onDragStateChange?.(false);
-    // Suppress trailing click event from release
-    suppressClickRef.current = true;
-    window.setTimeout(() => {
-      suppressClickRef.current = false;
-    }, 200);
-  };
-
-  return (
-    <Reorder.Item
-      as="div"
-      value={track}
-      className={`sidebar-queue-item ${isHeld ? "is-held-dragging" : ""}`}
-      dragListener={false}
-      dragControls={dragControls}
-      whileDrag={{
-        scale: 1.02,
-        boxShadow: "0 8px 24px rgba(0, 0, 0, 0.6)",
-        zIndex: 10,
-      }}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerCancel}
-      onClick={handleClick}
-      onContextMenu={(event) => {
-        if (onContextMenu) {
-          event.preventDefault();
-          event.stopPropagation();
-          onContextMenu(event, track);
-        }
-      }}
-      onKeyDown={handleKeyDown}
-      onDragEnd={handleDragEnd}
-      role="button"
-      tabIndex={0}
-      title="Click to play, hold to reorder"
-    >
-      <ArtworkImage
-        src={track.thumbnailUrl}
-        videoId={track.videoId}
-        alt={track.title}
-        className="sidebar-queue-thumb"
-        variant="thumbnail"
-      />
-      <div className="sidebar-queue-meta">
-        <span className="sidebar-queue-item-title" title={track.title}>
-          {track.title}
-        </span>
-        <span className="sidebar-queue-item-artist" title={track.artist}>
-          {track.artist}
-        </span>
-      </div>
-      <button
-        type="button"
-        className="sidebar-queue-remove-btn"
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={(event) => {
-          event.stopPropagation();
-          onRemove(track.videoId);
-        }}
-        title="Remove from queue"
-        aria-label={`Remove ${track.title} from queue`}
-      >
-        <X size={10} strokeWidth={2.5} />
-      </button>
-    </Reorder.Item>
-  );
-}
+import {
+  loadPlaybackModes,
+  savePlaybackModes,
+  nextRepeatMode,
+  loadVolume,
+  saveVolume,
+  type PlaybackModes,
+} from "./lib/playbackModes";
+import { NowPlaying } from "./components/now-playing/NowPlaying";
 
 function App() {
   const [activeNav, setActiveNav] = useState<"home" | "search" | "library" | "history">("home");
@@ -452,10 +287,15 @@ function App() {
   const [duration, setDuration] = useState(0);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(false);
+  const [volume, setVolume] = useState(loadVolume);
+  const volumeRef = useRef(volume);
+  const [playbackModes, setPlaybackModes] = useState<PlaybackModes>(loadPlaybackModes);
+  const playbackModesRef = useRef(playbackModes);
+  const preShuffleOrderRef = useRef<SearchResult[] | null>(null);
+  const [showNowPlaying, setShowNowPlaying] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [showQueue, setShowQueue] = useState(false);
-  const [showFullScreen, setShowFullScreen] = useState(false);
 
   // Authoritative Queue Operations
   const handleUpcomingReorder = useCallback((upcoming: SearchResult[]) => {
@@ -509,89 +349,8 @@ function App() {
     });
   }, []);
 
-  // Auto-scroll controller for upcoming queue while dragging
-  const queueListRef = useRef<HTMLDivElement>(null);
-  const isQueueDraggingRef = useRef(false);
-  const queuePointerYRef = useRef<number | null>(null);
-  const autoScrollRafRef = useRef<number | null>(null);
-
-  const stopAutoScroll = useCallback(() => {
-    if (autoScrollRafRef.current !== null) {
-      cancelAnimationFrame(autoScrollRafRef.current);
-      autoScrollRafRef.current = null;
-    }
-    queuePointerYRef.current = null;
-  }, []);
-
-  const startAutoScroll = useCallback(() => {
-    if (autoScrollRafRef.current !== null) return;
-
-    const scrollStep = () => {
-      if (!isQueueDraggingRef.current) {
-        stopAutoScroll();
-        return;
-      }
-
-      const container = queueListRef.current;
-      if (container && queuePointerYRef.current !== null) {
-        const rect = container.getBoundingClientRect();
-        const pointerY = queuePointerYRef.current;
-        const edgeThreshold = 36;
-
-        if (pointerY >= rect.bottom - edgeThreshold && pointerY <= rect.bottom + 50) {
-          // Slowly auto-scroll down
-          const factor = Math.min(1, Math.max(0.2, (pointerY - (rect.bottom - edgeThreshold)) / edgeThreshold));
-          container.scrollTop += 2.5 * factor;
-        } else if (pointerY <= rect.top + edgeThreshold && pointerY >= rect.top - 50) {
-          // Slowly auto-scroll up
-          const factor = Math.min(1, Math.max(0.2, ((rect.top + edgeThreshold) - pointerY) / edgeThreshold));
-          container.scrollTop -= 2.5 * factor;
-        }
-      }
-
-      autoScrollRafRef.current = requestAnimationFrame(scrollStep);
-    };
-
-    autoScrollRafRef.current = requestAnimationFrame(scrollStep);
-  }, [stopAutoScroll]);
-
-  const handleQueueDragStateChange = useCallback(
-    (isDragging: boolean) => {
-      isQueueDraggingRef.current = isDragging;
-      if (isDragging) {
-        startAutoScroll();
-      } else {
-        stopAutoScroll();
-      }
-    },
-    [startAutoScroll, stopAutoScroll],
-  );
-
-  useEffect(() => {
-    const handleWindowPointerMove = (e: PointerEvent) => {
-      if (isQueueDraggingRef.current) {
-        queuePointerYRef.current = e.clientY;
-      }
-    };
-
-    const handleWindowPointerEnd = () => {
-      if (isQueueDraggingRef.current) {
-        isQueueDraggingRef.current = false;
-        stopAutoScroll();
-      }
-    };
-
-    window.addEventListener("pointermove", handleWindowPointerMove, { passive: true });
-    window.addEventListener("pointerup", handleWindowPointerEnd, { passive: true });
-    window.addEventListener("pointercancel", handleWindowPointerEnd, { passive: true });
-
-    return () => {
-      window.removeEventListener("pointermove", handleWindowPointerMove);
-      window.removeEventListener("pointerup", handleWindowPointerEnd);
-      window.removeEventListener("pointercancel", handleWindowPointerEnd);
-      stopAutoScroll();
-    };
-  }, [stopAutoScroll]);
+  // Auto-scroll controller for the sidebar upcoming queue while dragging
+  const { listRef: queueListRef, onDragStateChange: handleQueueDragStateChange } = useDragAutoScroll();
 
   const playerRef = useRef<YouTubePlayerInstance | null>(null);
   const isScrubbingRef = useRef(false);
@@ -613,11 +372,74 @@ function App() {
     playerStateRef.current = playerState;
   }, [playerState]);
 
+  useEffect(() => {
+    playbackModesRef.current = playbackModes;
+    savePlaybackModes(playbackModes);
+  }, [playbackModes]);
+
+  const cycleRepeatMode = useCallback(() => {
+    setPlaybackModes((m) => ({ ...m, repeat: nextRepeatMode(m.repeat) }));
+  }, []);
+
+  const toggleAutoplay = useCallback(() => {
+    setPlaybackModes((m) => ({ ...m, autoplay: !m.autoplay }));
+  }, []);
+
+  const toggleShuffle = useCallback(() => {
+    const turningOn = !playbackModesRef.current.shuffle;
+    setSession((prev) => {
+      let next: QueueSession;
+      if (turningOn) {
+        const shuffled = shuffleUpcoming(prev);
+        preShuffleOrderRef.current = shuffled.originalOrder;
+        next = shuffled.session;
+      } else {
+        next = unshuffleUpcoming(prev, preShuffleOrderRef.current ?? prev.upcoming);
+        preShuffleOrderRef.current = null;
+      }
+      void persistQueueSession(next);
+      return next;
+    });
+    setPlaybackModes((m) => ({ ...m, shuffle: turningOn }));
+  }, []);
+
+  const changeVolume = useCallback(
+    (next: number) => {
+      const v = Math.max(0, Math.min(100, Math.round(next)));
+      setVolume(v);
+      volumeRef.current = v;
+      playerRef.current?.setVolume?.(v);
+      if (v === 0 && !isMuted) {
+        playerRef.current?.mute?.();
+        setIsMuted(true);
+      } else if (v > 0 && isMuted) {
+        playerRef.current?.unMute?.();
+        setIsMuted(false);
+      }
+      if (v > 0) saveVolume(v);
+    },
+    [isMuted],
+  );
+
+  const seekTo = useCallback((seconds: number) => {
+    if (!playerRef.current) return;
+    const total = durationRef.current;
+    const target = Math.max(0, Math.min(total > 0 ? total : seconds, seconds));
+    playerRef.current.seekTo(target, true);
+    setCurrentTime(target);
+    void persistQueueSession({ ...sessionRef.current, currentTime: target });
+  }, []);
+
   const toggleMute = () => {
     if (!playerRef.current) return;
     if (isMuted) {
       playerRef.current.unMute?.();
       setIsMuted(false);
+      if (volume === 0) {
+        setVolume(100);
+        volumeRef.current = 100;
+        playerRef.current.setVolume?.(100);
+      }
     } else {
       playerRef.current.mute?.();
       setIsMuted(true);
@@ -680,11 +502,6 @@ function App() {
           e.preventDefault();
           return;
         }
-        if (showFullScreen) {
-          setShowFullScreen(false);
-          e.preventDefault();
-          return;
-        }
         if (showProfileMenu) {
           setShowProfileMenu(false);
           e.preventDefault();
@@ -710,15 +527,6 @@ function App() {
       // Ignore playback/navigation shortcuts if user is typing
       if (isTyping(e.target)) return;
 
-      // Fullscreen shortcut (F)
-      if ((e.key === "f" || e.key === "F") && !e.metaKey && !e.ctrlKey) {
-        if (currentTrack) {
-          e.preventDefault();
-          setShowFullScreen((prev) => !prev);
-          return;
-        }
-      }
-
       // 2. Space: Play / Pause
       if (e.code === "Space") {
         e.preventDefault();
@@ -740,7 +548,16 @@ function App() {
         return;
       }
 
-      // 5. / : Focus Search
+      // 5. F: Toggle full-screen Now Playing
+      if (e.key.toLowerCase() === "f" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        if (sessionRef.current.currentTrack) {
+          e.preventDefault();
+          setShowNowPlaying((open) => !open);
+        }
+        return;
+      }
+
+      // 6. / : Focus Search
       if (e.key === "/") {
         e.preventDefault();
         searchInputRef.current?.focus();
@@ -760,7 +577,6 @@ function App() {
     showSupportModal,
     showProfileMenu,
     showQueue,
-    showFullScreen,
     currentTrack,
     selectedPlaylist,
     activeNav,
@@ -1183,6 +999,7 @@ function App() {
   const handlePlayerReady = useCallback((player: YouTubePlayerInstance) => {
     playerRef.current = player;
     setIsPlayerReady(true);
+    player.setVolume?.(volumeRef.current);
     const initialDuration = player.getDuration();
     if (initialDuration > 0) {
       setDuration(initialDuration);
@@ -1237,7 +1054,7 @@ function App() {
     );
   }, []);
 
-  // 4. Progress Sync Loop (250ms interval)
+  // 4. Progress Sync Loop (100ms interval for tight lyrics timing)
   useEffect(() => {
     if (!isPlayerReady || !currentTrack) return;
 
@@ -1255,9 +1072,10 @@ function App() {
     };
 
     syncPlayerTime();
-    const timer = window.setInterval(syncPlayerTime, 250);
+    const intervalMs = playerState === "playing" ? 100 : 250;
+    const timer = window.setInterval(syncPlayerTime, intervalMs);
     return () => window.clearInterval(timer);
-  }, [isPlayerReady, currentTrack]);
+  }, [isPlayerReady, currentTrack, playerState]);
 
   // 4b. Record playback to YouTube Music history once 10 seconds of playback threshold is met
   useEffect(() => {
@@ -1417,7 +1235,16 @@ function App() {
 
   const handleTrackCompleted = useCallback(async () => {
     const current = sessionRef.current;
-    const { session: nextSession, nextTrack, needsAutoplay } = advanceOnTrackEnd(current);
+    const { repeat, autoplay } = playbackModesRef.current;
+
+    if (repeat === "one" && current.currentTrack && playerRef.current) {
+      playerRef.current.seekTo(0, true);
+      setCurrentTime(0);
+      playerRef.current.playVideo();
+      return;
+    }
+
+    const { session: nextSession, nextTrack, needsAutoplay } = advanceOnTrackEnd(current, { repeat });
 
     if (nextTrack) {
       setSession(nextSession);
@@ -1428,7 +1255,7 @@ function App() {
     }
 
     if (needsAutoplay) {
-      const lastVideoId = current.currentTrack?.videoId;
+      const lastVideoId = autoplay ? current.currentTrack?.videoId : undefined;
       if (lastVideoId) {
         try {
           const recs = await getRelatedRecommendations(lastVideoId, 10);
@@ -1465,19 +1292,23 @@ function App() {
 
   const handleNextTrack = useCallback(async () => {
     const current = sessionRef.current;
-    if (current.upcoming.length > 0) {
-      const nextTrack = current.upcoming[0];
+    const { repeat, autoplay } = playbackModesRef.current;
+    const upcoming =
+      repeat === "all" ? cycleTrackToEnd(current.upcoming, current.currentTrack) : current.upcoming;
+    if (upcoming.length > 0) {
+      const nextTrack = upcoming[0];
       setAutoPlayOnMount(true);
       playTrack(nextTrack);
       setSession((prev) => {
-        const next = playTrackImmediate(prev, nextTrack);
+        const cycled = repeat === "all" ? cycleTrackToEnd(prev.upcoming, prev.currentTrack) : prev.upcoming;
+        const next = playTrackImmediate({ ...prev, upcoming: cycled }, nextTrack);
         void persistQueueSession(next);
         return next;
       });
       return;
     }
 
-    if (current.currentTrack?.videoId) {
+    if (autoplay && current.currentTrack?.videoId) {
       try {
         const recs = await getRelatedRecommendations(current.currentTrack.videoId, 10);
         if (recs.length > 0) {
@@ -1666,7 +1497,10 @@ function App() {
               <div className={`sidebar-player-header ${showQueue ? "queue-view" : "hero-view"}`}>
                 <div
                   className="sidebar-artwork-container"
-                  onClick={() => setShowQueue((prev) => !prev)}
+                  onClick={(e) => {
+                    if (e.altKey) setShowNowPlaying(true);
+                    else setShowQueue((prev) => !prev);
+                  }}
                   role="button"
                   tabIndex={0}
                   title={showQueue ? "Click to expand album artwork" : "Click to view upcoming queue"}
@@ -1680,8 +1514,20 @@ function App() {
                     priority
                   />
                   <span className="sidebar-artwork-hint-badge">
-                    {showQueue ? <Maximize2 size={11} /> : <ListMusic size={11} />}
+                    {showQueue ? <ListMusic size={11} /> : <ListMusic size={11} />}
                   </span>
+                  <button
+                    type="button"
+                    className="sidebar-expand-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowNowPlaying(true);
+                    }}
+                    title="Open Now Playing (F)"
+                    aria-label="Open Now Playing"
+                  >
+                    <Maximize2 size={12} />
+                  </button>
                 </div>
                 <div className="sidebar-player-meta">
                   <span className="sidebar-player-title" title={currentTrack.title}>
@@ -1800,16 +1646,6 @@ function App() {
                   aria-label="Upcoming queue"
                 >
                   <ListMusic size={15} />
-                </button>
-
-                <button
-                  type="button"
-                  className={`sidebar-ctrl-btn fullscreen ${showFullScreen ? "active" : ""}`}
-                  onClick={() => setShowFullScreen(true)}
-                  title="Full Screen Mode (F)"
-                  aria-label="Full screen mode"
-                >
-                  <Maximize2 size={15} />
                 </button>
               </div>
 
@@ -3279,6 +3115,38 @@ function App() {
         </div>
       )}
 
+      {/* Full-screen Now Playing */}
+      <NowPlaying
+        isOpen={showNowPlaying}
+        onClose={() => setShowNowPlaying(false)}
+        session={session}
+        isPlaying={playerState === "playing"}
+        isBuffering={playerState === "buffering"}
+        isReady={isPlayerReady}
+        currentTime={currentTime}
+        duration={duration}
+        playbackError={playbackError}
+        volume={volume}
+        isMuted={isMuted}
+        modes={playbackModes}
+        onPlayPause={togglePlayPause}
+        onNext={handleNextTrack}
+        onPrevious={handlePreviousTrack}
+        onSeek={seekTo}
+        onToggleMute={toggleMute}
+        onVolumeChange={changeVolume}
+        onCycleRepeat={cycleRepeatMode}
+        onToggleAutoplay={toggleAutoplay}
+        onToggleShuffle={toggleShuffle}
+        onSelectTrack={handleSelectUpcoming}
+        onReorderUpcoming={handleUpcomingReorder}
+        onRemoveUpcoming={handleRemoveUpcoming}
+        onClearUpcoming={handleClearUpcoming}
+        onPlayNext={handlePlayNext}
+        onAddToQueue={handleAddToQueue}
+        onContextMenu={handleContextMenu}
+      />
+
       {/* Custom Music Context Menu */}
       <MusicContextMenu
         target={contextTarget}
@@ -3293,34 +3161,6 @@ function App() {
         onAddToQueue={handleAddToQueue}
         onRemoveFromQueue={handleRemoveUpcoming}
         onOpenPlaylist={openPlaylist}
-      />
-
-      {/* Immersive Full Screen Player Mode */}
-      <FullScreenPlayer
-        isOpen={showFullScreen}
-        onClose={() => setShowFullScreen(false)}
-        currentTrack={currentTrack}
-        session={session}
-        isPlaying={playerState === "playing"}
-        isBuffering={playerState === "buffering"}
-        currentTime={currentTime}
-        duration={duration}
-        isMuted={isMuted}
-        playbackError={playbackError}
-        onPlayPause={togglePlayPause}
-        onNext={handleNextTrack}
-        onPrevious={handlePreviousTrack}
-        onSeek={(seconds) => {
-          playerRef.current?.seekTo(seconds, true);
-          setCurrentTime(seconds);
-          const snap = { ...sessionRef.current, currentTime: seconds };
-          void persistQueueSession(snap);
-        }}
-        onToggleMute={toggleMute}
-        onSelectTrack={handleSelectUpcoming}
-        onContextMenu={(e, track, source) =>
-          handleContextMenu(e, track, source)
-        }
       />
 
       {/* Accessible Non-Blocking Toast Notification */}

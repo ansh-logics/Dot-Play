@@ -228,6 +228,42 @@ export function clearRecentSearches(): void {
   }
 }
 
+export function cleanSearchResultMetadata(item: SearchResult): SearchResult {
+  let title = item.title?.trim() ?? "";
+  let artist = item.artist?.trim() ?? "";
+
+  // Strip leading Song • / Video • prefixes
+  artist = artist.replace(/^(?:Song|Video|Track|Single|EP|Album)\s*[•·]\s*/i, "").trim();
+
+  // If artist ended up generic or literally "Song" / "Video", parse from "Artist - Title"
+  if (
+    (!artist || artist.toLowerCase() === "song" || artist.toLowerCase() === "video" || artist.toLowerCase() === "artist") &&
+    title.includes(" - ")
+  ) {
+    const parts = title.split(" - ");
+    artist = parts[0].trim();
+    title = parts.slice(1).join(" - ").trim();
+  }
+
+  // Strip channel suffixes
+  if (artist.endsWith(" - Topic")) {
+    artist = artist.slice(0, -8).trim();
+  } else if (artist.endsWith("VEVO") && artist.length > 4) {
+    artist = artist.slice(0, -4).trim();
+  } else if (artist.endsWith(" Official") && artist.length > 9) {
+    artist = artist.slice(0, -9).trim();
+  }
+
+  // Clean trailing video markers from title e.g. "(Official Video)", "[Lyric Video]"
+  title = title.replace(/\s*[\(\[](?:official\s*(?:music\s*)?video|official\s*audio|lyric\s*video|visualizer|audio)[\)\]]/gi, "").trim();
+
+  return {
+    ...item,
+    title: title || item.title,
+    artist: artist || "Unknown Artist",
+  };
+}
+
 /**
  * Searches YouTube tracks.
  * - In Tauri Desktop: delegates to native Rust backend (no CORS, live search without API key).
@@ -244,7 +280,8 @@ export async function searchTracks(
   // 1. If running inside Tauri desktop app, use Rust native search
   if (isTauriEnvironment()) {
     try {
-      return await invoke<SearchResult[]>("search_tracks", { query: cleanQuery })
+      const results = await invoke<SearchResult[]>("search_tracks", { query: cleanQuery })
+      return results.map(cleanSearchResultMetadata)
     } catch (error) {
       throw new Error(
         error instanceof Error ? error.message : "Tauri native search failed.",
@@ -289,15 +326,17 @@ export async function searchTracks(
 
     return (data.items ?? [])
       .filter((item) => item.id?.videoId && item.snippet?.title)
-      .map((item) => ({
-        videoId: item.id!.videoId!,
-        title: item.snippet!.title!,
-        artist: item.snippet!.channelTitle ?? "Unknown Artist",
-        thumbnailUrl:
-          item.snippet!.thumbnails?.medium?.url ??
-          item.snippet!.thumbnails?.default?.url ??
-          "",
-      }))
+      .map((item) =>
+        cleanSearchResultMetadata({
+          videoId: item.id!.videoId!,
+          title: item.snippet!.title!,
+          artist: item.snippet!.channelTitle ?? "Unknown Artist",
+          thumbnailUrl:
+            item.snippet!.thumbnails?.medium?.url ??
+            item.snippet!.thumbnails?.default?.url ??
+            "",
+        })
+      )
   }
 
   // 3. Fallback for pure web browser without API key: search local demo catalog

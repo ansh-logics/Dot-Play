@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useLayoutEffect } from "react";
 import { Play, CornerDownRight, ListPlus, Trash2, FolderOpen } from "lucide-react";
 import type { SearchResult } from "../lib/search";
 import { ArtworkImage } from "./ArtworkImage";
+import { LiquidGlassSurface } from "./ui/LiquidGlassSurface";
 
 export type MusicContextTarget = {
   track: SearchResult;
@@ -91,8 +92,10 @@ export const MusicContextMenu: React.FC<MusicContextMenuProps> = ({
   const hasPlayableTrack = Boolean(track.videoId);
 
   return (
-    <div
+    <LiquidGlassSurface
       ref={menuRef}
+      variant="menu"
+      radius={14}
       className="music-context-menu"
       style={{
         top: coords.y,
@@ -105,6 +108,7 @@ export const MusicContextMenu: React.FC<MusicContextMenuProps> = ({
         e.preventDefault();
         e.stopPropagation();
       }}
+      filterResolution={1}
     >
       {/* Header with track preview */}
       <div className="music-context-header">
@@ -216,6 +220,6 @@ export const MusicContextMenu: React.FC<MusicContextMenuProps> = ({
             </>
           )}
       </div>
-    </div>
+    </LiquidGlassSurface>
   );
 };

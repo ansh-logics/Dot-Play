@@ -116,6 +116,165 @@ fn generate_cpn() -> String {
     hash[..16].to_string()
 }
 
+fn is_duration_or_views_or_year(text: &str) -> bool {
+    let t = text.trim();
+    if t.is_empty() {
+        return false;
+    }
+    if t.split(':').all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit())) && t.contains(':') {
+        return true;
+    }
+    let lower = t.to_lowercase();
+    if lower.ends_with("views") || lower.ends_with("plays") || lower.ends_with("subscribers") {
+        return true;
+    }
+    if t.len() == 4 && t.chars().all(|c| c.is_ascii_digit()) {
+        if let Ok(y) = t.parse::<u32>() {
+            if (1900..=2099).contains(&y) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn parse_ytmusic_artist_from_runs(runs: &[serde_json::Value]) -> String {
+    // 1. Check if any run has an explicit artist browseEndpoint
+    let mut explicit_artists = Vec::new();
+    for run in runs {
+        let is_artist = run
+            .pointer("/navigationEndpoint/browseEndpoint/browseEndpointContextSupportedConfigs/browseEndpointContextMusicConfig/pageType")
+            .and_then(|v| v.as_str())
+            .map(|pt| pt == "MUSIC_PAGE_TYPE_ARTIST" || pt == "MUSIC_PAGE_TYPE_USER_CHANNEL")
+            .unwrap_or(false)
+            || run
+                .pointer("/navigationEndpoint/browseEndpoint/browseId")
+                .and_then(|v| v.as_str())
+                .map(|id| id.starts_with("UC") || id.starts_with("FEmusic_library_privately_owned_artist"))
+                .unwrap_or(false);
+
+        if is_artist {
+            if let Some(txt) = run.get("text").and_then(|v| v.as_str()) {
+                let trimmed = txt.trim();
+                if !trimmed.is_empty() && !explicit_artists.iter().any(|&e: &&str| e == trimmed) {
+                    explicit_artists.push(trimmed);
+                }
+            }
+        }
+    }
+
+    if !explicit_artists.is_empty() {
+        return explicit_artists.join(", ");
+    }
+
+    // 2. Iterate through runs, skipping type badges and separators
+    let mut candidate_parts: Vec<&str> = Vec::new();
+    let mut passed_type_badge = false;
+
+    for (i, run) in runs.iter().enumerate() {
+        let txt = run.get("text").and_then(|v| v.as_str()).unwrap_or("").trim();
+        if txt.is_empty() {
+            continue;
+        }
+
+        if txt == "•" || txt == "·" || txt == "|" || txt == "-" {
+            continue;
+        }
+
+        let is_type_badge = txt.eq_ignore_ascii_case("Song")
+            || txt.eq_ignore_ascii_case("Video")
+            || txt.eq_ignore_ascii_case("Track")
+            || txt.eq_ignore_ascii_case("Audio")
+            || txt.eq_ignore_ascii_case("Single")
+            || txt.eq_ignore_ascii_case("EP")
+            || txt.eq_ignore_ascii_case("Album")
+            || txt.eq_ignore_ascii_case("Playlist")
+            || txt.eq_ignore_ascii_case("Featured Playlist")
+            || txt.eq_ignore_ascii_case("Community Playlist");
+
+        if !passed_type_badge && is_type_badge {
+            passed_type_badge = true;
+            continue;
+        }
+
+        if is_duration_or_views_or_year(txt) {
+            break;
+        }
+
+        candidate_parts.push(txt);
+
+        if let Some(next_run) = runs.get(i + 1) {
+            let next_txt = next_run.get("text").and_then(|v| v.as_str()).unwrap_or("").trim();
+            if next_txt == "&" || next_txt == "," || next_txt.eq_ignore_ascii_case("feat.") || next_txt.eq_ignore_ascii_case("ft.") {
+                continue;
+            }
+        }
+
+        if !candidate_parts.is_empty() {
+            break;
+        }
+    }
+
+    if !candidate_parts.is_empty() {
+        return candidate_parts.join(" ");
+    }
+
+    let all_text = runs
+        .iter()
+        .filter_map(|r| r.get("text").and_then(|v| v.as_str()))
+        .collect::<Vec<_>>()
+        .join("");
+
+    clean_artist_string(&all_text)
+}
+
+fn clean_artist_string(raw: &str) -> String {
+    let mut s = raw.trim();
+    let prefixes = [
+        "Song •", "Song ·", "Video •", "Video ·", "Track •", "Track ·",
+        "Single •", "Single ·", "EP •", "EP ·", "Album •", "Album ·",
+    ];
+    for p in prefixes {
+        if s.to_lowercase().starts_with(&p.to_lowercase()) {
+            s = s[p.len()..].trim();
+        }
+    }
+    if let Some((first, _rest)) = s.split_once(" • ") {
+        s = first.trim();
+    } else if let Some((first, _rest)) = s.split_once(" · ") {
+        s = first.trim();
+    }
+
+    if s.is_empty() || s.eq_ignore_ascii_case("Song") || s.eq_ignore_ascii_case("Video") {
+        return "Unknown Artist".to_string();
+    }
+    s.to_string()
+}
+
+fn clean_ytmusic_title_and_artist(raw_title: &str, raw_artist: &str) -> (String, String) {
+    let mut title = raw_title.trim().to_string();
+    let mut artist = clean_artist_string(raw_artist);
+
+    if (artist == "Unknown Artist" || artist.eq_ignore_ascii_case("Song") || artist.eq_ignore_ascii_case("Video"))
+        && title.contains(" - ")
+    {
+        if let Some((a, t)) = title.split_once(" - ") {
+            artist = a.trim().to_string();
+            title = t.trim().to_string();
+        }
+    }
+
+    if artist.ends_with(" - Topic") {
+        artist = artist.trim_end_matches(" - Topic").trim().to_string();
+    } else if artist.ends_with("VEVO") && artist.len() > 4 {
+        artist = artist.trim_end_matches("VEVO").trim().to_string();
+    } else if artist.ends_with(" Official") && artist.len() > 9 {
+        artist = artist.trim_end_matches(" Official").trim().to_string();
+    }
+
+    (title, artist)
+}
+
 #[tauri::command]
 async fn search_tracks(query: String) -> Result<Vec<SearchResult>, String> {
     let clean_query = query.trim();
@@ -173,25 +332,17 @@ async fn search_tracks(query: String) -> Result<Vec<SearchResult>, String> {
             .unwrap_or("");
         let thumb = upscale_thumbnail_url(raw_thumb);
 
-        let mut artist_parts = Vec::new();
-        if let Some(subtitle_runs) = card.pointer("/subtitle/runs").and_then(|v| v.as_array()) {
-            for run in subtitle_runs {
-                if let Some(txt) = run.get("text").and_then(|v| v.as_str()) {
-                    artist_parts.push(txt);
-                }
-            }
-        }
-        let artist = if !artist_parts.is_empty() {
-            artist_parts.join("")
-        } else {
-            "YouTube Music".to_string()
-        };
+        let subtitle_runs = card.pointer("/subtitle/runs").and_then(|v| v.as_array());
+        let raw_artist = subtitle_runs
+            .map(|runs| parse_ytmusic_artist_from_runs(runs))
+            .unwrap_or_else(|| "YouTube Music".to_string());
 
         if let (Some(id), Some(t)) = (video_id, title) {
+            let (clean_t, clean_a) = clean_ytmusic_title_and_artist(t, &raw_artist);
             results.push(SearchResult {
                 video_id: id.to_string(),
-                title: t.to_string(),
-                artist,
+                title: clean_t,
+                artist: clean_a,
                 thumbnail_url: thumb.to_string(),
                 playlist_id: None,
                 item_type: Some("song".to_string()),
@@ -222,10 +373,12 @@ async fn search_tracks(query: String) -> Result<Vec<SearchResult>, String> {
                             .pointer("/flexColumns/0/musicResponsiveListItemFlexColumnRenderer/text/runs/0/text")
                             .and_then(|v| v.as_str());
 
-                        let artist = item_renderer
-                            .pointer("/flexColumns/1/musicResponsiveListItemFlexColumnRenderer/text/runs/0/text")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("Artist");
+                        let subtitle_runs = item_renderer
+                            .pointer("/flexColumns/1/musicResponsiveListItemFlexColumnRenderer/text/runs")
+                            .and_then(|v| v.as_array());
+                        let raw_artist = subtitle_runs
+                            .map(|runs| parse_ytmusic_artist_from_runs(runs))
+                            .unwrap_or_else(|| "Unknown Artist".to_string());
 
                         let raw_thumb = item_renderer
                             .pointer("/thumbnailRenderer/musicThumbnailRenderer/thumbnail/thumbnails")
@@ -239,11 +392,12 @@ async fn search_tracks(query: String) -> Result<Vec<SearchResult>, String> {
                         let thumb = upscale_thumbnail_url(raw_thumb);
 
                         if let (Some(id), Some(t)) = (video_id, title) {
+                            let (clean_t, clean_a) = clean_ytmusic_title_and_artist(t, &raw_artist);
                             if !results.iter().any(|r| r.video_id == id) {
                                 results.push(SearchResult {
                                     video_id: id.to_string(),
-                                    title: t.to_string(),
-                                    artist: artist.to_string(),
+                                    title: clean_t,
+                                    artist: clean_a,
                                     thumbnail_url: thumb.to_string(),
                                     playlist_id: None,
                                     item_type: Some("song".to_string()),
@@ -686,7 +840,7 @@ fn parse_feed_item(item: &serde_json::Value) -> Option<SearchResult> {
         .or_else(|| item.get("musicResponsiveListItemRenderer"))?;
 
     // 1. Extract Title
-    let title = renderer
+    let raw_title = renderer
         .pointer("/title/runs/0/text")
         .or_else(|| renderer.pointer("/flexColumns/0/musicResponsiveListItemFlexColumnRenderer/text/runs/0/text"))
         .and_then(|v| v.as_str())?;
@@ -704,11 +858,12 @@ fn parse_feed_item(item: &serde_json::Value) -> Option<SearchResult> {
             }
         }
     }
-    let artist = if !subtitle_parts.is_empty() {
-        subtitle_parts.join("")
+    let raw_artist = if let Some(runs) = subtitle_runs_opt {
+        parse_ytmusic_artist_from_runs(runs)
     } else {
         "YouTube Music".to_string()
     };
+    let (title, artist) = clean_ytmusic_title_and_artist(raw_title, &raw_artist);
 
     // 3. Extract Thumbnail
     let raw_thumb = renderer
@@ -1570,19 +1725,11 @@ async fn get_playlist_details(
                     .pointer("/flexColumns/0/musicResponsiveListItemFlexColumnRenderer/text/runs/0/text")
                     .and_then(|v| v.as_str());
 
-                let mut track_artist_parts = Vec::new();
-                if let Some(runs) = r.pointer("/flexColumns/1/musicResponsiveListItemFlexColumnRenderer/text/runs").and_then(|v| v.as_array()) {
-                    for run in runs {
-                        if let Some(txt) = run.get("text").and_then(|v| v.as_str()) {
-                            track_artist_parts.push(txt);
-                        }
-                    }
-                }
-                let track_artist = if !track_artist_parts.is_empty() {
-                    track_artist_parts.join("")
-                } else {
-                    "Artist".to_string()
-                };
+                let raw_artist = r
+                    .pointer("/flexColumns/1/musicResponsiveListItemFlexColumnRenderer/text/runs")
+                    .and_then(|v| v.as_array())
+                    .map(|runs| parse_ytmusic_artist_from_runs(runs))
+                    .unwrap_or_else(|| "Artist".to_string());
 
                 let duration = r
                     .pointer("/fixedColumns/0/musicResponsiveListItemFixedColumnRenderer/text/runs/0/text")
@@ -1599,10 +1746,11 @@ async fn get_playlist_details(
                 let final_track_thumb = upscale_thumbnail_url(track_thumb);
 
                 if let (Some(id), Some(t)) = (video_id, track_title) {
+                    let (clean_t, clean_a) = clean_ytmusic_title_and_artist(t, &raw_artist);
                     tracks.push(PlaylistTrack {
                         video_id: id.to_string(),
-                        title: t.to_string(),
-                        artist: track_artist,
+                        title: clean_t,
+                        artist: clean_a,
                         duration: duration.to_string(),
                         thumbnail_url: final_track_thumb,
                     });
