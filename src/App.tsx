@@ -92,6 +92,10 @@ import {
   type PlaybackModes,
 } from "./lib/playbackModes";
 import { NowPlaying } from "./components/now-playing/NowPlaying";
+import { useArtwork } from "./lib/imagePipeline";
+import { useArtworkPalette } from "./lib/useArtworkPalette";
+import { cleanDisplayTitle } from "./lib/displayText";
+import { loadFeedbackPrefs, saveFeedbackPrefs, type FeedbackPrefs } from "./lib/feedback";
 
 function App() {
   const [activeNav, setActiveNav] = useState<"home" | "search" | "library" | "history">("home");
@@ -120,12 +124,17 @@ function App() {
   const isRefreshingAuthRef = useRef(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
 
-  // Top picks carousel items computed from first shelf
-  const topPicksItems = useMemo(() => {
-    if (homeSections.length === 0) return [];
-    const firstGoodShelf = homeSections.find((s) => s.items.length >= 3);
-    return (firstGoodShelf ? firstGoodShelf.items : homeSections[0].items).slice(0, 8);
+  // Top picks carousel items come from the first shelf with at least 3 items;
+  // that shelf is then left out of the shelf list so it isn't shown twice.
+  const topPicksShelfIndex = useMemo(() => {
+    if (homeSections.length === 0) return -1;
+    const idx = homeSections.findIndex((s) => s.items.length >= 3);
+    return idx === -1 ? 0 : idx;
   }, [homeSections]);
+  const topPicksItems = useMemo(
+    () => (topPicksShelfIndex >= 0 ? homeSections[topPicksShelfIndex].items.slice(0, 8) : []),
+    [homeSections, topPicksShelfIndex],
+  );
 
   // Featured playlists extracted from home feed
   const featuredPlaylists = useMemo(() => {
@@ -155,6 +164,14 @@ function App() {
   }, [session]);
 
   const currentTrack = session.currentTrack;
+  // Same URL the sidebar artwork resolves to, so the tint matches the pixels on screen.
+  const { currentUrl: sidebarArtUrl } = useArtwork({
+    sourceUrl: currentTrack?.thumbnailUrl ?? "",
+    videoId: currentTrack?.videoId,
+    variant: "hero",
+    priority: true,
+  });
+  const sidebarPalette = useArtworkPalette(currentTrack ? sidebarArtUrl : undefined);
 
   const [activeQueueTab, setActiveQueueTab] = useState<"upcoming" | "history">("upcoming");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -293,6 +310,14 @@ function App() {
   const playbackModesRef = useRef(playbackModes);
   const preShuffleOrderRef = useRef<SearchResult[] | null>(null);
   const [showNowPlaying, setShowNowPlaying] = useState(false);
+  const [feedbackPrefs, setFeedbackPrefs] = useState<FeedbackPrefs>(loadFeedbackPrefs);
+  const updateFeedbackPrefs = useCallback((patch: Partial<FeedbackPrefs>) => {
+    setFeedbackPrefs((prev) => {
+      const next = { ...prev, ...patch };
+      saveFeedbackPrefs(next);
+      return next;
+    });
+  }, []);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [showQueue, setShowQueue] = useState(false);
@@ -1492,6 +1517,7 @@ function App() {
           {currentTrack && (
             <div
               className={`sidebar-player-card ${showQueue ? "queue-mode" : "hero-mode"}`}
+              style={sidebarPalette ? ({ "--tint": sidebarPalette.colors[0] } as React.CSSProperties) : undefined}
               aria-label="Audio Player"
             >
               <div className={`sidebar-player-header ${showQueue ? "queue-view" : "hero-view"}`}>
@@ -1531,7 +1557,7 @@ function App() {
                 </div>
                 <div className="sidebar-player-meta">
                   <span className="sidebar-player-title" title={currentTrack.title}>
-                    {currentTrack.title}
+                    {cleanDisplayTitle(currentTrack.title)}
                   </span>
                   <span
                     className={`sidebar-player-artist ${playbackError ? "error" : ""}`}
@@ -1961,7 +1987,7 @@ function App() {
                     setRecentSearches(updated);
                   }
                 }}
-                placeholder="SEARCH TRACKS, ALBUMS, ARTISTS..."
+                placeholder="Search songs, albums, artists"
                 autoComplete="off"
                 spellCheck="false"
               />
@@ -2302,9 +2328,9 @@ function App() {
 
                       <div className="top-match-meta">
                         <span className={`card-type-pill ${filteredSearchResults[0].itemType || "song"}`}>
-                          {filteredSearchResults[0].itemType === "playlist" ? "PLAYLIST" : "SONG"}
+                          {filteredSearchResults[0].itemType === "playlist" ? "Playlist" : "Song"}
                         </span>
-                        <h3 className="top-match-title">{filteredSearchResults[0].title}</h3>
+                        <h3 className="top-match-title" title={filteredSearchResults[0].title}>{cleanDisplayTitle(filteredSearchResults[0].title)}</h3>
                         <p className="top-match-artist">{filteredSearchResults[0].artist}</p>
                       </div>
                     </div>
@@ -2362,7 +2388,7 @@ function App() {
                             </span>
                           </div>
                           <div className="card-meta">
-                            <p className="card-title">{item.title}</p>
+                            <p className="card-title" title={item.title}>{cleanDisplayTitle(item.title)}</p>
                             <p className="card-artist">{item.artist}</p>
                           </div>
                         </button>
@@ -2562,7 +2588,7 @@ function App() {
                               </span>
                             </div>
                             <div className="card-meta">
-                              <p className="card-title">{item.title}</p>
+                              <p className="card-title" title={item.title}>{cleanDisplayTitle(item.title)}</p>
                               <p className="card-artist">{item.artist}</p>
                             </div>
                           </button>
@@ -2679,7 +2705,7 @@ function App() {
                             </span>
                           </div>
                           <div className="card-meta">
-                            <p className="card-title">{item.title}</p>
+                            <p className="card-title" title={item.title}>{cleanDisplayTitle(item.title)}</p>
                             <p className="card-artist">{item.artist}</p>
                           </div>
                         </button>
@@ -2729,7 +2755,7 @@ function App() {
                           </span>
                         </div>
                         <div className="card-meta">
-                          <p className="card-title">{item.title}</p>
+                          <p className="card-title" title={item.title}>{cleanDisplayTitle(item.title)}</p>
                           <p className="card-artist">{item.artist}</p>
                         </div>
                       </button>
@@ -2855,7 +2881,7 @@ function App() {
                           </span>
                         </div>
                         <div className="card-meta">
-                          <p className="card-title">{item.title}</p>
+                          <p className="card-title" title={item.title}>{cleanDisplayTitle(item.title)}</p>
                           <p className="card-artist">{item.artist}</p>
                         </div>
                       </button>
@@ -2883,7 +2909,9 @@ function App() {
               />
             )}
 
-            {homeSections.slice(topPicksItems.length > 0 ? 1 : 0).map((section, idx) => (
+            {homeSections
+              .filter((_, i) => !(topPicksItems.length > 0 && i === topPicksShelfIndex))
+              .map((section, idx) => (
               <section key={idx} className="content-section">
                 <div className="section-header-row">
                   <span className="dot-red-accent small" />
@@ -2925,7 +2953,7 @@ function App() {
                           </span>
                         </div>
                         <div className="card-meta">
-                          <p className="card-title">{item.title}</p>
+                          <p className="card-title" title={item.title}>{cleanDisplayTitle(item.title)}</p>
                           <p className="card-artist">{item.artist}</p>
                         </div>
                       </button>
@@ -2987,6 +3015,40 @@ function App() {
                     <span className="settings-desc">High Definition WebM/Opus audio streaming</span>
                   </div>
                   <span className="settings-badge">256 KBPS</span>
+                </div>
+              </div>
+
+              <div className="settings-section">
+                <span className="settings-section-title">PLAYER</span>
+                <div className="settings-row">
+                  <div className="settings-row-text">
+                    <span className="settings-label">Wheel click sound</span>
+                    <span className="settings-desc">A soft click on each notch of the player-style wheel</span>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={feedbackPrefs.sound}
+                    className={`settings-switch ${feedbackPrefs.sound ? "on" : ""}`}
+                    onClick={() => updateFeedbackPrefs({ sound: !feedbackPrefs.sound })}
+                  >
+                    <span className="settings-switch-knob" />
+                  </button>
+                </div>
+                <div className="settings-row">
+                  <div className="settings-row-text">
+                    <span className="settings-label">Trackpad haptics</span>
+                    <span className="settings-desc">Feel each notch on a Force Touch trackpad</span>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={feedbackPrefs.haptics}
+                    className={`settings-switch ${feedbackPrefs.haptics ? "on" : ""}`}
+                    onClick={() => updateFeedbackPrefs({ haptics: !feedbackPrefs.haptics })}
+                  >
+                    <span className="settings-switch-knob" />
+                  </button>
                 </div>
               </div>
 

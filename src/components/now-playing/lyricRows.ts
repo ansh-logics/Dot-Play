@@ -10,10 +10,13 @@ const BREAK_MIN_GAP = 4;
 /** `parseEnhancedLrc` turns empty LRC timestamps (instrumental markers) into "♪". */
 const isInstrumentalMarker = (line: RichLyricLine) => /^[\s♪♫♩♬]*$/.test(line.text);
 
-/** When the singing in a line actually stops: its last word if word-timed, else the line end. */
+/**
+ * When the singing in a line actually stops: its last word (lead or backing vocals) if
+ * word-timed, else the line end.
+ */
 function lineEnd(line: RichLyricLine): number {
-  const lastWord = line.words?.[line.words.length - 1];
-  return lastWord && lastWord.endTime > lastWord.startTime ? lastWord.endTime : line.endTime;
+  const words = [...(line.words ?? []), ...(line.background?.words ?? [])].filter((w) => w.endTime > w.startTime);
+  return words.length > 0 ? Math.max(...words.map((w) => w.endTime)) : line.endTime;
 }
 
 /** Interleaves interlude rows into synced lines wherever there's a long enough instrumental gap. */

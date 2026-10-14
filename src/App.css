@@ -37,6 +37,11 @@
   --sidebar-width: 260px;
   --topbar-height: 60px;
   --dock-height: 0px;
+
+  /* Rhythm: one section gap and one heading gap everywhere on browse screens */
+  --space-section: 48px;
+  --space-heading: 16px;
+  --radius-art: 10px;
 }
 
 * {
@@ -158,10 +163,10 @@ body {
 
 .nav-group-label {
   font-family: var(--font-dot);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 700;
   letter-spacing: 0.16em;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   padding: 12px 10px 6px;
   text-transform: uppercase;
 }
@@ -649,11 +654,12 @@ body {
   outline: none;
 }
 
+/* Placeholder is body text, so Inter: dot-matrix is reserved for headings and numerals. */
 .top-search-input::placeholder {
-  font-family: var(--font-dot);
-  letter-spacing: 0.12em;
-  color: var(--text-tertiary);
-  font-size: 12px;
+  font-family: var(--font-body);
+  letter-spacing: 0;
+  color: #6e6e73;
+  font-size: 14px;
 }
 
 .top-search-input:focus {
@@ -713,7 +719,7 @@ body {
    -------------------------------------------------------------------------- */
 .top-picks-carousel-container {
   width: 100%;
-  margin-bottom: 44px;
+  margin-bottom: 0; /* spacing comes from .home-shelves-container gap */
   display: flex;
   flex-direction: column;
 }
@@ -722,7 +728,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 20px;
+  margin-bottom: var(--space-heading);
 }
 
 .carousel-header-title {
@@ -786,7 +792,7 @@ body {
   perspective: 1200px;
   transform-style: preserve-3d;
   width: 100%;
-  height: 340px;
+  height: 320px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -864,60 +870,59 @@ body {
   opacity: 1;
 }
 
-/* Center Card Gradient Vignette Overlay */
-.carousel-card-overlay {
+/* Centre card: only the play control sits on the artwork (glass over art is legitimate). */
+.carousel-card-actions {
   position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 24px 18px 18px;
-  background: linear-gradient(
-    to top,
-    rgba(0, 0, 0, 0.95) 0%,
-    rgba(0, 0, 0, 0.72) 45%,
-    transparent 100%
-  );
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 14px;
+  right: 14px;
+  bottom: 14px;
   z-index: 5;
 }
 
-.carousel-meta-content {
-  flex: 1;
-  min-width: 0;
+/* Caption under the stage (Apple Cover Flow style) instead of text over the poster. */
+.carousel-caption {
+  /* Above the cover cards (z-index ≤ 20), whose deep drop shadow would otherwise grey it out. */
+  position: relative;
+  z-index: 25;
+  margin-top: 6px;
+  text-align: center;
+  animation: carouselCaptionIn 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-.carousel-card-title {
+.carousel-caption-title {
   margin: 0;
-  font-family: var(--font-heading);
-  font-size: 19px;
-  font-weight: 700;
-  color: #ffffff;
-  letter-spacing: -0.01em;
+  font-family: var(--font-body);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
 }
 
-.carousel-card-artist {
-  margin: 4px 0 0;
+.carousel-caption-artist {
+  margin: 3px 0 0;
   font-family: var(--font-body);
-  font-size: 12.5px;
-  color: #b0b0b8;
+  font-size: 13px;
+  color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+@keyframes carouselCaptionIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .carousel-caption { animation: none; }
 }
 
 /* Sleek Circular Play Button (Matching Screenshot) */
 .carousel-play-btn {
-  width: 48px;
-  height: 48px;
-  min-width: 48px;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
   border-radius: 50%;
   background: rgba(38, 38, 42, 0.75);
   backdrop-filter: blur(12px);
@@ -989,13 +994,13 @@ body {
 .home-shelves-container {
   display: flex;
   flex-direction: column;
-  gap: 36px;
+  gap: var(--space-section);
 }
 
 .content-section {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-heading);
 }
 
 .section-header-row {
@@ -1007,8 +1012,8 @@ body {
 .section-heading {
   margin: 0;
   font-family: var(--font-dot);
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 800;
   letter-spacing: 0.14em;
   color: #ffffff;
   text-transform: uppercase;
@@ -1017,8 +1022,8 @@ body {
 .shelves-grid,
 .search-cards-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 28px 20px; /* rows breathe more than columns, Apple-style */
   width: 100%;
 }
 
@@ -1376,64 +1381,44 @@ body {
   transform: translateY(-1px);
 }
 
-/* Track Card (Frosted Glass OLED) */
+/* Track Card: bare artwork + text (Apple structure). Glass is reserved for
+   surfaces that float over content; on pure black it only reads as grey boxes. */
 .track-card {
   display: flex;
   flex-direction: column;
-  background: linear-gradient(
-    145deg,
-    rgba(255, 255, 255, 0.07) 0%,
-    rgba(255, 255, 255, 0.015) 40%,
-    rgba(14, 14, 18, 0.58) 100%
-  ), rgba(16, 16, 20, 0.62);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  padding: 12px;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
   cursor: pointer;
-  transition: all 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
   text-align: left;
   outline: none;
-  box-shadow:
-    0 8px 24px rgba(0, 0, 0, 0.4),
-    inset 0 1px 1px rgba(255, 255, 255, 0.15);
-}
-
-.track-card:hover {
-  background: linear-gradient(
-    145deg,
-    rgba(255, 255, 255, 0.1) 0%,
-    rgba(255, 255, 255, 0.025) 40%,
-    rgba(20, 20, 26, 0.68) 100%
-  ), rgba(22, 22, 28, 0.72);
-  border-color: rgba(255, 255, 255, 0.22);
-  transform: translateY(-2px);
-  box-shadow:
-    0 14px 32px rgba(0, 0, 0, 0.55),
-    inset 0 1px 1px rgba(255, 255, 255, 0.24);
-}
-
-.track-card.active {
-  border-color: var(--accent-red);
-  background: linear-gradient(
-    145deg,
-    rgba(215, 25, 33, 0.18) 0%,
-    rgba(22, 14, 16, 0.75) 100%
-  ), rgba(20, 16, 18, 0.7);
-  box-shadow:
-    0 0 18px var(--accent-red-subtle),
-    inset 0 1px 1px rgba(255, 255, 255, 0.2);
+  color: inherit;
 }
 
 .card-thumb-wrap {
   position: relative;
   width: 100%;
   aspect-ratio: 1;
-  border-radius: 8px;
+  border-radius: var(--radius-art);
   overflow: hidden;
   background: #08080a;
   margin-bottom: 10px;
+  /* Hairline so dark covers don't melt into the black page. */
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 6px 16px rgba(0, 0, 0, 0.35);
+  transition:
+    transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.track-card:hover .card-thumb-wrap,
+.track-card:focus-visible .card-thumb-wrap {
+  transform: translateY(-3px);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 14px 28px rgba(0, 0, 0, 0.5);
+}
+
+.track-card:focus-visible .card-thumb-wrap {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.7), 0 14px 28px rgba(0, 0, 0, 0.5);
 }
 
 .artwork-image-container {
@@ -1476,10 +1461,6 @@ body {
   opacity: 0.55;
 }
 
-.track-card:hover .artwork-img-element {
-  transform: scale(1.05);
-}
-
 .top-match-card:hover .artwork-img-element {
   transform: scale(1.06);
 }
@@ -1489,10 +1470,6 @@ body {
   height: 100%;
   object-fit: cover;
   transition: transform 0.3s ease;
-}
-
-.track-card:hover .card-thumb {
-  transform: scale(1.04);
 }
 
 .card-type-pill {
@@ -1517,6 +1494,16 @@ body {
 .card-type-pill.playlist {
   background: rgba(215, 25, 33, 0.8);
   border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Every grid item is a song unless marked otherwise, so a "SONG" badge says nothing. */
+.card-type-pill.song {
+  display: none;
+}
+
+/* …except on the search Top Result, where song vs playlist is the point. */
+.top-match-meta .card-type-pill.song {
+  display: inline-block;
 }
 
 .card-play-indicator {
@@ -1561,8 +1548,8 @@ body {
 
 .card-title {
   margin: 0;
-  font-family: var(--font-heading);
-  font-size: 13.5px;
+  font-family: var(--font-body);
+  font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
@@ -1570,9 +1557,22 @@ body {
   text-overflow: ellipsis;
 }
 
+/* Now playing: the Nothing red dot, instead of a red card outline. */
+.track-card.active .card-title::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin: 0 7px 2px 0;
+  border-radius: 50%;
+  background: var(--accent-red);
+  box-shadow: 0 0 6px var(--accent-red-glow);
+  vertical-align: middle;
+}
+
 .card-artist {
   margin: 0;
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -2477,26 +2477,28 @@ body {
 /* ==========================================================================
    Sidebar Floating Player Card (Image 1)
    ========================================================================== */
+/* Solid surface with a faint album-colour wash (--tint, set from the artwork palette in
+   App.tsx) so the sidebar matches the Now Playing screen. Glass would be invisible on black. */
+@property --tint {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: transparent;
+}
+
 .sidebar-player-card {
-  background: linear-gradient(
-    145deg,
-    rgba(255, 255, 255, 0.08) 0%,
-    rgba(255, 255, 255, 0.015) 40%,
-    rgba(14, 14, 18, 0.6) 100%
-  ), rgba(16, 16, 20, 0.65);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  --tint: transparent;
+  background:
+    radial-gradient(120% 70% at 50% 0%, color-mix(in srgb, var(--tint) 30%, transparent), transparent 72%),
+    #0e0e11;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 16px;
   padding: 12px 12px 14px;
   display: flex;
   flex-direction: column;
   gap: 10px;
   position: relative;
-  transition: all 0.3s ease;
-  box-shadow:
-    0 12px 32px rgba(0, 0, 0, 0.5),
-    inset 0 1px 1px rgba(255, 255, 255, 0.18);
+  transition: border-color 0.3s ease, --tint 1.2s ease;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
   flex-shrink: 0;
   width: 100%;
   min-width: 0;
@@ -2505,16 +2507,7 @@ body {
 }
 
 .sidebar-player-card:hover {
-  background: linear-gradient(
-    145deg,
-    rgba(255, 255, 255, 0.1) 0%,
-    rgba(255, 255, 255, 0.02) 40%,
-    rgba(20, 20, 26, 0.7) 100%
-  ), rgba(20, 20, 26, 0.72);
-  border-color: rgba(255, 255, 255, 0.18);
-  box-shadow:
-    0 16px 40px rgba(0, 0, 0, 0.6),
-    inset 0 1px 1px rgba(255, 255, 255, 0.24);
+  border-color: rgba(255, 255, 255, 0.14);
 }
 
 .sidebar-player-header {
@@ -2725,13 +2718,16 @@ body {
   box-shadow: 0 0 8px var(--accent-red-glow);
 }
 
+/* Dot-matrix numerals are a Nothing signature; keep them, but legible. */
 .sidebar-player-times {
   display: flex;
   align-items: center;
   justify-content: space-between;
   font-family: var(--font-dot);
-  font-size: 10px;
-  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
   letter-spacing: 0.04em;
   padding: 0 1px;
 }
@@ -2808,15 +2804,8 @@ body {
   gap: 10px;
   padding: 8px 10px;
   border-radius: 12px;
-  background: linear-gradient(
-    145deg,
-    rgba(255, 255, 255, 0.06) 0%,
-    rgba(255, 255, 255, 0.01) 40%,
-    rgba(14, 14, 18, 0.5) 100%
-  ), rgba(16, 16, 20, 0.55);
-  backdrop-filter: blur(18px) saturate(170%);
-  -webkit-backdrop-filter: blur(18px) saturate(170%);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #0b0b0d;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   cursor: pointer;
   transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
@@ -2828,16 +2817,8 @@ body {
 }
 
 .sidebar-account-card:hover {
-  background: linear-gradient(
-    145deg,
-    rgba(255, 255, 255, 0.09) 0%,
-    rgba(255, 255, 255, 0.02) 40%,
-    rgba(22, 22, 28, 0.6) 100%
-  ), rgba(22, 22, 28, 0.65);
-  border-color: rgba(255, 255, 255, 0.18);
-  box-shadow:
-    0 8px 20px rgba(0, 0, 0, 0.4),
-    inset 0 1px 1px rgba(255, 255, 255, 0.18);
+  background: #121215;
+  border-color: rgba(255, 255, 255, 0.16);
 }
 
 .sidebar-account-card.connected {
@@ -3120,6 +3101,46 @@ body {
 .settings-action-btn:hover {
   background: rgba(255, 255, 255, 0.16);
   border-color: rgba(255, 255, 255, 0.28);
+}
+
+/* On/off switch (Nothing red when on). */
+.settings-switch {
+  position: relative;
+  flex: none;
+  width: 40px;
+  height: 24px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.settings-switch.on {
+  background: var(--accent-red);
+  border-color: transparent;
+}
+
+.settings-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.settings-switch.on .settings-switch-knob {
+  transform: translateX(16px);
+}
+
+.settings-switch:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.6);
+  outline-offset: 2px;
 }
 
 .settings-status-pill {

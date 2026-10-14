@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { getCachedArtwork, markArtworkVerified } from "./trackCache";
+import { getCachedArtwork, isSquareCover, markArtworkVerified } from "./trackCache";
 
 export type ArtworkVariant = "thumbnail" | "card" | "hero";
 
@@ -15,12 +15,13 @@ const NEGATIVE_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 // Subscribers: videoId -> Set of callbacks
 const subscribers = new Map<string, Set<(url: string) => void>>();
 
-// Cache configuration
-const STORAGE_KEY = "dot_highres_image_cache";
+// Cache configuration. v2: v1 could hold 16:9 video frames for songs that have square covers.
+const STORAGE_KEY = "dot_highres_image_cache_v2";
 const MAX_CACHE_ENTRIES = 1200;
 
 // Restore verified cache from localStorage on startup
 try {
+  localStorage.removeItem("dot_highres_image_cache");
   const saved = localStorage.getItem(STORAGE_KEY);
   if (saved) {
     const parsed = JSON.parse(saved) as Record<string, string>;
@@ -52,6 +53,8 @@ function persistCacheDebounced() {
  * Sets an entry in the verified cache with bounded FIFO eviction.
  */
 function setCachedEntry(videoId: string, url: string) {
+  // Never trade a track's square album cover for a video frame.
+  if (isSquareCover(cached.get(videoId)) && !isSquareCover(url)) return;
   if (cached.size >= MAX_CACHE_ENTRIES) {
     const oldestKey = cached.keys().next().value;
     if (oldestKey) cached.delete(oldestKey);
@@ -77,6 +80,16 @@ function isNegativeCached(videoId: string): boolean {
 /**
  * Synchronously retrieves cached HD artwork URL if already verified.
  */
+/**
+ * Cached artwork for a track, unless the track's own source is a square album cover and the
+ * cached one is only a video frame (the cover wins).
+ */
+function cachedArtworkFor(videoId: string | undefined, sourceUrl: string | undefined): string | null {
+  const url = getCachedArtworkUrl(videoId);
+  if (url && isSquareCover(sourceUrl) && !isSquareCover(url)) return null;
+  return url;
+}
+
 export function getCachedArtworkUrl(videoId?: string): string | null {
   if (!videoId) return null;
   if (cached.has(videoId)) {
@@ -103,7 +116,7 @@ export function optimizeThumbnailUrl(
   variant: ArtworkVariant = "card"
 ): string {
   if (videoId) {
-    const cachedUrl = getCachedArtworkUrl(videoId);
+    const cachedUrl = cachedArtworkFor(videoId, rawUrl);
     if (cachedUrl) {
       const isGoogle = cachedUrl.includes("googleusercontent.com") || cachedUrl.includes("ggpht.com");
       if (
@@ -315,6 +328,15 @@ async function processArtworkUpgrade(videoId: string) {
     return;
   }
 
+  // A square album cover seen elsewhere for this track beats any video-frame probe.
+  const known = getCachedArtwork(videoId);
+  if (isSquareCover(known)) {
+    const cover = optimizeThumbnailUrl(known, videoId, "hero");
+    setCachedEntry(videoId, cover);
+    notifySubscribers(videoId, cover);
+    return;
+  }
+
   // Candidates in priority order
   const candidates = [
     `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`,
@@ -359,9 +381,9 @@ export function queueArtworkUpgrade(
 ): string | null {
   if (!videoId) return null;
 
-  // 1. If already cached, return immediately
+  // 1. If already cached, return immediately (unless it's a video frame and we have a cover)
   const existing = cached.get(videoId);
-  if (existing) {
+  if (existing && !(isSquareCover(currentUrl) && !isSquareCover(existing))) {
     return existing;
   }
 
@@ -475,7 +497,7 @@ export function useArtwork({
 }: UseArtworkOptions): UseArtworkResult {
   const effectiveId = videoId || artworkKey;
   const targetUrl =
-    (effectiveId ? getCachedArtworkUrl(effectiveId) : null) ||
+    (effectiveId ? cachedArtworkFor(effectiveId, sourceUrl) : null) ||
     optimizeThumbnailUrl(sourceUrl, effectiveId, variant);
 
   const [prevKey, setPrevKey] = useState(
@@ -540,7 +562,7 @@ export function useArtwork({
     }
 
     const unsubscribe = subscribeToArtwork(effectiveId, (hdUrl) => {
-      if (hdUrl) {
+      if (hdUrl && !(isSquareCover(sourceUrl) && !isSquareCover(hdUrl))) {
         setCurrentUrl((prev) => {
           if (prev !== hdUrl) {
             setIsUpgraded(true);

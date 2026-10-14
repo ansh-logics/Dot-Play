@@ -19,6 +19,8 @@ fn main() {
         "get_queue_session",
         "get_related_recommendations",
         "get_player_server_url",
+        "get_lyrics",
+        "perform_haptic",
       ]),
     ),
   )

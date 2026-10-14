@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { ChevronLeft, ChevronRight, Play, Pause } from "lucide-react";
 import type { SearchResult } from "../lib/search";
 import { useArtwork } from "../lib/imagePipeline";
+import { cleanDisplayTitle } from "../lib/displayText";
 
 interface TopPicksCarouselProps {
   items: SearchResult[];
@@ -94,14 +95,9 @@ const CarouselCardItem: React.FC<CarouselCardItemProps> = ({
         loading={absOffset <= 1 ? "eager" : "lazy"}
       />
 
-      {/* Center card info overlay */}
+      {/* Play control sits on the artwork corner; the caption lives below the stage. */}
       {isCenter && (
-        <div className="carousel-card-overlay">
-          <div className="carousel-meta-content">
-            <h3 className="carousel-card-title">{item.title}</h3>
-            <p className="carousel-card-artist">{item.artist}</p>
-          </div>
-
+        <div className="carousel-card-actions">
           <button
             type="button"
             className={`carousel-play-btn ${isItemPlaying ? "playing" : ""}`}
@@ -247,8 +243,8 @@ export const TopPicksCarousel: React.FC<TopPicksCarouselProps> = ({
             const scale = Math.max(1 - absOffset * 0.14, 0.65);
             const rotateY = offset * -12; // subtle inward tilt
             const zIndex = 20 - absOffset * 4;
-            const brightness = isCenter ? 1 : Math.max(0.65 - absOffset * 0.18, 0.25);
-            const opacity = isCenter ? 1 : Math.max(0.8 - absOffset * 0.25, 0.2);
+            const brightness = isCenter ? 1 : Math.max(0.85 - absOffset * 0.15, 0.45);
+            const opacity = isCenter ? 1 : Math.max(0.95 - absOffset * 0.2, 0.35);
 
             const transformStyle: React.CSSProperties = {
               transform: `translateX(${translateX}px) translateZ(${translateZ}px) rotateY(${rotateY}deg) scale(${scale})`,
@@ -277,6 +273,18 @@ export const TopPicksCarousel: React.FC<TopPicksCarouselProps> = ({
           })}
         </div>
       </div>
+
+      {/* Apple-style caption under the centre cover; re-keyed so it fades in per item. */}
+      {items[activeIndex] && (
+        <div className="carousel-caption" key={items[activeIndex].videoId || items[activeIndex].playlistId || activeIndex}>
+          <h3 className="carousel-caption-title" title={items[activeIndex].title}>
+            {cleanDisplayTitle(items[activeIndex].title)}
+          </h3>
+          <p className="carousel-caption-artist" title={items[activeIndex].artist}>
+            {items[activeIndex].artist}
+          </p>
+        </div>
+      )}
 
       {/* Pagination indicators */}
       <div className="carousel-indicators">
