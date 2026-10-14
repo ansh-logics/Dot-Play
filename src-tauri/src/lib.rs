@@ -2230,6 +2230,32 @@ fn best_lyrics_candidate<'a>(
         })
 }
 
+/// Plays a Force Touch trackpad haptic (the player-style wheel's notch "click").
+/// macOS only delivers it while a finger is on a Force Touch trackpad with
+/// "Force Click and haptic feedback" enabled; elsewhere this is a no-op.
+#[tauri::command]
+fn perform_haptic(app: tauri::AppHandle, pattern: Option<String>) {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2_app_kit::{
+            NSHapticFeedbackManager, NSHapticFeedbackPattern, NSHapticFeedbackPerformanceTime,
+            NSHapticFeedbackPerformer,
+        };
+        let pattern = match pattern.as_deref() {
+            Some("level") => NSHapticFeedbackPattern::LevelChange,
+            Some("generic") => NSHapticFeedbackPattern::Generic,
+            _ => NSHapticFeedbackPattern::Alignment,
+        };
+        // AppKit feedback performers belong to the main thread.
+        let _ = app.run_on_main_thread(move || {
+            NSHapticFeedbackManager::defaultPerformer()
+                .performFeedbackPattern_performanceTime(pattern, NSHapticFeedbackPerformanceTime::Now);
+        });
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = (app, pattern);
+}
+
 #[tauri::command]
 async fn get_lyrics(
     video_id: Option<String>,
@@ -2713,7 +2739,9 @@ pub fn run() {
                         .permission("allow-save-queue-session")
                         .permission("allow-get-queue-session")
                         .permission("allow-get-related-recommendations")
-                        .permission("allow-get-player-server-url"),
+                        .permission("allow-get-player-server-url")
+                        .permission("allow-get-lyrics")
+                        .permission("allow-perform-haptic"),
                 )?;
 
                 app.get_webview_window("main")
@@ -2770,7 +2798,8 @@ pub fn run() {
             get_queue_session,
             get_related_recommendations,
             get_player_server_url,
-            get_lyrics
+            get_lyrics,
+            perform_haptic
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

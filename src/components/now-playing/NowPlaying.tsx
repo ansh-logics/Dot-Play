@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type WheelEvent } from "react";
+import { flushSync } from "react-dom";
 import {
   AnimatePresence,
   LayoutGroup,
@@ -10,11 +11,12 @@ import {
   useTransform,
   type PanInfo,
 } from "motion/react";
-import { ListMusic, MessageSquareQuote, Minimize2 } from "lucide-react";
+import { Disc3, ListMusic, MessageSquareQuote, Minimize2 } from "lucide-react";
 import "./NowPlaying.css";
 import { ArtworkImage } from "../ArtworkImage";
 import { useArtwork } from "../../lib/imagePipeline";
 import { useArtworkPalette } from "../../lib/useArtworkPalette";
+import { cleanDisplayTitle } from "../../lib/displayText";
 import type { SearchResult } from "../../lib/search";
 import type { QueueSession } from "../../lib/queueManager";
 import type { PlaybackModes } from "../../lib/playbackModes";
@@ -23,6 +25,9 @@ import { LyricsPanel } from "./LyricsPanel";
 import { ControlDeck } from "./ControlDeck";
 import { QueuePanel, type QueueContextMenuHandler } from "./QueuePanel";
 import { useLyrics } from "./useLyrics";
+import { SkinWheel } from "./SkinWheel";
+import { VinylRecord } from "./VinylRecord";
+import { loadSkin, saveSkin, type PlayerSkinId } from "../../lib/playerSkins";
 
 export interface NowPlayingProps {
   isOpen: boolean;
@@ -85,6 +90,70 @@ function NowPlayingScreen(props: NowPlayingProps) {
 
   const [lyricsOn, setLyricsOn] = useState(() => !window.matchMedia("(max-width: 819px), (max-height: 599px)").matches);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [skin, setSkin] = useState<PlayerSkinId>(loadSkin);
+  const [wheelOpen, setWheelOpen] = useState(false);
+  const edgeTimer = useRef<number | null>(null);
+  // Theme switching. Reveals never overlap: if one is running, the latest choice waits and
+  // plays when it finishes (overlapping view transitions get cancelled abruptly = flicker).
+  const skinRef = useRef(skin);
+  const switching = useRef(false);
+  const queuedSkin = useRef<PlayerSkinId | null>(null);
+
+  const revealSkin = useCallback(
+    (id: PlayerSkinId) => {
+      const doc = document as Document & {
+        startViewTransition?: (cb: () => Promise<void> | void) => { finished: Promise<void> };
+      };
+      if (id === skinRef.current) return;
+      if (reduceMotion || typeof doc.startViewTransition !== "function") {
+        skinRef.current = id;
+        setSkin(id);
+        return;
+      }
+      switching.current = true;
+      const npRoot = rootRef.current;
+      // The new style pours out of the wheel: a circle reveal centred on its disc.
+      const disc = document.querySelector(".np-wheel-disc")?.getBoundingClientRect();
+      const html = document.documentElement;
+      html.style.setProperty("--np-reveal-x", `${disc ? disc.left + disc.width / 2 : 40}px`);
+      html.style.setProperty("--np-reveal-y", `${disc ? disc.top + disc.height / 2 : window.innerHeight / 2}px`);
+      // Freeze the skins' own CSS fades so the revealed area shows the final look, not a blend.
+      npRoot?.classList.add("np-switching");
+      const transition = doc.startViewTransition(async () => {
+        flushSync(() => {
+          skinRef.current = id;
+          setSkin(id);
+        });
+        // The new skin may mount fresh <img>s (e.g. Vinyl's label). The old frame stays on
+        // screen while this promise is pending, so wait briefly for them to decode.
+        const imgs = Array.from(npRoot?.querySelectorAll("img") ?? []).filter((img) => !img.complete);
+        await Promise.race([
+          Promise.all(imgs.map((img) => img.decode().catch(() => undefined))),
+          new Promise((r) => window.setTimeout(r, 300)),
+        ]);
+      });
+      void transition.finished.finally(() => {
+        npRoot?.classList.remove("np-switching");
+        switching.current = false;
+        const next = queuedSkin.current;
+        queuedSkin.current = null;
+        if (next && next !== skinRef.current) revealSkin(next);
+      });
+    },
+    [reduceMotion],
+  );
+
+  const chooseSkin = useCallback(
+    (id: PlayerSkinId) => {
+      saveSkin(id);
+      if (switching.current) {
+        queuedSkin.current = id;
+        return;
+      }
+      revealSkin(id);
+    },
+    [revealSkin],
+  );
   const { data: lyrics, status: lyricsStatus } = useLyrics(track, props.duration);
   const hasLyrics = lyricsStatus === "synced" || lyricsStatus === "plain" || lyricsStatus === "loading";
   const showLyrics = lyricsOn && hasLyrics;
@@ -213,7 +282,9 @@ function NowPlayingScreen(props: NowPlayingProps) {
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
-        if (sheetOpen) setSheet(false);
+        // Innermost first: style wheel, then queue sheet, then the player itself.
+        if (wheelOpen) setWheelOpen(false);
+        else if (sheetOpen) setSheet(false);
         else onClose();
         return;
       }
@@ -225,11 +296,14 @@ function NowPlayingScreen(props: NowPlayingProps) {
       } else if (key === "l") {
         e.preventDefault();
         setLyricsOn((v) => !v);
+      } else if (key === "t") {
+        e.preventDefault();
+        setWheelOpen((v) => !v);
       }
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [sheetOpen, setSheet, onClose]);
+  }, [sheetOpen, wheelOpen, setSheet, onClose]);
 
   useEffect(() => {
     if (sheetOpen) listScrollRef.current?.querySelector<HTMLElement>("[role='tab'][aria-selected='true']")?.focus({ preventScroll: true });
@@ -239,6 +313,7 @@ function NowPlayingScreen(props: NowPlayingProps) {
     <motion.div
       ref={rootRef}
       className="np-root"
+      data-skin={skin}
       role="dialog"
       aria-modal="true"
       aria-label={`Now playing: ${track.title} by ${track.artist}`}
@@ -254,7 +329,36 @@ function NowPlayingScreen(props: NowPlayingProps) {
     >
       <NowPlayingBackdrop palette={palette} artworkUrl={artworkUrl} />
 
+      {/* Hover the left edge to summon the style wheel. */}
+      <div
+        className="np-wheel-hotzone"
+        aria-hidden="true"
+        onPointerEnter={() => {
+          edgeTimer.current = window.setTimeout(() => setWheelOpen(true), 250);
+        }}
+        onPointerLeave={() => {
+          if (edgeTimer.current) window.clearTimeout(edgeTimer.current);
+        }}
+      />
+      <SkinWheel
+        open={wheelOpen}
+        skin={skin}
+        onSelect={chooseSkin}
+        onClose={() => setWheelOpen(false)}
+        reduceMotion={reduceMotion}
+      />
+
       <header className="np-topbar">
+        <button
+          type="button"
+          className={`np-icon-btn ${wheelOpen ? "is-active" : ""}`}
+          onClick={() => setWheelOpen((v) => !v)}
+          aria-pressed={wheelOpen}
+          aria-label="Player style"
+          title="Player style (T)"
+        >
+          <Disc3 size={20} />
+        </button>
         <button
           type="button"
           className={`np-icon-btn ${showLyrics ? "is-active" : ""}`}
@@ -289,15 +393,25 @@ function NowPlayingScreen(props: NowPlayingProps) {
         <LayoutGroup>
           <div className="np-stage-row">
             <motion.div layout={!reduceMotion} className="np-art-wrap" transition={{ type: "spring", stiffness: 300, damping: 34 }}>
-              <ArtworkImage
-                key={track.videoId}
-                src={track.thumbnailUrl}
-                videoId={track.videoId}
-                alt={`${track.title} artwork`}
-                className="np-art"
-                variant="hero"
-                priority
-              />
+              {skin === "vinyl" ? (
+                <VinylRecord
+                  track={track}
+                  isPlaying={props.isPlaying}
+                  currentTime={props.currentTime}
+                  duration={props.duration}
+                  reduceMotion={reduceMotion}
+                />
+              ) : (
+                <ArtworkImage
+                  key={track.videoId}
+                  src={track.thumbnailUrl}
+                  videoId={track.videoId}
+                  alt={`${track.title} artwork`}
+                  className="np-art"
+                  variant="hero"
+                  priority
+                />
+              )}
             </motion.div>
             <AnimatePresence mode="popLayout">
               {showLyrics && (
@@ -323,7 +437,7 @@ function NowPlayingScreen(props: NowPlayingProps) {
           </div>
           <motion.div layout={!reduceMotion} className="np-meta">
             <h1 className="np-title" title={track.title}>
-              {track.title}
+              {cleanDisplayTitle(track.title)}
             </h1>
             <p className={`np-artist ${props.playbackError ? "is-error" : ""}`} title={props.playbackError ?? track.artist}>
               {props.playbackError ?? track.artist}
@@ -364,7 +478,7 @@ function NowPlayingScreen(props: NowPlayingProps) {
             <motion.div ref={miniRef} className="np-mini" style={{ height: miniHeight, opacity: miniOpacity }} aria-hidden={!sheetOpen}>
               <ArtworkImage src={track.thumbnailUrl} videoId={track.videoId} alt="" className="np-mini-art" variant="hero" />
               <div className="np-mini-text">
-                <span className="np-mini-title">{track.title}</span>
+                <span className="np-mini-title">{cleanDisplayTitle(track.title)}</span>
                 <span className="np-mini-artist">{track.artist}</span>
               </div>
             </motion.div>

@@ -30,6 +30,8 @@ export function NowPlayingBackdrop({ palette, artworkUrl }: BackdropProps) {
     <div className="np-backdrop" aria-hidden="true">
       {artworkUrl && <img key={artworkUrl} className="np-backdrop-art" src={artworkUrl} alt="" />}
       <div className={`np-backdrop-colour ${palette ? "is-ready" : ""}`} style={colours} />
+      {/* Nothing style: black with a dot grid (faded in by CSS when data-skin="nothing"). */}
+      <div className="np-dotgrid" />
       <div className="np-vignette" />
       <div className="np-grain" />
     </div>

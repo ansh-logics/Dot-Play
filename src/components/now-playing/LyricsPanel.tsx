@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, type CSSProperties } from "react";
-import type { TrackLyrics } from "../../lib/lyrics";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, type CSSProperties } from "react";
+import type { LyricWord, TrackLyrics } from "../../lib/lyrics";
 import type { LyricsStatus } from "./useLyrics";
 import { activeRowIndex, buildLyricRows, type LyricRow } from "./lyricRows";
 import { useFrameLoop, useLyricClock } from "./useLyricClock";
@@ -18,6 +18,37 @@ const USER_SCROLL_PAUSE_MS = 3500;
 const HELD_WORD_S = 1;
 
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
+
+/**
+ * Timed words. On the active line each word is split into letter spans so the sweep can
+ * fill and lift letter by letter; elsewhere words stay plain text (cheap, and identical wrap).
+ */
+function TimedWords({ words, letters }: { words: LyricWord[]; letters: boolean }) {
+  return (
+    <>
+      {words.map((word, w) => {
+        const held = word.endTime - word.startTime >= HELD_WORD_S;
+        const lead = word.text.match(/^\s*/)?.[0] ?? "";
+        const body = word.text.slice(lead.length);
+        // The space goes *outside* the inline-block word, so a wrapped line doesn't start indented.
+        return (
+          <Fragment key={w}>
+            {lead}
+            <span className={`np-word ${held ? "is-held" : ""}`} aria-label={letters ? body : undefined}>
+              {letters
+                ? Array.from(body).map((ch, c) => (
+                    <span key={c} className="np-ch" aria-hidden="true">
+                      {ch}
+                    </span>
+                  ))
+                : body}
+            </span>
+          </Fragment>
+        );
+      })}
+    </>
+  );
+}
 
 export function LyricsPanel({ data, status, currentTime, isPlaying, onSeek, reduceMotion }: LyricsPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -81,7 +112,14 @@ export function LyricsPanel({ data, status, currentTime, isPlaying, onSeek, redu
   // ---- Per-frame word sweep / interlude progress -----------------------------
   const now = useLyricClock(currentTime, isPlaying);
   const activeRow = activeIdx >= 0 ? rows[activeIdx] : undefined;
-  const activeWords = activeRow?.kind === "line" ? activeRow.line.words : undefined;
+  // Lead words then backing-vocal words: the same order their spans appear in the DOM.
+  const activeWords = useMemo(
+    () =>
+      activeRow?.kind === "line" && (activeRow.line.words?.length || activeRow.line.background?.words?.length)
+        ? [...(activeRow.line.words ?? []), ...(activeRow.line.background?.words ?? [])]
+        : undefined,
+    [activeRow],
+  );
   const animates = synced && (activeRow?.kind === "interlude" || Boolean(activeWords?.length));
 
   const draw = useCallback(() => {
@@ -101,10 +139,16 @@ export function LyricsPanel({ data, status, currentTime, isPlaying, onSeek, redu
       if (!span) return;
       const len = Math.max(word.endTime - word.startTime, 0.05);
       const p = clamp01((t - word.startTime) / len);
-      span.style.setProperty("--p", p.toFixed(4));
-      if (!reduceMotion && len >= HELD_WORD_S) {
-        // Glow rises and settles over the held note.
-        span.style.setProperty("--g", (Math.sin(Math.PI * p) * 0.55).toFixed(3));
+      const chars = span.querySelectorAll<HTMLElement>(".np-ch");
+      const n = chars.length;
+      // Letter j fills over its 1/n share of the word: l = clamp(p·n − j). The rise follows
+      // sin(π·l), peaking mid-fill and settling, so a small wave travels through the word.
+      for (let j = 0; j < n; j++) {
+        const l = clamp01(p * n - j);
+        const st = chars[j].style;
+        st.setProperty("--l", l.toFixed(3));
+        st.setProperty("--ls", l >= 0.5 ? "1" : "0");
+        st.setProperty("--r", reduceMotion ? "0" : Math.sin(Math.PI * l).toFixed(3));
       }
     });
   }, [activeIdx, activeRow, activeWords, now, reduceMotion]);
@@ -178,16 +222,20 @@ export function LyricsPanel({ data, status, currentTime, isPlaying, onSeek, redu
             className={`np-lyric np-lyric--${state}`}
             onClick={synced ? () => onSeek(line.startTime) : undefined}
           >
-            {synced && line.words && line.words.length > 0
-              ? line.words.map((word, w) => (
-                  <span
-                    key={w}
-                    className={`np-word ${word.endTime - word.startTime >= HELD_WORD_S ? "is-held" : ""}`}
-                  >
-                    {word.text}
-                  </span>
-                ))
-              : line.text}
+            {synced && line.words && line.words.length > 0 ? (
+              <TimedWords words={line.words} letters={isActive} />
+            ) : (
+              line.text
+            )}
+            {line.background && (
+              <span className="np-bg">
+                {synced && line.background.words && line.background.words.length > 0 ? (
+                  <TimedWords words={line.background.words} letters={isActive} />
+                ) : (
+                  line.background.text
+                )}
+              </span>
+            )}
           </p>
         );
       })}

@@ -277,7 +277,7 @@
   font-size: clamp(19px, 2.5vw, 36px);
   line-height: 1.18;
   letter-spacing: -0.012em;
-  color: #fff;
+  color: rgb(var(--np-lyric-ink, 255, 255, 255));
   transform-origin: 0 50%;
   transition: opacity 0.6s var(--np-ease), transform 0.6s var(--np-ease);
   text-wrap: balance;
@@ -298,23 +298,30 @@
   white-space: pre-wrap;
 }
 
-/* Letter-by-letter sweep: a soft-edged gradient clipped to the glyphs, driven by --p (0→1)
-   which LyricsPanel writes every animation frame from the interpolated playback clock. */
-.np-lyric--active .np-word {
-  background-image: linear-gradient(
-    90deg,
-    #fff calc(var(--p, 0) * 100% - 8%),
-    rgba(255, 255, 255, 0.32) calc(var(--p, 0) * 100% + 8%)
-  );
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  transform: translateY(calc(var(--p, 0) * -1.5px));
+/* Letter-by-letter sweep on the active line. LyricsPanel writes per letter, every frame:
+   --l  fill 0→1 as the highlight passes the letter
+   --ls the same, stepped (Nothing's crisp style)
+   --r  sin(π·l): a rise that peaks mid-fill and settles, so a small wave runs through words */
+.np-ch {
+  display: inline-block;
+  color: rgba(var(--np-lyric-ink, 255, 255, 255), calc(0.32 + 0.68 * var(--l, 0)));
+  transform: translateY(calc(var(--l, 0) * -1.5px + var(--r, 0) * -1.5px));
 }
 
-/* Long held notes glow softly while sung (--g rises and settles over the note). */
-.np-lyric--active .np-word.is-held {
-  filter: drop-shadow(0 0 10px rgba(255, 255, 255, calc(var(--g, 0) * 0.6)));
+/* Long held notes glow while sung. text-shadow, not filter: filters create composited
+   layers that WebKit can clip into visible seams. */
+.np-word.is-held .np-ch {
+  text-shadow: 0 0 calc(var(--r, 0) * 12px) rgba(var(--np-lyric-ink, 255, 255, 255), calc(var(--r, 0) * 0.5));
+}
+
+/* Backing vocals: a softer, smaller line under the lead. */
+.np-bg {
+  display: block;
+  margin-top: 0.18em;
+  font-size: 0.62em;
+  font-weight: 600;
+  line-height: 1.25;
+  opacity: 0.6;
 }
 
 /* Instrumental break: three dots that fill across the break, breathe, then collapse
@@ -776,6 +783,445 @@
 .np-queue .sidebar-queue-remove-btn:hover,
 .np-queue .sidebar-history-btn:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
 
+/* ---------- Player-style wheel ---------- */
+
+.np-wheel-hotzone {
+  position: absolute;
+  left: 0;
+  top: 15%;
+  bottom: 25%;
+  width: 18px;
+  z-index: 5;
+}
+
+.np-wheel {
+  --np-wheel-ink: 255, 255, 255;
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 440px;
+  height: 460px;
+  margin-top: -230px;
+  z-index: 6;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+
+.np-wheel:active { cursor: grabbing; }
+
+/* Keeps the labels legible over busy artwork without a hard panel edge. */
+.np-wheel-scrim {
+  position: absolute;
+  inset: -60px auto -60px 0;
+  width: 560px;
+  pointer-events: none;
+  background: radial-gradient(60% 55% at 0% 50%, rgba(0, 0, 0, 0.45), transparent 100%);
+}
+
+/* Disc mostly off-screen. A static frosted look rather than a live backdrop-filter:
+   re-blurring behind moving labels every frame is costly and prone to WebKit seams. */
+.np-wheel-disc {
+  position: absolute;
+  left: -150px;
+  top: 50%;
+  width: 240px;
+  height: 240px;
+  margin-top: -120px;
+  border-radius: 50%;
+  background:
+    radial-gradient(120% 120% at 70% 30%, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.06) 60%),
+    rgba(20, 20, 24, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+/* Selection indicator on the disc's rim; glow is painted, not a box-shadow. */
+.np-wheel-disc::after {
+  content: "";
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  margin-top: -9px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--accent-red, #d71921) 0 3px, rgba(215, 25, 33, 0.35) 3.5px, transparent 9px);
+}
+
+/* Origin sits at the disc centre; each item is rotated then pushed out along the arc. */
+.np-wheel-list {
+  position: absolute;
+  left: -30px;
+  top: 50%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  outline: none;
+}
+
+.np-wheel-item {
+  position: absolute;
+  left: 0;
+  top: 0;
+  margin-top: -0.6em;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+  transform-origin: 0 50%;
+  font-family: var(--font-body, "Inter"), system-ui, sans-serif;
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: rgb(var(--np-wheel-ink)); /* label colour/blur are driven per frame in SkinWheel */
+  cursor: pointer;
+}
+
+.np-wheel-soon {
+  text-shadow: none;
+  font-family: var(--font-dot), monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: rgba(255, 255, 255, 0.7);
+  padding: 2px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+}
+
+/* ---------- Nothing style ----------
+   Same structure, Nothing identity: black, dot-matrix type and numerals, red as the
+   only accent, solid surfaces. Artwork stays in full colour. */
+
+.np-dotgrid {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.075) 1px, transparent 1.4px);
+  background-size: 18px 18px;
+  -webkit-mask-image: radial-gradient(ellipse at 50% 45%, #000 30%, transparent 85%);
+  mask-image: radial-gradient(ellipse at 50% 45%, #000 30%, transparent 85%);
+}
+
+.np-backdrop,
+.np-backdrop-art,
+.np-grain { transition: opacity 0.5s ease, background-color 0.5s ease; }
+
+.np-root[data-skin="nothing"] .np-backdrop { background: #000; }
+.np-root[data-skin="nothing"] .np-dotgrid { opacity: 1; }
+.np-root[data-skin="nothing"] .np-backdrop-colour,
+.np-root[data-skin="nothing"] .np-backdrop-art,
+.np-root[data-skin="nothing"] .np-grain { opacity: 0; }
+.np-root[data-skin="nothing"] .np-vignette { background: radial-gradient(120% 90% at 50% 40%, transparent 60%, rgba(0, 0, 0, 0.6) 100%); }
+
+.np-root[data-skin="nothing"] .np-art-wrap {
+  border-radius: 14px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.np-root[data-skin="nothing"] .np-title {
+  font-family: var(--font-dot), monospace;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-shadow: none;
+}
+
+.np-root[data-skin="nothing"] .np-artist {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* The card's glass tint is set inline by the sheet animation; Nothing wants a solid surface. */
+.np-root[data-skin="nothing"] .np-card {
+  background-color: rgba(8, 8, 10, 0.94) !important;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.5);
+  --np-card-radius: 28px;
+}
+
+/* Dot-matrix progress bar: rail and fill are rows of dots, the knob a red dot. */
+.np-root[data-skin="nothing"] .np-slider { --np-track-h: 8px; }
+.np-root[data-skin="nothing"] .np-slider-rail {
+  height: 8px;
+  border-radius: 0;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.22) 1.4px, transparent 1.7px) 0 50% / 7px 8px repeat-x;
+}
+.np-root[data-skin="nothing"] .np-slider-fill {
+  border-radius: 0;
+  background: radial-gradient(circle, #fff 1.4px, transparent 1.7px) 0 50% / 7px 8px repeat-x;
+}
+.np-root[data-skin="nothing"] .np-slider-knob {
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  background: var(--accent-red, #d71921);
+  box-shadow: 0 0 10px rgba(215, 25, 33, 0.7);
+}
+
+.np-root[data-skin="nothing"] .np-times {
+  font-family: var(--font-dot), monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.np-root[data-skin="nothing"] .np-pill {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: none;
+}
+
+.np-root[data-skin="nothing"] .np-mode.is-on::after { background: var(--accent-red, #d71921); }
+
+.np-root[data-skin="nothing"] .np-play {
+  background: #fff;
+  color: #000;
+  border-color: transparent;
+  box-shadow: none;
+}
+.np-root[data-skin="nothing"] .np-play:hover { background: #e9e9ea; }
+
+.np-root[data-skin="nothing"] .np-icon-btn { border-color: rgba(255, 255, 255, 0.18); }
+.np-root[data-skin="nothing"] .np-icon-btn.is-active {
+  background: #fff;
+  color: #000;
+  border-color: #fff;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* Lyrics stay in Inter; the active line gets the red dot and a crisp, digital sweep edge. */
+.np-root[data-skin="nothing"] .np-lyric--active::before {
+  content: "";
+  display: inline-block;
+  width: 0.2em;
+  height: 0.2em;
+  margin: 0 0.35em 0.12em 0;
+  border-radius: 50%;
+  background: var(--accent-red, #d71921);
+  box-shadow: 0 0 10px rgba(215, 25, 33, 0.7);
+  vertical-align: middle;
+}
+/* Crisp, digital fill (letters flip at their midpoint), a smaller rise, and no glow. */
+.np-root[data-skin="nothing"] .np-ch {
+  color: rgba(255, 255, 255, calc(0.3 + 0.7 * var(--ls, 0)));
+  transform: translateY(calc(var(--l, 0) * -0.75px + var(--r, 0) * -0.75px));
+}
+.np-root[data-skin="nothing"] .np-word.is-held .np-ch { text-shadow: none; }
+.np-root[data-skin="nothing"] .np-interlude-dots i {
+  background: var(--accent-red, #d71921);
+  box-shadow: 0 0 10px rgba(215, 25, 33, 0.65);
+}
+
+.np-root[data-skin="nothing"] .np-wheel-disc {
+  background: #0b0b0d;
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: none;
+}
+.np-root[data-skin="nothing"] .np-wheel-item {
+  font-family: var(--font-dot), monospace;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+/* ---------- Vinyl style ----------
+   The artwork becomes the label of a spinning record; a tonearm rests on it while playing.
+   Warm, analogue palette: cream instead of white, serif display type, no red. */
+
+.np-vinyl {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.np-vinyl-disc {
+  position: absolute;
+  inset: 4%;
+  border-radius: 50%;
+  background:
+    /* fine grooves */
+    repeating-radial-gradient(circle at 50% 50%, #121212 0 0.7px, #1c1c1c 0.7px 1.6px),
+    #111;
+  box-shadow:
+    inset 0 0 0 2px #0a0a0a,
+    inset 0 0 0 6px #1a1a1a,
+    0 24px 48px -16px rgba(0, 0, 0, 0.7);
+}
+
+/* Smooth run-out band around the label. */
+.np-vinyl-disc::before {
+  content: "";
+  position: absolute;
+  inset: 27%;
+  border-radius: 50%;
+  background: radial-gradient(circle, #151515 60%, #0e0e0e 61%, #161616 100%);
+}
+
+.np-vinyl-label {
+  position: absolute;
+  inset: 31%;
+  border-radius: 50%;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+}
+
+.np-vinyl-label .np-art,
+.np-vinyl-label .np-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.np-vinyl-spindle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3.2%;
+  height: 3.2%;
+  margin: -1.6% 0 0 -1.6%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #f0f0f0, #8a8a8a 60%, #444);
+}
+
+/* Static sheen: two soft light wedges that stay put while the record turns. */
+.np-vinyl-sheen {
+  position: absolute;
+  inset: 4%;
+  border-radius: 50%;
+  pointer-events: none;
+  background: conic-gradient(
+    from 20deg,
+    transparent 0deg,
+    rgba(255, 255, 255, 0.07) 30deg,
+    transparent 60deg,
+    transparent 180deg,
+    rgba(255, 255, 255, 0.05) 210deg,
+    transparent 240deg
+  );
+  -webkit-mask-image: radial-gradient(circle, transparent 30%, #000 31%);
+  mask-image: radial-gradient(circle, transparent 30%, #000 31%);
+}
+
+.np-vinyl-arm {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  transform-origin: 82% 16%; /* the pivot; rotation is driven per frame in VinylRecord */
+  pointer-events: none;
+}
+
+.np-arm-shadow { fill: none; stroke: rgba(0, 0, 0, 0.35); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.np-arm-weight { stroke: #3a3a3a; stroke-width: 5; stroke-linecap: round; }
+.np-arm-base { fill: #262626; stroke: #4a4a4a; stroke-width: 0.8; }
+.np-arm-tube { fill: none; stroke: #d8d8d8; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.np-arm-head { fill: #9a9a9a; stroke: #6a6a6a; stroke-width: 0.4; }
+.np-arm-cap { fill: #c8c8c8; }
+
+/* The record has its own shape and shadow, and the arm reaches outside the square. */
+.np-root[data-skin="vinyl"] .np-art-wrap {
+  overflow: visible;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.np-root[data-skin="vinyl"] {
+  --np-cream: 239, 227, 203;
+}
+
+/* Warmed album palette + paper grain. */
+.np-root[data-skin="vinyl"] .np-backdrop-colour::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(70, 40, 15, 0.35);
+  mix-blend-mode: multiply;
+}
+.np-root[data-skin="vinyl"] .np-grain { opacity: 0.16; }
+
+.np-root[data-skin="vinyl"] .np-title {
+  font-family: ui-serif, "New York", Georgia, serif;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: -0.005em;
+  color: rgb(var(--np-cream));
+}
+
+.np-root[data-skin="vinyl"] .np-artist {
+  font-variant: small-caps;
+  text-transform: lowercase;
+  letter-spacing: 0.12em;
+  color: rgba(var(--np-cream), 0.8);
+}
+
+.np-root[data-skin="vinyl"] .np-card {
+  background-color: rgba(38, 26, 16, 0.42) !important; /* overrides the sheet's inline tint */
+  border-color: rgba(var(--np-cream), 0.18);
+}
+
+.np-root[data-skin="vinyl"] .np-slider { --np-track-h: 2px; }
+.np-root[data-skin="vinyl"] .np-slider-rail { background: rgba(var(--np-cream), 0.22); }
+.np-root[data-skin="vinyl"] .np-slider-fill { background: rgb(var(--np-cream)); }
+.np-root[data-skin="vinyl"] .np-slider-knob { width: 11px; height: 11px; margin: -5.5px 0 0 -5.5px; background: rgb(var(--np-cream)); }
+.np-root[data-skin="vinyl"] .np-times { color: rgba(var(--np-cream), 0.65); }
+
+.np-root[data-skin="vinyl"] .np-pill { border-color: rgba(var(--np-cream), 0.18); background: rgba(var(--np-cream), 0.06); }
+.np-root[data-skin="vinyl"] .np-mode.is-on,
+.np-root[data-skin="vinyl"] .np-skip,
+.np-root[data-skin="vinyl"] .np-volume-btn,
+.np-root[data-skin="vinyl"] .np-icon-btn { color: rgb(var(--np-cream)); }
+.np-root[data-skin="vinyl"] .np-mode.is-on::after { background: rgb(var(--np-cream)); }
+.np-root[data-skin="vinyl"] .np-play { background: rgb(var(--np-cream)); color: #2a1d12; border-color: transparent; }
+.np-root[data-skin="vinyl"] .np-icon-btn.is-active { background: rgba(var(--np-cream), 0.18); border-color: rgba(var(--np-cream), 0.3); }
+
+.np-root[data-skin="vinyl"] { --np-lyric-ink: 239, 227, 203; }
+.np-root[data-skin="vinyl"] .np-interlude-dots i { background: rgb(var(--np-cream)); }
+
+.np-root[data-skin="vinyl"] .np-wheel { --np-wheel-ink: 239, 227, 203; }
+.np-root[data-skin="vinyl"] .np-wheel-item { font-family: ui-serif, "New York", Georgia, serif; font-weight: 600; }
+.np-root[data-skin="vinyl"] .np-wheel-disc {
+  background:
+    repeating-radial-gradient(circle at 50% 50%, #141414 0 0.8px, #1d1d1d 0.8px 1.8px),
+    #111;
+  border-color: rgba(var(--np-cream), 0.18);
+}
+
+/* ---------- Theme change: circle reveal from the wheel ---------- */
+
+/* While a reveal runs, the new skin must render in its final state immediately: no CSS fades
+   (backdrop, colours, artwork fade-in) racing the circle, which read as flicker. */
+.np-root.np-switching,
+.np-root.np-switching *,
+.np-root.np-switching *::before,
+.np-root.np-switching *::after {
+  transition: none !important;
+}
+
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-new(root) {
+  animation: np-reveal 0.65s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes np-reveal {
+  from { clip-path: circle(0 at var(--np-reveal-x, 40px) var(--np-reveal-y, 50%)); }
+  to { clip-path: circle(150vmax at var(--np-reveal-x, 40px) var(--np-reveal-y, 50%)); }
+}
+
 /* ---------- Responsive ---------- */
 
 @media (max-width: 1100px) {
@@ -810,7 +1256,7 @@
   .np-backdrop-colour,
   .np-lyrics-dots i,
   .np-interlude.is-active .np-interlude-dots { animation: none; }
-  .np-lyric--active .np-word { transform: none; }
-  .np-lyric--active .np-word.is-held { filter: none; }
+  .np-ch { transform: none !important; }
+  .np-word.is-held .np-ch { text-shadow: none !important; }
   .np-lyric { transition: opacity 0.2s linear; }
 }

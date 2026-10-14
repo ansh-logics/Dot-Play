@@ -13,6 +13,8 @@ export interface RichLyricLine {
   endTime: number;
   text: string;
   words?: LyricWord[]; // Word/syllable-level timing for Apple Music-style fluid karaoke
+  /** Backing vocals (TTML `ttm:role="x-bg"`), shown as a softer line under the lead. */
+  background?: { text: string; words?: LyricWord[] };
 }
 
 export interface TrackLyrics {
@@ -105,8 +107,105 @@ export function parseTtmlTime(timeStr: string): number {
   return parseFloat(s) || 0;
 }
 
+const TTML_METADATA_NS = "http://www.w3.org/ns/ttml#metadata";
+
+const isBackgroundSpan = (el: Element) =>
+  (el.getAttribute("ttm:role") ?? el.getAttributeNS(TTML_METADATA_NS, "role")) === "x-bg";
+
+/** Words collected from one TTML line, either the lead or its backing vocals. */
+interface WordSink {
+  words: LyricWord[];
+  /** Whitespace seen since the last word; becomes that next word's leading space. */
+  pending: string;
+}
+
+const newSink = (): WordSink => ({ words: [], pending: "" });
+
+/** A word's display text: one leading space if whitespace preceded it, never at line start. */
+function joinWordText(sink: WordSink, raw: string): string {
+  if (sink.words.length === 0) return raw.trimStart();
+  if (raw.startsWith(" ")) return raw;
+  return sink.pending + raw;
+}
+
+/** Joined, whitespace-normalised text of a sink. */
+const sinkText = (sink: WordSink) => sink.words.map((w) => w.text).join("").trim();
+
+/**
+ * Walks a TTML element's children in document order. Leaf spans become words (with the
+ * whitespace before them as a single leading space); `x-bg` spans are routed to `bg`.
+ */
+function walkTtml(node: Element, sink: WordSink, bg: WordSink | null, begin: string, end: string) {
+  for (const child of Array.from(node.childNodes)) {
+    if (child.nodeType === 3 /* text */) {
+      if (/\s/.test(child.textContent ?? "")) sink.pending = " ";
+      continue;
+    }
+    if (child.nodeType !== 1) continue;
+    const el = child as Element;
+    if (el.localName !== "span") {
+      sink.pending = " ";
+      continue;
+    }
+    const spanBegin = el.getAttribute("begin") || begin;
+    const spanEnd = el.getAttribute("end") || end;
+    if (bg && isBackgroundSpan(el)) {
+      walkTtml(el, bg, null, spanBegin, spanEnd);
+      continue;
+    }
+    if (el.getElementsByTagName("span").length > 0) {
+      walkTtml(el, sink, bg, spanBegin, spanEnd);
+      continue;
+    }
+    const raw = decodeText(el.textContent ?? "").replace(/\s+/g, " ");
+    if (!raw.trim()) {
+      sink.pending = " ";
+      continue;
+    }
+    sink.words.push({
+      text: joinWordText(sink, raw),
+      startTime: parseTtmlTime(spanBegin),
+      endTime: parseTtmlTime(spanEnd),
+    });
+    sink.pending = "";
+  }
+}
+
+/** Builds a line from lead + backing-vocal sinks; a backing-only line is promoted to the lead. */
+function buildTtmlLine(
+  id: number,
+  startTime: number,
+  endTime: number,
+  lead: WordSink,
+  bg: WordSink,
+  untimedText: string,
+): RichLyricLine | null {
+  let main = lead;
+  let back: WordSink | null = bg.words.length > 0 ? bg : null;
+  if (main.words.length === 0 && back) {
+    main = back;
+    back = null;
+  }
+  const text = main.words.length > 0 ? sinkText(main) : untimedText.trim();
+  if (!text) return null;
+  const lastEnd = Math.max(
+    0,
+    ...main.words.map((w) => w.endTime),
+    ...(back?.words.map((w) => w.endTime) ?? []),
+  );
+  return {
+    id,
+    startTime,
+    endTime: endTime > startTime ? endTime : lastEnd > startTime ? lastEnd : startTime + 3.5,
+    text,
+    words: main.words.length > 0 ? main.words : undefined,
+    background: back ? { text: sinkText(back), words: back.words } : undefined,
+  };
+}
+
 /**
  * Parses Apple-style TTML XML lyrics into RichLyricLine with word-by-word syllable timing.
+ * Backing vocals (`ttm:role="x-bg"`) are kept out of the lead line and returned as `background`.
  */
 export function parseTtml(xmlContent: string): RichLyricLine[] {
   if (!xmlContent) return [];
@@ -114,55 +213,25 @@ export function parseTtml(xmlContent: string): RichLyricLine[] {
 
   if (typeof DOMParser !== "undefined") {
     try {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(xmlContent, "text/xml");
-      const pElements = Array.from(doc.querySelectorAll("p"));
-
+      const doc = new DOMParser().parseFromString(xmlContent, "text/xml");
       let idCounter = 0;
-      for (const p of pElements) {
+      for (const p of Array.from(doc.getElementsByTagName("p"))) {
         const beginAttr = p.getAttribute("begin") || "0";
         const endAttr = p.getAttribute("end") || "0";
-        const startTime = parseTtmlTime(beginAttr);
-        const endTime = parseTtmlTime(endAttr);
-
-        const spanElements = Array.from(p.querySelectorAll("span"));
-        let words: LyricWord[] | undefined;
-        let lineText = "";
-
-        if (spanElements.length > 0) {
-          words = [];
-          const sourceText = p.textContent || "";
-          let sourceCursor = 0;
-          for (const span of spanElements) {
-            const spanBegin = span.getAttribute("begin") || beginAttr;
-            const spanEnd = span.getAttribute("end") || endAttr;
-            const rawText = span.textContent || "";
-            const sourceIndex = sourceText.indexOf(rawText, sourceCursor);
-            const prefix = sourceIndex >= sourceCursor
-              ? sourceText.slice(sourceCursor, sourceIndex)
-              : "";
-            const wText = decodeText(prefix + rawText);
-            sourceCursor = sourceIndex >= 0 ? sourceIndex + rawText.length : sourceCursor + rawText.length;
-            words.push({
-              text: wText,
-              startTime: parseTtmlTime(spanBegin),
-              endTime: parseTtmlTime(spanEnd),
-            });
-            lineText += wText;
-          }
-        } else {
-          lineText = decodeText(p.textContent || "");
-        }
-
-        const trimmed = lineText.trim();
-        if (trimmed) {
-          lines.push({
-            id: idCounter++,
-            startTime,
-            endTime: endTime > startTime ? endTime : startTime + 3.5,
-            text: trimmed,
-            words: words && words.length > 0 ? words : undefined,
-          });
+        const lead = newSink();
+        const bg = newSink();
+        walkTtml(p, lead, bg, beginAttr, endAttr);
+        const line = buildTtmlLine(
+          idCounter,
+          parseTtmlTime(beginAttr),
+          parseTtmlTime(endAttr),
+          lead,
+          bg,
+          decodeText(p.textContent || "").replace(/\s+/g, " "),
+        );
+        if (line) {
+          lines.push(line);
+          idCounter++;
         }
       }
 
@@ -175,48 +244,85 @@ export function parseTtml(xmlContent: string): RichLyricLine[] {
     }
   }
 
-  // Regex fallback for TTML
+  // Regex fallback for TTML (no DOMParser available or the XML was rejected).
   const pRegex = /<p\b[^>]*\bbegin="([^"]+)"[^>]*\bend="([^"]+)"[^>]*>([\s\S]*?)<\/p>/gi;
   let match: RegExpExecArray | null;
   let id = 0;
   while ((match = pRegex.exec(xmlContent)) !== null) {
-    const startTime = parseTtmlTime(match[1]);
-    const endTime = parseTtmlTime(match[2]);
-    const inner = match[3];
-
-    const spanRegex =
-      /<span\b[^>]*\bbegin="([^"]+)"[^>]*\bend="([^"]+)"[^>]*>([\s\S]*?)<\/span>/gi;
-    let spanMatch: RegExpExecArray | null;
-    const words: LyricWord[] = [];
-    let text = "";
-
-    while ((spanMatch = spanRegex.exec(inner)) !== null) {
-      const wText = decodeText(spanMatch[3].replace(/<[^>]+>/g, ""));
-      words.push({
-        text: wText,
-        startTime: parseTtmlTime(spanMatch[1]),
-        endTime: parseTtmlTime(spanMatch[2]),
-      });
-      text += wText;
-    }
-
-    if (words.length === 0) {
-      text = decodeText(inner.replace(/<[^>]+>/g, "")).trim();
-    }
-
-    if (text.trim()) {
-      lines.push({
-        id: id++,
-        startTime,
-        endTime: endTime > startTime ? endTime : startTime + 3.5,
-        text: text.trim(),
-        words: words.length > 0 ? words : undefined,
-      });
+    const { main, background } = splitBackgroundSpans(match[3]);
+    const lead = regexWords(main);
+    const bg = regexWords(background);
+    const line = buildTtmlLine(
+      id,
+      parseTtmlTime(match[1]),
+      parseTtmlTime(match[2]),
+      lead,
+      bg,
+      decodeText(main.replace(/<[^>]+>/g, "")).replace(/\s+/g, " "),
+    );
+    if (line) {
+      lines.push(line);
+      id++;
     }
   }
 
   lines.sort((a, b) => a.startTime - b.startTime);
   return lines;
+}
+
+/** Separates `x-bg` span blocks (which contain nested spans) from the rest of a line's XML. */
+function splitBackgroundSpans(inner: string): { main: string; background: string } {
+  const openRe = /<span\b[^>]*ttm:role="x-bg"[^>]*>/gi;
+  let main = "";
+  let background = "";
+  let cursor = 0;
+  let open: RegExpExecArray | null;
+  while ((open = openRe.exec(inner)) !== null) {
+    main += inner.slice(cursor, open.index);
+    // Find the matching </span>, counting nested spans.
+    const tagRe = /<\/?span\b[^>]*>/gi;
+    tagRe.lastIndex = open.index + open[0].length;
+    let depth = 1;
+    let tag: RegExpExecArray | null;
+    let close = inner.length;
+    while ((tag = tagRe.exec(inner)) !== null) {
+      depth += tag[0].startsWith("</") ? -1 : tag[0].endsWith("/>") ? 0 : 1;
+      if (depth === 0) {
+        close = tag.index;
+        cursor = tag.index + tag[0].length;
+        break;
+      }
+    }
+    background += " " + inner.slice(open.index + open[0].length, close);
+    if (depth !== 0) cursor = inner.length;
+    openRe.lastIndex = cursor;
+  }
+  main += inner.slice(cursor);
+  return { main, background };
+}
+
+/** Timed leaf spans from a TTML fragment, with whitespace between them as leading spaces. */
+function regexWords(fragment: string): WordSink {
+  const sink = newSink();
+  const spanRe = /<span\b[^>]*\bbegin="([^"]+)"[^>]*\bend="([^"]+)"[^>]*>([^<]*)<\/span>/gi;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = spanRe.exec(fragment)) !== null) {
+    if (/\s/.test(fragment.slice(last, m.index).replace(/<[^>]+>/g, ""))) sink.pending = " ";
+    last = m.index + m[0].length;
+    const raw = decodeText(m[3]).replace(/\s+/g, " ");
+    if (!raw.trim()) {
+      sink.pending = " ";
+      continue;
+    }
+    sink.words.push({
+      text: joinWordText(sink, raw),
+      startTime: parseTtmlTime(m[1]),
+      endTime: parseTtmlTime(m[2]),
+    });
+    sink.pending = "";
+  }
+  return sink;
 }
 
 /**
