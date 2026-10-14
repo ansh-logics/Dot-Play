@@ -116,6 +116,20 @@ export function getCachedArtwork(
   return null;
 }
 
+/** Square album art from YouTube Music's image CDN (not an i.ytimg.com video frame). */
+export function isSquareCover(url?: string | null): url is string {
+  return Boolean(url && (url.includes("googleusercontent.com") || url.includes("ggpht.com")));
+}
+
+/**
+ * The thumbnail to keep when merging track data: a square album cover is never replaced by a
+ * video frame, and the hqdefault frame is only a placeholder until something better arrives.
+ */
+function pickThumbnail(incoming: string | undefined, existing: string | undefined, videoId: string | undefined): string {
+  if (isSquareCover(existing) && !isSquareCover(incoming)) return existing;
+  return incoming || existing || (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : "");
+}
+
 /**
  * Adds or updates a single track in the cache.
  */
@@ -133,10 +147,7 @@ export function cacheTrack(
     videoId: key,
     title: title || existing?.title || "Unknown Track",
     artist: item.artist || existing?.artist || "YouTube Music",
-    thumbnailUrl:
-      item.thumbnailUrl ||
-      existing?.thumbnailUrl ||
-      (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : ""),
+    thumbnailUrl: pickThumbnail(item.thumbnailUrl, existing?.thumbnailUrl, videoId),
     duration: item.duration || existing?.duration,
     playlistId: item.playlistId || existing?.playlistId,
     itemType: item.itemType || existing?.itemType || "song",
@@ -174,10 +185,7 @@ export function cacheTracks(
       videoId: key,
       title: title || existing?.title || "Unknown Track",
       artist: t.artist || existing?.artist || "YouTube Music",
-      thumbnailUrl:
-        t.thumbnailUrl ||
-        existing?.thumbnailUrl ||
-        (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : ""),
+      thumbnailUrl: pickThumbnail(t.thumbnailUrl, existing?.thumbnailUrl, videoId),
       duration: t.duration || existing?.duration,
       playlistId: t.playlistId || existing?.playlistId,
       itemType: t.itemType || existing?.itemType || "song",
@@ -201,6 +209,7 @@ export function markArtworkVerified(videoId: string, workingUrl: string): void {
   if (!videoId || !workingUrl) return;
   const existing = trackMap.get(videoId);
   if (existing) {
+    if (isSquareCover(existing.thumbnailUrl) && !isSquareCover(workingUrl)) return;
     existing.thumbnailUrl = workingUrl;
     existing.verifiedArtwork = true;
     existing.updatedAt = Date.now();
