@@ -1,3 +1,6 @@
+mod media_controls;
+mod tray;
+
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 use std::collections::HashMap;
@@ -2808,6 +2811,7 @@ pub fn run() {
     let builder = tauri::Builder::default()
         .manage(SessionState::default())
         .manage(PlayerServerState(player_port))
+        .manage(media_controls::LastNowPlaying::default())
         .plugin(tauri_plugin_log::Builder::default().build());
 
     let builder = if let Some(port) = local_app_port {
@@ -2825,6 +2829,13 @@ pub fn run() {
 
     builder
         .setup(move |app| {
+            media_controls::init(app.handle());
+
+            #[cfg(debug_assertions)]
+            let tray_url: Option<tauri::Url> = None;
+            #[cfg(not(debug_assertions))]
+            let mut tray_url: Option<tauri::Url> = None;
+
             #[cfg(not(debug_assertions))]
             if let Some(port) = local_app_port {
                 let app_url: Url = format!("http://localhost:{port}")
@@ -2836,6 +2847,7 @@ pub fn run() {
                         .remote(app_url.to_string())
                         .local(false)
                         .window("main")
+                        .window(tray::POPOVER_LABEL)
                         .permission("core:default")
                         .permission("core:event:default")
                         .permission("allow-search-tracks")
@@ -2856,13 +2868,21 @@ pub fn run() {
                         .permission("allow-get-related-recommendations")
                         .permission("allow-get-player-server-url")
                         .permission("allow-get-lyrics")
-                        .permission("allow-perform-haptic"),
+                        .permission("allow-perform-haptic")
+                        .permission("allow-set-now-playing")
+                        .permission("allow-get-now-playing")
+                        .permission("allow-tray-media-control")
+                        .permission("allow-show-main-window")
+                        .permission("allow-hide-tray-popover"),
                 )?;
+                tray_url = Some(app_url.clone());
 
                 app.get_webview_window("main")
                     .ok_or("Main window was not available")?
                     .navigate(app_url)?;
             }
+
+            tray::init(app.handle(), tray_url)?;
 
             // Restore saved session & image cache from disk on startup
             if let Ok(app_data) = app.path().app_data_dir() {
@@ -2914,8 +2934,35 @@ pub fn run() {
             get_related_recommendations,
             get_player_server_url,
             get_lyrics,
-            perform_haptic
+            perform_haptic,
+            media_controls::set_now_playing,
+            media_controls::get_now_playing,
+            media_controls::tray_media_control,
+            tray::show_main_window,
+            tray::hide_tray_popover
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        // Closing the main window keeps the music playing; the menu bar icon controls it.
+        // Quit from the tray menu or with Cmd+Q.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit) {
+                tray::prepare_exit(app);
+            }
+            // Clicking the Dock icon brings the hidden window back.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = event {
+                tray::show_main(app);
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = (app, event);
+        });
 }
