@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-hide-tray-popover"
+description = "Enables the hide_tray_popover command without any pre-configured scope."
+commands.allow = ["hide_tray_popover"]
+
+[[permission]]
+identifier = "deny-hide-tray-popover"
+description = "Denies the hide_tray_popover command without any pre-configured scope."
+commands.deny = ["hide_tray_popover"]

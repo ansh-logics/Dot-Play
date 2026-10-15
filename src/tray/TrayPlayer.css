@@ -1,0 +1,528 @@
+/* Menu bar mini player, phone style. The window is transparent over a native macOS
+   popover blur, so the page only adds a soft tint from the album art. */
+:root {
+  --tray-ink: 22, 22, 24;
+  --tray-accent: #d71921;
+  color-scheme: light dark;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --tray-ink: 255, 255, 255;
+  }
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: default;
+}
+
+.tray {
+  box-sizing: border-box;
+  height: 100%;
+  padding: 18px 18px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: rgb(var(--tray-ink));
+  background:
+    radial-gradient(130% 70% at 50% 0%, color-mix(in srgb, var(--tray-tint, transparent) 38%, transparent), transparent 75%);
+  transition: background 0.6s ease;
+}
+
+/* ---- Empty ---- */
+.tray--empty {
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.tray-empty-mark {
+  font-size: 34px;
+  font-weight: 700;
+  color: rgba(var(--tray-ink), 0.3);
+}
+
+.tray-empty-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(var(--tray-ink), 0.7);
+}
+
+/* ---- Cover + title ---- */
+.tray-hero {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.tray-cover {
+  flex: 1;
+  min-height: 0;
+  aspect-ratio: 1;
+  align-self: center;
+  max-width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(var(--tray-ink), 0.08);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.32);
+  transition: transform 0.45s cubic-bezier(0.3, 1.3, 0.5, 1), box-shadow 0.45s ease;
+}
+
+/* Paused: the cover settles back, like the phone. */
+.tray-cover.is-paused {
+  transform: scale(0.86);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+}
+
+.tray-cover img,
+.tray-compact-art img,
+.tray-queue-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.tray-meta {
+  min-width: 0;
+}
+
+.tray-title,
+.tray-artist {
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tray-title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.tray-artist {
+  margin-top: 2px;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(var(--tray-ink), 0.6);
+}
+
+/* ---- Lyrics / queue mode ---- */
+.tray-compact {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.tray-compact-art {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 7px;
+  overflow: hidden;
+  background: rgba(var(--tray-ink), 0.08);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+}
+
+.tray-compact .tray-title {
+  font-size: 15px;
+}
+
+.tray-compact .tray-artist {
+  font-size: 13px;
+}
+
+.tray-panel-wrap {
+  flex: 1;
+  min-height: 0;
+  margin: 0 -18px;
+  position: relative;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 14px, #000 calc(100% - 22px), transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 14px, #000 calc(100% - 22px), transparent);
+}
+
+.tray-panel {
+  box-sizing: border-box;
+  height: 100%;
+  overflow-y: auto;
+  padding: 10px 18px 22px;
+  scrollbar-width: none;
+}
+
+.tray-panel::-webkit-scrollbar {
+  display: none;
+}
+
+.tray-panel--empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  text-align: center;
+}
+
+.tray-panel-empty-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  color: rgba(var(--tray-ink), 0.75);
+}
+
+.tray-panel-empty-sub {
+  margin: 0;
+  font-size: 12.5px;
+  color: rgba(var(--tray-ink), 0.5);
+}
+
+.tray-panel-heading {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(var(--tray-ink), 0.55);
+}
+
+/* Queue */
+.tray-queue {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.tray-queue li {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.tray-queue-item {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 30px 6px 6px;
+  margin: 0 -6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+}
+
+.tray-queue-item:hover {
+  background: rgba(var(--tray-ink), 0.08);
+}
+
+.tray-queue-art {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 5px;
+  overflow: hidden;
+  background: rgba(var(--tray-ink), 0.08);
+}
+
+.tray-queue-meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tray-queue-title,
+.tray-queue-artist {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tray-queue-title {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.tray-queue-artist {
+  font-size: 12px;
+  color: rgba(var(--tray-ink), 0.55);
+}
+
+.tray-queue-remove {
+  position: absolute;
+  right: 0;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: rgba(var(--tray-ink), 0.6);
+  background: transparent;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.tray-queue li:hover .tray-queue-remove,
+.tray-queue-remove:focus-visible {
+  opacity: 1;
+}
+
+.tray-queue-remove:hover {
+  color: rgb(var(--tray-ink));
+  background: rgba(var(--tray-ink), 0.12);
+}
+
+/* Lyrics */
+.tray-lyrics {
+  padding-top: 40%;
+  padding-bottom: 50%;
+}
+
+.tray-lyrics--plain {
+  padding-top: 10px;
+  padding-bottom: 22px;
+}
+
+.tray-lyric {
+  display: block;
+  width: 100%;
+  margin: 0 0 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font-size: 19px;
+  font-weight: 750;
+  line-height: 1.22;
+  letter-spacing: -0.015em;
+  color: rgba(var(--tray-ink), 0.3);
+  transition: color 0.35s ease, transform 0.35s ease;
+  transform-origin: left center;
+}
+
+.tray-lyrics--plain .tray-lyric {
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(var(--tray-ink), 0.75);
+}
+
+button.tray-lyric:hover {
+  color: rgba(var(--tray-ink), 0.55);
+}
+
+.tray-lyric.is-past {
+  color: rgba(var(--tray-ink), 0.22);
+}
+
+.tray-lyric.is-active {
+  color: rgb(var(--tray-ink));
+}
+
+.tray-lyric--dots {
+  font-size: 15px;
+  letter-spacing: 0.2em;
+}
+
+.tray-lyric-bg {
+  display: block;
+  margin-top: 3px;
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+/* ---- Scrubber ---- */
+.tray-progress input,
+.tray-volume input {
+  width: 100%;
+  height: 14px;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+}
+
+.tray-progress input::-webkit-slider-runnable-track,
+.tray-volume input::-webkit-slider-runnable-track {
+  height: 5px;
+  border-radius: 3px;
+  background: linear-gradient(to right, rgba(var(--tray-ink), 0.8) var(--fill), rgba(var(--tray-ink), 0.16) var(--fill));
+}
+
+.tray-progress input::-webkit-slider-thumb,
+.tray-volume input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -3.5px;
+  border-radius: 50%;
+  background: rgb(var(--tray-ink));
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.tray-progress input:hover::-webkit-slider-thumb,
+.tray-progress input:active::-webkit-slider-thumb,
+.tray-volume input:hover::-webkit-slider-thumb,
+.tray-volume input:active::-webkit-slider-thumb {
+  opacity: 1;
+}
+
+.tray-times {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: rgba(var(--tray-ink), 0.5);
+}
+
+/* ---- Transport ---- */
+.tray-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px;
+}
+
+.tray-controls button,
+.tray-volume button,
+.tray-bar button {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+}
+
+.tray-controls button {
+  width: 42px;
+  height: 42px;
+  color: rgba(var(--tray-ink), 0.9);
+}
+
+.tray-controls button:hover,
+.tray-volume button:hover,
+.tray-bar button:hover {
+  background: rgba(var(--tray-ink), 0.1);
+}
+
+.tray-controls button:active,
+.tray-bar button:active {
+  transform: scale(0.9);
+}
+
+.tray-controls .tray-mode {
+  width: 32px;
+  height: 32px;
+  color: rgba(var(--tray-ink), 0.5);
+}
+
+.tray-controls .tray-mode.is-on {
+  color: var(--tray-accent);
+}
+
+.tray-controls .tray-play {
+  width: 54px;
+  height: 54px;
+  color: #fff;
+  background: var(--tray-accent);
+  box-shadow: 0 5px 16px rgba(215, 25, 33, 0.38);
+}
+
+.tray-controls .tray-play:hover {
+  background: color-mix(in srgb, var(--tray-accent) 88%, #fff);
+}
+
+/* ---- Volume ---- */
+.tray-volume {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tray-volume button {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  color: rgba(var(--tray-ink), 0.55);
+}
+
+/* ---- Bottom bar ---- */
+.tray-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 2px;
+}
+
+.tray-bar > button:not(.tray-link) {
+  width: 34px;
+  height: 34px;
+  color: rgba(var(--tray-ink), 0.55);
+}
+
+.tray-bar > button.is-on {
+  color: var(--tray-accent);
+  background: rgba(var(--tray-ink), 0.1);
+}
+
+.tray-link {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px !important;
+  border: 0;
+  border-radius: 7px !important;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(var(--tray-ink), 0.55);
+  background: transparent;
+}
+
+.tray-link:hover {
+  color: rgb(var(--tray-ink));
+  background: rgba(var(--tray-ink), 0.08);
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--tray-accent) 70%, transparent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tray,
+  .tray-cover,
+  .tray-lyric,
+  .tray-controls button,
+  .tray-bar button {
+    transition: none;
+  }
+  .tray-cover.is-paused {
+    transform: none;
+  }
+}

@@ -95,6 +95,8 @@ import { NowPlaying } from "./components/now-playing/NowPlaying";
 import { useArtwork } from "./lib/imagePipeline";
 import { useArtworkPalette } from "./lib/useArtworkPalette";
 import { cleanDisplayTitle } from "./lib/displayText";
+import { useSystemMediaControls } from "./lib/useSystemMediaControls";
+import { useTrayBridge } from "./lib/useTrayBridge";
 import { loadFeedbackPrefs, saveFeedbackPrefs, type FeedbackPrefs } from "./lib/feedback";
 
 function App() {
@@ -1398,6 +1400,30 @@ function App() {
     playerRef.current?.seekTo(0, true);
     setCurrentTime(0);
   }, [currentTime, playTrack]);
+
+  useSystemMediaControls({
+    track: currentTrack,
+    playerState,
+    currentTime,
+    duration,
+    onTogglePlayPause: togglePlayPause,
+    onNext: handleNextTrack,
+    onPrevious: handlePreviousTrack,
+    onSeek: seekTo,
+  });
+
+  useTrayBridge({
+    upcoming: session.upcoming,
+    playbackModes,
+    volume,
+    isMuted,
+    onSelectUpcoming: handleSelectUpcoming,
+    onRemoveUpcoming: handleRemoveUpcoming,
+    onToggleShuffle: toggleShuffle,
+    onCycleRepeat: cycleRepeatMode,
+    onChangeVolume: changeVolume,
+    onToggleMute: toggleMute,
+  });
 
 
   const getPlayButtonLabel = () => {

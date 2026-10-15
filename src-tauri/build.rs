@@ -21,6 +21,11 @@ fn main() {
         "get_player_server_url",
         "get_lyrics",
         "perform_haptic",
+        "set_now_playing",
+        "get_now_playing",
+        "tray_media_control",
+        "show_main_window",
+        "hide_tray_popover",
       ]),
     ),
   )

@@ -21,7 +21,7 @@ tauri-build = { version = "2.7.1", features = [] }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
-tauri = { version = "2.12.1", features = [] }
+tauri = { version = "2.12.1", features = ["tray-icon", "macos-private-api", "image-png"] }
 tauri-plugin-log = "2"
 reqwest = { version = "0.12", features = ["json"] }
 sha1 = "0.10"
@@ -30,7 +30,9 @@ portpicker = "0.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", features = ["NSHTTPCookie", "NSArray", "NSString"] }
+objc2-foundation = { version = "0.3", features = ["NSHTTPCookie", "NSArray", "NSString", "NSDictionary", "NSValue", "NSData"] }
 objc2-web-kit = { version = "0.3", features = ["WKWebView", "WKWebViewConfiguration", "WKWebsiteDataStore", "WKHTTPCookieStore"] }
 block2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSHapticFeedback"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSHapticFeedback", "NSImage", "NSPanel", "NSWindow", "NSResponder", "NSGraphics"] }
+objc2-media-player = { version = "0.3", default-features = false, features = ["std", "block2", "objc2-app-kit", "objc2-core-foundation", "MPNowPlayingInfoCenter", "MPRemoteCommandCenter", "MPRemoteCommand", "MPRemoteCommandEvent", "MPMediaItem"] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFCGTypes"] }
