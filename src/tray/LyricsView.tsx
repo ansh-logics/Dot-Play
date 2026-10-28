@@ -35,8 +35,13 @@ export default function LyricsView({ np, position }: LyricsViewProps) {
 
   const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const el = listRef.current?.querySelector<HTMLElement>(`[data-row="${active}"]`);
-    el?.scrollIntoView({ block: "center", behavior: "smooth" });
+    const list = listRef.current;
+    const el = list?.querySelector<HTMLElement>(`[data-row="${active}"]`);
+    if (!list || !el) return;
+    // Scroll only the list (scrollIntoView would also scroll any page embedding the player).
+    const box = list.getBoundingClientRect();
+    const row = el.getBoundingClientRect();
+    list.scrollTo({ top: list.scrollTop + row.top - box.top - (box.height - row.height) / 2, behavior: "smooth" });
   }, [active]);
 
   if (!result || result.key !== key) {
