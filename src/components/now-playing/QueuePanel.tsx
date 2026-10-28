@@ -1,4 +1,4 @@
-import { useState, type MouseEvent } from "react";
+import { memo, useState, type MouseEvent } from "react";
 import { Reorder } from "motion/react";
 import { CornerDownRight, ListPlus } from "lucide-react";
 import { ArtworkImage } from "../ArtworkImage";
@@ -27,7 +27,11 @@ export interface QueuePanelProps {
   onContextMenu?: QueueContextMenuHandler;
 }
 
-export function QueuePanel({
+/**
+ * Memoised: the player re-renders ~10×/s with the playback time, and the queue's Reorder
+ * list measures every row on each render, which stalled the sheet animation.
+ */
+export const QueuePanel = memo(function QueuePanel({
   session,
   autoplay,
   isOpen,
@@ -140,4 +144,4 @@ export function QueuePanel({
       )}
     </div>
   );
-}
+});

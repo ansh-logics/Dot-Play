@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, type PointerEvent, type WheelEvent } from "react";
+import { memo, useCallback, useEffect, useRef, type PointerEvent, type WheelEvent } from "react";
 import {
   AnimatePresence,
   animate,
@@ -104,7 +104,7 @@ function WheelItem({
  * trackpad/mouse wheel, vertical drag or ↑/↓; every notch clicks (sound + Force
  * Touch haptic). The chosen style is applied once the wheel comes to rest.
  */
-export function SkinWheel({ open, skin, onSelect, onClose, reduceMotion }: SkinWheelProps) {
+export const SkinWheel = memo(function SkinWheel({ open, skin, onSelect, onClose, reduceMotion }: SkinWheelProps) {
   const currentIndex = PLAYER_SKINS.findIndex((s) => s.id === skin);
   /** Input position: unbounded, so the wheel loops. */
   const pos = useMotionValue(currentIndex);
@@ -302,4 +302,4 @@ export function SkinWheel({ open, skin, onSelect, onClose, reduceMotion }: SkinW
       )}
     </AnimatePresence>
   );
-}
+});

@@ -97,6 +97,9 @@ function NowPlayingScreen(props: NowPlayingProps) {
   // plays when it finishes (overlapping view transitions get cancelled abruptly = flicker).
   const skinRef = useRef(skin);
   const switching = useRef(false);
+  // WebKit runs the reveal's clip-path animation on the main thread, so the lyric letter
+  // sweep (per-frame style writes) is paused for its ~0.65s to keep the circle smooth.
+  const [revealing, setRevealing] = useState(false);
   const queuedSkin = useRef<PlayerSkinId | null>(null);
 
   const revealSkin = useCallback(
@@ -111,6 +114,7 @@ function NowPlayingScreen(props: NowPlayingProps) {
         return;
       }
       switching.current = true;
+      setRevealing(true);
       const npRoot = rootRef.current;
       // The new style pours out of the wheel: a circle reveal centred on its disc.
       const disc = document.querySelector(".np-wheel-disc")?.getBoundingClientRect();
@@ -135,6 +139,7 @@ function NowPlayingScreen(props: NowPlayingProps) {
       void transition.finished.finally(() => {
         npRoot?.classList.remove("np-switching");
         switching.current = false;
+        setRevealing(false);
         const next = queuedSkin.current;
         queuedSkin.current = null;
         if (next && next !== skinRef.current) revealSkin(next);
@@ -157,6 +162,7 @@ function NowPlayingScreen(props: NowPlayingProps) {
   const { data: lyrics, status: lyricsStatus } = useLyrics(track, props.duration);
   const hasLyrics = lyricsStatus === "synced" || lyricsStatus === "plain" || lyricsStatus === "loading";
   const showLyrics = lyricsOn && hasLyrics;
+  const layoutKey = `${showLyrics}-${compact}`;
 
   // Same resolution ArtworkImage uses, so colours and letterbox zoom match the pixels on screen.
   const { currentUrl: artworkUrl } = useArtwork({
@@ -172,19 +178,29 @@ function NowPlayingScreen(props: NowPlayingProps) {
   const peekRef = useRef<HTMLDivElement>(null);
   const miniRef = useRef<HTMLDivElement>(null);
   const listScrollRef = useRef<HTMLDivElement>(null);
-  const [geom, setGeom] = useState({ height: 0, closedY: 0 });
+  const [geom, setGeom] = useState({ height: 0, closedY: 0, mini: 0 });
   const y = useMotionValue(10_000);
   const closedYMV = useMotionValue(1);
+  const miniH = useMotionValue(0);
+  // The stage behind the open sheet is faded out; pausing its per-frame lyric work while the
+  // sheet moves or stays open keeps the main thread free for the sheet animation.
+  const [stageLive, setStageLive] = useState(true);
+  const sheetOpenRef = useRef(false);
   const dragControls = useDragControls();
   const measured = geom.height > 0;
 
   const measure = useCallback(() => {
-    // The compact row grows as the sheet opens; it isn't part of the collapsed peek.
-    const peek = (peekRef.current?.offsetHeight ?? 140) - (miniRef.current?.offsetHeight ?? 0);
+    // The compact row has a fixed height and is always laid out; while collapsed the controls
+    // slide up over it (transform only), so it isn't part of the visible peek. Nothing here
+    // changes size during the sheet animation, so this only re-runs on real resizes.
+    const mini = miniRef.current?.offsetHeight ?? 0;
+    const peek = (peekRef.current?.offsetHeight ?? 140) - mini;
     const vh = window.innerHeight;
     const height = Math.round(Math.max(peek + 220, Math.min(vh * 0.8, 780)));
     const closedY = height - peek;
-    setGeom((g) => (g.height === height && g.closedY === closedY ? g : { height, closedY }));
+    setGeom((g) =>
+      g.height === height && g.closedY === closedY && g.mini === mini ? g : { height, closedY, mini },
+    );
   }, []);
 
   useLayoutEffect(() => {
@@ -203,12 +219,16 @@ function NowPlayingScreen(props: NowPlayingProps) {
   useLayoutEffect(() => {
     if (!measured) return;
     closedYMV.set(geom.closedY);
+    miniH.set(geom.mini);
     const target = sheetOpen ? 0 : geom.closedY;
     if (firstPlacement.current) {
       firstPlacement.current = false;
       y.set(geom.height);
       if (reduceMotion) y.set(target);
       else animate(y, target, { ...SHEET_SPRING, delay: 0.05 });
+    } else if (y.isAnimating()) {
+      // Never snap mid-animation (that reads as a jump); retarget the running spring instead.
+      animate(y, target, { ...SHEET_SPRING, velocity: y.getVelocity() });
     } else {
       y.set(target);
     }
@@ -219,9 +239,14 @@ function NowPlayingScreen(props: NowPlayingProps) {
   const setSheet = useCallback(
     (open: boolean, velocity = 0) => {
       setSheetOpen(open);
+      sheetOpenRef.current = open;
+      if (open) setStageLive(false);
       const target = open ? 0 : closedYMV.get();
-      if (reduceMotion) animate(y, target, { duration: 0.18 });
-      else animate(y, target, { ...SHEET_SPRING, velocity });
+      const controls = reduceMotion
+        ? animate(y, target, { duration: 0.18 })
+        : animate(y, target, { ...SHEET_SPRING, velocity });
+      // Resume the stage's lyric animation only once the sheet has settled closed.
+      if (!open) void controls.then(() => setStageLive(!sheetOpenRef.current));
     },
     [closedYMV, reduceMotion, y],
   );
@@ -230,10 +255,13 @@ function NowPlayingScreen(props: NowPlayingProps) {
   const stageOpacity = useTransform(progress, [0, 1], [1, 0.14]);
   const stageScale = useTransform(progress, [0, 1], [1, 0.94]);
   const stageY = useTransform(progress, [0, 1], [0, -28]);
-  const miniHeight = useTransform(progress, [0, 1], [0, 76]);
   const miniOpacity = useTransform(progress, [0.45, 1], [0, 1]);
+  // Collapsed, the controls and queue sit one mini-row higher (over the hidden mini row).
+  // Animated with transforms only: animating the row's height re-laid-out the card each frame.
+  const contentShift = useTransform([progress, miniH], ([p, m]: number[]) => -(1 - p) * m);
   const queueOpacity = useTransform(progress, [0.25, 0.85], [0, 1]);
-  const cardTint = useTransform(progress, [0, 1], ["rgba(255, 255, 255, 0.10)", "rgba(24, 24, 28, 0.42)"]);
+
+  const closeWheel = useCallback(() => setWheelOpen(false), []);
 
   const grabStart = useRef(0);
   const onCardPointerDown = (e: PointerEvent<HTMLDivElement>) => {
@@ -344,7 +372,7 @@ function NowPlayingScreen(props: NowPlayingProps) {
         open={wheelOpen}
         skin={skin}
         onSelect={chooseSkin}
-        onClose={() => setWheelOpen(false)}
+        onClose={closeWheel}
         reduceMotion={reduceMotion}
       />
 
@@ -392,7 +420,15 @@ function NowPlayingScreen(props: NowPlayingProps) {
       >
         <LayoutGroup>
           <div className="np-stage-row">
-            <motion.div layout={!reduceMotion} className="np-art-wrap" transition={{ type: "spring", stiffness: 300, damping: 34 }}>
+            <motion.div
+              layout={!reduceMotion}
+              // Only re-measure when the arrangement really changes. Without this, Motion
+              // measured on every render (10×/s from the time updates) and "corrected" for the
+              // stage's own scale while the sheet moved, which jittered.
+              layoutDependency={layoutKey}
+              className="np-art-wrap"
+              transition={{ type: "spring", stiffness: 300, damping: 34 }}
+            >
               {skin === "vinyl" ? (
                 <VinylRecord
                   track={track}
@@ -430,12 +466,13 @@ function NowPlayingScreen(props: NowPlayingProps) {
                     isPlaying={props.isPlaying}
                     onSeek={props.onSeek}
                     reduceMotion={reduceMotion}
+                    paused={!stageLive || revealing}
                   />
                 </motion.section>
               )}
             </AnimatePresence>
           </div>
-          <motion.div layout={!reduceMotion} className="np-meta">
+          <motion.div layout={!reduceMotion} layoutDependency={layoutKey} className="np-meta">
             <h1 className="np-title" title={track.title}>
               {cleanDisplayTitle(track.title)}
             </h1>
@@ -452,7 +489,7 @@ function NowPlayingScreen(props: NowPlayingProps) {
           className={`np-card ${sheetOpen ? "is-open" : ""}`}
           role="region"
           aria-label="Player controls and queue"
-          style={{ y, height: measured ? geom.height : undefined, backgroundColor: cardTint, visibility: measured ? "visible" : "hidden" }}
+          style={{ y, height: measured ? geom.height : undefined, visibility: measured ? "visible" : "hidden" }}
           drag="y"
           dragListener={false}
           dragControls={dragControls}
@@ -463,6 +500,9 @@ function NowPlayingScreen(props: NowPlayingProps) {
           onPointerDown={onCardPointerDown}
           onWheel={onCardWheel}
         >
+          {/* Darkens the glass as the sheet opens. Fading this layer's opacity is compositor-only;
+              animating the card's own background-color repainted its backdrop blur every frame. */}
+          <motion.div className="np-card-shade" style={{ opacity: progress }} aria-hidden="true" />
           <div ref={peekRef} className="np-card-peek">
             <div
               className="np-grabber"
@@ -475,13 +515,14 @@ function NowPlayingScreen(props: NowPlayingProps) {
             >
               <span />
             </div>
-            <motion.div ref={miniRef} className="np-mini" style={{ height: miniHeight, opacity: miniOpacity }} aria-hidden={!sheetOpen}>
+            <motion.div ref={miniRef} className="np-mini" style={{ opacity: miniOpacity }} aria-hidden={!sheetOpen}>
               <ArtworkImage src={track.thumbnailUrl} videoId={track.videoId} alt="" className="np-mini-art" variant="hero" />
               <div className="np-mini-text">
                 <span className="np-mini-title">{cleanDisplayTitle(track.title)}</span>
                 <span className="np-mini-artist">{track.artist}</span>
               </div>
             </motion.div>
+            <motion.div style={{ y: contentShift }}>
             <ControlDeck
               currentTime={props.currentTime}
               duration={props.duration}
@@ -501,8 +542,9 @@ function NowPlayingScreen(props: NowPlayingProps) {
               onToggleAutoplay={props.onToggleAutoplay}
               onToggleShuffle={props.onToggleShuffle}
             />
+            </motion.div>
           </div>
-          <motion.div ref={listScrollRef} className="np-card-body" style={{ opacity: queueOpacity }}>
+          <motion.div ref={listScrollRef} className="np-card-body" style={{ opacity: queueOpacity, y: contentShift }}>
             <QueuePanel
               session={session}
               autoplay={props.modes.autoplay}

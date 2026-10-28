@@ -11,6 +11,8 @@ interface LyricsPanelProps {
   isPlaying: boolean;
   onSeek: (seconds: number) => void;
   reduceMotion: boolean;
+  /** Hidden behind the open queue sheet: skip the per-frame letter writes. */
+  paused?: boolean;
 }
 
 const USER_SCROLL_PAUSE_MS = 3500;
@@ -50,7 +52,7 @@ function TimedWords({ words, letters }: { words: LyricWord[]; letters: boolean }
   );
 }
 
-export function LyricsPanel({ data, status, currentTime, isPlaying, onSeek, reduceMotion }: LyricsPanelProps) {
+export function LyricsPanel({ data, status, currentTime, isPlaying, onSeek, reduceMotion, paused = false }: LyricsPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const userScrollUntil = useRef(0);
   const synced = status === "synced";
@@ -153,12 +155,12 @@ export function LyricsPanel({ data, status, currentTime, isPlaying, onSeek, redu
     });
   }, [activeIdx, activeRow, activeWords, now, reduceMotion]);
 
-  const looping = animates && isPlaying;
+  const looping = animates && isPlaying && !paused;
   useFrameLoop(draw, looping);
   // Paused (e.g. scrubbing while paused): no frame loop, so redraw on each time update instead.
   useEffect(() => {
-    if (!looping) draw();
-  }, [currentTime, looping, draw]);
+    if (!looping && !paused) draw();
+  }, [currentTime, looping, paused, draw]);
 
   // ---- Render ------------------------------------------------------------------
   if (status === "loading") {

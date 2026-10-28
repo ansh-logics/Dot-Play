@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React, { memo, useRef } from "react";
 import { useArtwork, type ArtworkVariant } from "../lib/imagePipeline";
 import { Music } from "lucide-react";
 
@@ -12,7 +12,7 @@ export interface ArtworkImageProps {
   variant?: ArtworkVariant;
 }
 
-export const ArtworkImage: React.FC<ArtworkImageProps> = ({
+const ArtworkImageBase: React.FC<ArtworkImageProps> = ({
   src,
   videoId,
   artworkKey,
@@ -60,3 +60,6 @@ export const ArtworkImage: React.FC<ArtworkImageProps> = ({
     </div>
   );
 };
+
+/** Memoised: artwork sits inside screens that re-render with every playback-time update. */
+export const ArtworkImage = memo(ArtworkImageBase);

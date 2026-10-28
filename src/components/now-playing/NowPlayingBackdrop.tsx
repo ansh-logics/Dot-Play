@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { memo, type CSSProperties } from "react";
 import type { ArtworkPalette } from "../../lib/useArtworkPalette";
 
 interface BackdropProps {
@@ -15,7 +15,7 @@ interface BackdropProps {
  * animate via registered custom properties (see @property in NowPlaying.css),
  * sitting on a blurred copy of the artwork that is always present as a fallback.
  */
-export function NowPlayingBackdrop({ palette, artworkUrl }: BackdropProps) {
+export const NowPlayingBackdrop = memo(function NowPlayingBackdrop({ palette, artworkUrl }: BackdropProps) {
   const colours = palette
     ? ({
         "--np-c0": palette.colors[0],
@@ -36,4 +36,4 @@ export function NowPlayingBackdrop({ palette, artworkUrl }: BackdropProps) {
       <div className="np-grain" />
     </div>
   );
-}
+});
