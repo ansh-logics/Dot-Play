@@ -25,6 +25,10 @@ pub struct SearchResult {
     pub playlist_id: Option<String>,
     #[serde(rename = "itemType", skip_serializing_if = "Option::is_none")]
     pub item_type: Option<String>,
+    /// "user" for songs the listener queued themselves (Add to Queue / Play Next), which
+    /// survive playing a different song directly. Set by the frontend; kept when saving the queue.
+    #[serde(rename = "queueSource", default, skip_serializing_if = "Option::is_none")]
+    pub queue_source: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -349,6 +353,7 @@ async fn search_tracks(query: String) -> Result<Vec<SearchResult>, String> {
                 thumbnail_url: thumb.to_string(),
                 playlist_id: None,
                 item_type: Some("song".to_string()),
+                queue_source: None,
             });
         }
     }
@@ -404,6 +409,7 @@ async fn search_tracks(query: String) -> Result<Vec<SearchResult>, String> {
                                     thumbnail_url: thumb.to_string(),
                                     playlist_id: None,
                                     item_type: Some("song".to_string()),
+                                    queue_source: None,
                                 });
                             }
                         }
@@ -1023,6 +1029,7 @@ fn parse_feed_item(item: &serde_json::Value) -> Option<SearchResult> {
             thumbnail_url: final_thumb,
             playlist_id: final_playlist_id,
             item_type: Some(item_type.to_string()),
+            queue_source: None,
         })
     } else {
         None
@@ -1952,35 +1959,32 @@ async fn get_queue_session(app: AppHandle) -> Result<Option<QueueSession>, Strin
     Ok(None)
 }
 
-#[tauri::command]
-async fn get_related_recommendations(
-    state: State<'_, SessionState>,
-    video_id: String,
-    limit: Option<usize>,
-) -> Result<Vec<SearchResult>, String> {
-    let clean_id = video_id.trim();
-    if clean_id.is_empty() {
-        return Ok(Vec::new());
-    }
+/// A song someone already heard, sent by the frontend so autoplay can skip other versions of it.
+#[derive(Debug, Deserialize)]
+pub struct ExcludedTrack {
+    title: String,
+    artist: String,
+}
 
-    let limit = limit.unwrap_or(10).clamp(1, 20);
+/// Identity of a song across its uploads: "Song (Official Video)" by "Artist - Topic" and
+/// "Song" by "Artist feat. X" are the same song for autoplay purposes.
+fn song_key(title: &str, artist: &str) -> String {
+    let title = clean_query_title(title);
+    // Drop any remaining bracketed suffix: (feat. …), [Remastered], (Live)…
+    let title = title.split(['(', '[']).next().unwrap_or(&title);
+    let (_, primary) = clean_query_artist(artist);
+    let squash = |s: &str| s.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect::<String>();
+    format!("{}|{}", squash(title), squash(&primary))
+}
 
-    let client = reqwest::Client::new();
-    let maybe_cookies = state.cookies.lock().unwrap().clone();
+const RADIO_PANEL: &str = "/contents/singleColumnMusicWatchNextResultsRenderer/tabbedRenderer/watchNextTabbedResultsRenderer/tabs/0/tabRenderer/content/musicQueueRenderer/content/playlistPanelRenderer";
 
-    let body = serde_json::json!({
-        "context": {
-            "client": {
-                "clientName": "WEB_REMIX",
-                "clientVersion": "1.20240101.01.00"
-            }
-        },
-        "videoId": clean_id,
-        "playlistId": format!("RDAMVM{}", clean_id),
-        "isAudioOnly": true
-    });
-
-    let mut request = client
+async fn post_watch_next(
+    client: &reqwest::Client,
+    cookies: &Option<String>,
+    body: &serde_json::Value,
+) -> Option<serde_json::Value> {
+    let request = client
         .post("https://music.youtube.com/youtubei/v1/next")
         .header(
             reqwest::header::USER_AGENT,
@@ -1988,70 +1992,129 @@ async fn get_related_recommendations(
         )
         .header("Referer", "https://music.youtube.com/")
         .header("Origin", "https://music.youtube.com");
+    let request = attach_youtube_auth(request, cookies);
+    request.json(body).send().await.ok()?.json::<serde_json::Value>().await.ok()
+}
 
-    request = attach_youtube_auth(request, &maybe_cookies);
+fn parse_radio_item(item: &serde_json::Value) -> Option<SearchResult> {
+    let r = item.get("playlistPanelVideoRenderer")?;
+    let vid = r.get("videoId").and_then(|v| v.as_str()).filter(|v| !v.is_empty())?;
+    let title = r.pointer("/title/runs/0/text").and_then(|v| v.as_str()).unwrap_or("Unknown Title");
+    let artist = r
+        .pointer("/longBylineText/runs")
+        .or_else(|| r.pointer("/shortBylineText/runs"))
+        .and_then(|v| v.as_array())
+        .map(|runs| runs.iter().filter_map(|run| run.get("text").and_then(|t| t.as_str())).collect::<String>())
+        .filter(|a| !a.is_empty())
+        .unwrap_or_else(|| "Artist".to_string());
+    let thumb = r
+        .pointer("/thumbnail/thumbnails")
+        .and_then(|arr| arr.as_array())
+        .and_then(|arr| arr.last().or_else(|| arr.first()))
+        .and_then(|t| t.get("url"))
+        .and_then(|u| u.as_str())
+        .unwrap_or("");
+    let thumbnail_url = if thumb.is_empty() {
+        format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", vid)
+    } else {
+        upscale_thumbnail_url(thumb)
+    };
+    Some(SearchResult {
+        video_id: vid.to_string(),
+        title: title.to_string(),
+        artist,
+        thumbnail_url,
+        playlist_id: None,
+        item_type: Some("song".to_string()),
+        queue_source: None,
+    })
+}
 
-    if let Ok(res) = request.json(&body).send().await {
-        if let Ok(json) = res.json::<serde_json::Value>().await {
-            let queue_contents = json
-                .pointer("/contents/singleColumnMusicWatchNextResultsRenderer/tabbedRenderer/watchNextTabbedResultsRenderer/tabs/0/tabRenderer/content/musicQueueRenderer/content/playlistPanelRenderer/contents")
-                .and_then(|v| v.as_array());
+/// Songs for autoplay: the seed's YouTube Music radio, minus everything the listener has
+/// heard or has queued (by video ID and by song identity, so other uploads of the same song
+/// don't sneak back in). Reads the whole radio panel, not just its top, and follows the
+/// radio's continuation once when too few fresh songs are left.
+#[tauri::command]
+async fn get_related_recommendations(
+    state: State<'_, SessionState>,
+    video_id: String,
+    limit: Option<usize>,
+    exclude_ids: Option<Vec<String>>,
+    exclude_tracks: Option<Vec<ExcludedTrack>>,
+) -> Result<Vec<SearchResult>, String> {
+    let clean_id = video_id.trim();
+    if clean_id.is_empty() {
+        return Ok(Vec::new());
+    }
+    let limit = limit.unwrap_or(10).clamp(1, 20);
 
-            if let Some(items) = queue_contents {
-                let mut recommendations = Vec::with_capacity(limit);
-                for item in items {
-                    if let Some(r) = item.get("playlistPanelVideoRenderer") {
-                        let vid = r.get("videoId").and_then(|v| v.as_str()).unwrap_or("");
-                        if !vid.is_empty() && vid != clean_id {
-                            let title = r.pointer("/title/runs/0/text").and_then(|v| v.as_str()).unwrap_or("Unknown Title");
-                            let mut artist_parts = Vec::new();
-                            if let Some(runs) = r.pointer("/longBylineText/runs").or_else(|| r.pointer("/shortBylineText/runs")).and_then(|v| v.as_array()) {
-                                for run in runs {
-                                    if let Some(txt) = run.get("text").and_then(|t| t.as_str()) {
-                                        artist_parts.push(txt);
-                                    }
-                                }
-                            }
-                            let artist = if !artist_parts.is_empty() {
-                                artist_parts.join("")
-                            } else {
-                                "Artist".to_string()
-                            };
+    let mut seen_ids: std::collections::HashSet<String> =
+        exclude_ids.unwrap_or_default().into_iter().collect();
+    seen_ids.insert(clean_id.to_string());
+    let mut seen_keys: std::collections::HashSet<String> = exclude_tracks
+        .unwrap_or_default()
+        .iter()
+        .map(|t| song_key(&t.title, &t.artist))
+        .collect();
 
-                            let thumb = r.pointer("/thumbnail/thumbnails")
-                                .and_then(|arr| arr.as_array())
-                                .and_then(|arr| arr.last().or_else(|| arr.first()))
-                                .and_then(|t| t.get("url"))
-                                .and_then(|u| u.as_str())
-                                .unwrap_or("");
+    let client = reqwest::Client::new();
+    let cookies = state.cookies.lock().unwrap().clone();
+    let context = serde_json::json!({
+        "client": { "clientName": "WEB_REMIX", "clientVersion": "1.20240101.01.00" }
+    });
 
-                            let final_thumb = if !thumb.is_empty() {
-                                upscale_thumbnail_url(thumb)
-                            } else {
-                                format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", vid)
-                            };
+    let mut picks: Vec<SearchResult> = Vec::with_capacity(limit);
+    let mut take = |items: &[serde_json::Value], picks: &mut Vec<SearchResult>| {
+        for track in items.iter().filter_map(parse_radio_item) {
+            if picks.len() == limit {
+                break;
+            }
+            let key = song_key(&track.title, &track.artist);
+            if seen_ids.contains(&track.video_id) || seen_keys.contains(&key) {
+                continue;
+            }
+            seen_ids.insert(track.video_id.clone());
+            seen_keys.insert(key);
+            picks.push(track);
+        }
+    };
 
-                            recommendations.push(SearchResult {
-                                video_id: vid.to_string(),
-                                title: title.to_string(),
-                                artist,
-                                thumbnail_url: final_thumb,
-                                playlist_id: None,
-                                item_type: Some("song".to_string()),
-                            });
+    let body = serde_json::json!({
+        "context": context,
+        "videoId": clean_id,
+        "playlistId": format!("RDAMVM{}", clean_id),
+        "isAudioOnly": true
+    });
+    let Some(json) = post_watch_next(&client, &cookies, &body).await else {
+        return Ok(Vec::new());
+    };
+    let Some(panel) = json.pointer(RADIO_PANEL) else {
+        return Ok(Vec::new());
+    };
+    if let Some(items) = panel.get("contents").and_then(|v| v.as_array()) {
+        take(items, &mut picks);
+    }
 
-                            if recommendations.len() == limit {
-                                break;
-                            }
-                        }
-                    }
+    // The top of a radio is mostly what was just played; go one page deeper if needed.
+    const MIN_FRESH: usize = 3;
+    let continuation = panel
+        .pointer("/continuations/0/nextRadioContinuationData/continuation")
+        .and_then(|v| v.as_str());
+    if picks.len() < MIN_FRESH.min(limit) {
+        if let Some(token) = continuation {
+            let body = serde_json::json!({ "context": context, "continuation": token });
+            if let Some(more) = post_watch_next(&client, &cookies, &body).await {
+                if let Some(items) = more
+                    .pointer("/continuationContents/playlistPanelContinuation/contents")
+                    .and_then(|v| v.as_array())
+                {
+                    take(items, &mut picks);
                 }
-                return Ok(recommendations);
             }
         }
     }
 
-    Ok(Vec::new())
+    Ok(picks)
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

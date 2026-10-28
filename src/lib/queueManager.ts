@@ -89,6 +89,9 @@ export function sanitizeSession(raw: unknown): QueueSession {
  * Adds a track to the end of Upcoming queue.
  * Disallows duplicates. Returns whether track was added.
  */
+/** Marks a track as queued by the listener, so it survives playing another song directly. */
+const userQueued = (track: SearchResult): SearchResult => ({ ...track, queueSource: "user" })
+
 export function addToUpcoming(
   session: QueueSession,
   track: SearchResult,
@@ -103,7 +106,7 @@ export function addToUpcoming(
   return {
     session: {
       ...session,
-      upcoming: [...session.upcoming, track],
+      upcoming: [...session.upcoming, userQueued(track)],
     },
     added: true,
   }
@@ -144,7 +147,7 @@ export function playNextUpcoming(
   return {
     session: {
       ...session,
-      upcoming: [track, ...session.upcoming],
+      upcoming: [userQueued(track), ...session.upcoming],
     },
     added: true,
     playedImmediate: false,
@@ -167,7 +170,7 @@ export function appendTracksToUpcoming(
   for (const t of tracks) {
     if (isValidTrack(t) && !existingIds.has(t.videoId)) {
       existingIds.add(t.videoId)
-      newTracks.push(t)
+      newTracks.push(userQueued(t))
     }
   }
 
@@ -242,6 +245,13 @@ export function playTrackImmediate(
   options?: {
     contextUpcoming?: SearchResult[]
     isAutoplay?: boolean
+    /**
+     * Playing a song directly (search, home, "Play now"): start fresh from it. Only the
+     * songs the listener queued themselves are kept, ahead of any new context; old autoplay
+     * suggestions and the rest of a previous playlist are dropped, so autoplay refills the
+     * queue with songs related to the new one.
+     */
+    keepUserQueuedOnly?: boolean
   },
 ): QueueSession {
   if (!isValidTrack(track)) return session
@@ -250,6 +260,10 @@ export function playTrackImmediate(
   if (session.currentTrack && session.currentTrack.videoId) {
     nextHistory = pushToHistory(session.history, session.currentTrack)
   }
+
+  const kept = options?.keepUserQueuedOnly
+    ? session.upcoming.filter((t) => t.queueSource === "user" && t.videoId !== track.videoId)
+    : null
 
   let nextUpcoming: SearchResult[]
   if (options?.contextUpcoming && options.contextUpcoming.length > 0) {
@@ -260,14 +274,16 @@ export function playTrackImmediate(
         ? options.contextUpcoming.slice(trackIdx + 1)
         : options.contextUpcoming.filter((t) => t.videoId !== track.videoId)
 
-    const seen = new Set<string>([track.videoId])
-    nextUpcoming = []
+    const seen = new Set<string>([track.videoId, ...(kept ?? []).map((t) => t.videoId)])
+    nextUpcoming = [...(kept ?? [])]
     for (const t of candidates) {
       if (isValidTrack(t) && !seen.has(t.videoId)) {
         seen.add(t.videoId)
         nextUpcoming.push(t)
       }
     }
+  } else if (kept) {
+    nextUpcoming = kept
   } else {
     // Leave all other Upcoming tracks in their existing order, just remove the selected track
     nextUpcoming = session.upcoming.filter((t) => t.videoId !== track.videoId)

@@ -58,7 +58,7 @@ import {
   removeRecentSearch,
   clearRecentSearches,
   recordPlayback,
-  getRelatedRecommendations,
+  getAutoplayTracks,
   isTauriEnvironment,
   type SearchResult,
   type HomeSection,
@@ -200,7 +200,7 @@ function App() {
     queueFetchForRef.current = sourceVideoId;
 
     let isCancelled = false;
-    void getRelatedRecommendations(sourceVideoId, 10)
+    void getAutoplayTracks(sessionRef.current, 10)
       .then((tracks) => {
         if (isCancelled) return;
         if (
@@ -1173,6 +1173,7 @@ function App() {
         const next = playTrackImmediate(prev, track, {
           contextUpcoming: contextList,
           isAutoplay: false,
+          keepUserQueuedOnly: true,
         });
         void persistQueueSession(next);
         return next;
@@ -1285,7 +1286,8 @@ function App() {
       const lastVideoId = autoplay ? current.currentTrack?.videoId : undefined;
       if (lastVideoId) {
         try {
-          const recs = await getRelatedRecommendations(lastVideoId, 10);
+          // nextSession already has the finished song in history, so it's excluded and seeds the radio.
+          const recs = await getAutoplayTracks(nextSession, 10);
           if (recs.length > 0) {
             const nextPlay = recs[0];
             const remaining = recs.slice(1);
@@ -1337,7 +1339,7 @@ function App() {
 
     if (autoplay && current.currentTrack?.videoId) {
       try {
-        const recs = await getRelatedRecommendations(current.currentTrack.videoId, 10);
+        const recs = await getAutoplayTracks(current, 10);
         if (recs.length > 0) {
           const nextPlay = recs[0];
           const remaining = recs.slice(1);
@@ -3239,12 +3241,17 @@ function App() {
       <MusicContextMenu
         target={contextTarget}
         onClose={handleCloseContextMenu}
-        onPlayNow={(track, contextList) =>
+        onPlayNow={(track, contextList) => {
+          // Playing a song from the queue panel itself keeps the queue as it is.
+          if (contextTarget?.source === "upcoming" || contextTarget?.source === "history") {
+            handleSelectUpcoming(track);
+            return;
+          }
           selectTrack(
             track,
             contextTarget?.source === "playlist" ? contextList : undefined,
-          )
-        }
+          );
+        }}
         onPlayNext={handlePlayNext}
         onAddToQueue={handleAddToQueue}
         onRemoveFromQueue={handleRemoveUpcoming}

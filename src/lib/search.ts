@@ -7,6 +7,12 @@ export interface SearchResult {
   thumbnailUrl: string
   playlistId?: string
   itemType?: "playlist" | "song"
+  /**
+   * "user": queued by the listener (Add to Queue / Play Next / add playlist to queue).
+   * Those stay when a different song is played directly; autoplay suggestions and the rest
+   * of a playlist context are replaced.
+   */
+  queueSource?: "user"
 }
 
 export interface PlaylistTrack {
@@ -398,15 +404,25 @@ export async function getQueueSession(): Promise<QueueSession | null> {
   return null
 }
 
+export interface RecommendationExclusions {
+  /** Video IDs that must not be recommended. */
+  ids?: string[]
+  /** Songs whose other uploads (official video, audio, lyric video…) must not come back either. */
+  tracks?: Array<{ title: string; artist: string }>
+}
+
 export async function getRelatedRecommendations(
   videoId: string,
   limit = 10,
+  exclude: RecommendationExclusions = {},
 ): Promise<SearchResult[]> {
   if (isTauriEnvironment()) {
     try {
       return await invoke<SearchResult[]>("get_related_recommendations", {
         videoId,
         limit,
+        excludeIds: exclude.ids ?? [],
+        excludeTracks: exclude.tracks ?? [],
       })
     } catch (e) {
       console.error("[DOT Music] Failed to get related recommendations via Tauri:", e)
@@ -414,6 +430,47 @@ export async function getRelatedRecommendations(
     }
   }
   return []
+}
+
+/** Songs autoplay suggested recently, so a skipped suggestion isn't pushed again soon. */
+const RECENTLY_RECOMMENDED_MAX = 200
+const recentlyRecommended: string[] = []
+
+function rememberRecommended(tracks: SearchResult[]) {
+  recentlyRecommended.push(...tracks.map((t) => t.videoId))
+  if (recentlyRecommended.length > RECENTLY_RECOMMENDED_MAX) {
+    recentlyRecommended.splice(0, recentlyRecommended.length - RECENTLY_RECOMMENDED_MAX)
+  }
+}
+
+/**
+ * Fresh songs to continue playback after the queue runs out. Seeds YouTube Music's radio
+ * from the current song and excludes everything already heard, queued or recently
+ * suggested, so autoplay doesn't bounce around one small cluster of songs. If that seed's
+ * radio has nothing new left, it tries once more from another recent song.
+ */
+export async function getAutoplayTracks(session: QueueSession, limit = 10): Promise<SearchResult[]> {
+  const heard = [...session.history, ...(session.currentTrack ? [session.currentTrack] : []), ...session.upcoming]
+  const exclude: RecommendationExclusions = {
+    ids: [...new Set([...heard.map((t) => t.videoId), ...recentlyRecommended])],
+    tracks: heard.map((t) => ({ title: t.title, artist: t.artist })),
+  }
+
+  const seeds = [session.currentTrack, ...session.history.slice().reverse()]
+    .filter((t): t is SearchResult => Boolean(t?.videoId))
+    .map((t) => t.videoId)
+  const primary = seeds[0]
+  if (!primary) return []
+
+  let tracks = await getRelatedRecommendations(primary, limit, exclude)
+  if (tracks.length === 0) {
+    // That radio is exhausted; branch out from a different recent song.
+    const pool = seeds.slice(1, 6).filter((id) => id !== primary)
+    const alternate = pool[Math.floor(Math.random() * pool.length)]
+    if (alternate) tracks = await getRelatedRecommendations(alternate, limit, exclude)
+  }
+  rememberRecommended(tracks)
+  return tracks
 }
 
 export async function getPlayerServerUrl(): Promise<string | null> {
