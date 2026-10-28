@@ -321,11 +321,32 @@
   transform: translateY(calc(var(--l, 0) * -1.5px + var(--r, 0) * -1.5px));
 }
 
+/* Words in scripts that can't be split into letter boxes (Devanagari, Arabic, Thai…; see
+   LyricsPanel) are a single span: the fill sweeps across the word as a gradient clipped to the
+   text, right-to-left for RTL scripts. --l is the whole word's progress here. */
+.np-ch--whole {
+  --np-sweep-dir: to right;
+  color: transparent;
+  background-image: linear-gradient(
+    var(--np-sweep-dir),
+    rgb(var(--np-lyric-ink, 255, 255, 255)) calc(var(--l, 0) * 116% - 16%),
+    rgba(var(--np-lyric-ink, 255, 255, 255), 0.32) calc(var(--l, 0) * 116%)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  transform: translateY(calc(var(--l, 0) * -1.5px));
+}
+
+.np-ch--whole.is-rtl { --np-sweep-dir: to left; }
+
 /* Long held notes glow while sung. text-shadow, not filter: filters create composited
    layers that WebKit can clip into visible seams. */
 .np-word.is-held .np-ch {
   text-shadow: 0 0 calc(var(--r, 0) * 12px) rgba(var(--np-lyric-ink, 255, 255, 255), calc(var(--r, 0) * 0.5));
 }
+
+/* A glow behind gradient-clipped text smears it; whole-word spans skip it. */
+.np-word.is-held .np-ch--whole { text-shadow: none; }
 
 /* Backing vocals: a softer, smaller line under the lead. */
 .np-bg {
@@ -1045,6 +1066,14 @@
   transform: translateY(calc(var(--l, 0) * -0.75px + var(--r, 0) * -0.75px));
 }
 .np-root[data-skin="nothing"] .np-word.is-held .np-ch { text-shadow: none; }
+.np-root[data-skin="nothing"] .np-ch--whole {
+  color: transparent;
+  background-image: linear-gradient(
+    var(--np-sweep-dir),
+    #fff calc(var(--l, 0) * 100%),
+    rgba(255, 255, 255, 0.3) calc(var(--l, 0) * 100%)
+  );
+}
 .np-root[data-skin="nothing"] .np-interlude-dots i {
   background: var(--accent-red, #d71921);
   box-shadow: 0 0 10px rgba(215, 25, 33, 0.65);

@@ -22,6 +22,23 @@ const HELD_WORD_S = 1;
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 /**
+ * Scripts whose letters combine or join while being shaped: Indic vowel signs and conjuncts,
+ * Arabic joining, Thai/Khmer clusters, RTL ordering. Splitting their words into per-letter
+ * boxes breaks the shaping (stray marks get drawn on dotted circles), so such words stay whole
+ * and the fill sweeps across them instead.
+ */
+const SHAPED_SCRIPT =
+  /[\p{Script=Arabic}\p{Script=Syriac}\p{Script=Thaana}\p{Script=Nko}\p{Script=Hebrew}\p{Script=Devanagari}\p{Script=Bengali}\p{Script=Gurmukhi}\p{Script=Gujarati}\p{Script=Oriya}\p{Script=Tamil}\p{Script=Telugu}\p{Script=Kannada}\p{Script=Malayalam}\p{Script=Sinhala}\p{Script=Thai}\p{Script=Lao}\p{Script=Tibetan}\p{Script=Myanmar}\p{Script=Khmer}\p{Script=Mongolian}]/u;
+const RTL_SCRIPT = /[\p{Script=Arabic}\p{Script=Syriac}\p{Script=Thaana}\p{Script=Nko}\p{Script=Hebrew}]/u;
+
+const graphemes =
+  typeof Intl !== "undefined" && "Segmenter" in Intl ? new Intl.Segmenter(undefined, { granularity: "grapheme" }) : null;
+
+/** Visible characters (grapheme clusters), so accents and emoji aren't torn apart. */
+const splitLetters = (text: string) =>
+  graphemes ? Array.from(graphemes.segment(text), (s) => s.segment) : Array.from(text);
+
+/**
  * Timed words. On the active line each word is split into letter spans so the sweep can
  * fill and lift letter by letter; elsewhere words stay plain text (cheap, and identical wrap).
  */
@@ -37,13 +54,20 @@ function TimedWords({ words, letters }: { words: LyricWord[]; letters: boolean }
           <Fragment key={w}>
             {lead}
             <span className={`np-word ${held ? "is-held" : ""}`} aria-label={letters ? body : undefined}>
-              {letters
-                ? Array.from(body).map((ch, c) => (
-                    <span key={c} className="np-ch" aria-hidden="true">
-                      {ch}
-                    </span>
-                  ))
-                : body}
+              {!letters ? (
+                body
+              ) : SHAPED_SCRIPT.test(body) ? (
+                // One "letter" for the whole word: the sweep runs across it as a gradient.
+                <span className={`np-ch np-ch--whole ${RTL_SCRIPT.test(body) ? "is-rtl" : ""}`} aria-hidden="true">
+                  {body}
+                </span>
+              ) : (
+                splitLetters(body).map((ch, c) => (
+                  <span key={c} className="np-ch" aria-hidden="true">
+                    {ch}
+                  </span>
+                ))
+              )}
             </span>
           </Fragment>
         );
