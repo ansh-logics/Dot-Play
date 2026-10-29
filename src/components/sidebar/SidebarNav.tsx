@@ -42,7 +42,7 @@ export const SidebarNav = memo(function SidebarNav({
 }: SidebarNavProps) {
   return (
     <nav className="sidebar-nav">
-      <span className="nav-group-label">DISCOVER</span>
+      <span className="nav-group-label">Discover</span>
       <NavItem
         label="Home"
         icon={Home}
@@ -56,7 +56,7 @@ export const SidebarNav = memo(function SidebarNav({
         onClick={() => onNavigate("search")}
       />
 
-      <span className="nav-group-label">COLLECTIONS</span>
+      <span className="nav-group-label">Collections</span>
       <NavItem
         label="Playlists"
         icon={Library}
@@ -70,7 +70,7 @@ export const SidebarNav = memo(function SidebarNav({
         onClick={() => onNavigate("history")}
       />
 
-      <span className="nav-group-label">GENERAL</span>
+      <span className="nav-group-label">General</span>
       <NavItem label="Support" icon={HelpCircle} active={isSupportOpen} onClick={onOpenSupport} />
       <NavItem label="Settings" icon={Settings} active={isSettingsOpen} onClick={onOpenSettings} />
     </nav>

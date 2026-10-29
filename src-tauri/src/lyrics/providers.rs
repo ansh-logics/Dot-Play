@@ -24,6 +24,12 @@ const LYRICS_PLUS_MIRRORS: &[&str] = &[
     "https://lyricsplus-seven.vercel.app",
 ];
 
+/// A provider "answered" when it replied with lyrics or a definite "not found"; rate
+/// limits and server errors don't count, so the miss isn't cached for days.
+fn answered(status: reqwest::StatusCode) -> bool {
+    status.is_success() || status == reqwest::StatusCode::NOT_FOUND
+}
+
 pub(super) async fn fetch_lyrics_from_providers(
     reached: &mut bool,
     video_id: Option<String>,
@@ -55,7 +61,7 @@ pub(super) async fn fetch_lyrics_from_providers(
         if !clean_vid.is_empty() {
             let simp_url = format!("https://api-lyrics.simpmusic.org/v1/{}", clean_vid);
             if let Ok(res) = client.get(&simp_url).send().await {
-        *reached = true;
+        *reached |= answered(res.status());
                 if res.status().is_success() {
                     if let Ok(val) = res.json::<serde_json::Value>().await {
                         let tracks = val
@@ -124,7 +130,7 @@ pub(super) async fn fetch_lyrics_from_providers(
     }
 
     if let Ok(res) = bini_req.send().await {
-        *reached = true;
+        *reached |= answered(res.status());
         if res.status().is_success() {
             if let Ok(val) = res.json::<serde_json::Value>().await {
                 let results = val
@@ -155,7 +161,7 @@ pub(super) async fn fetch_lyrics_from_providers(
 
                 if let Some(lyrics_url) = result.get("lyricsUrl").and_then(|v| v.as_str()) {
                     if let Ok(l_res) = client.get(lyrics_url).send().await {
-        *reached = true;
+        *reached |= answered(l_res.status());
                         if l_res.status().is_success() {
                             if let Ok(body) = l_res.text().await {
                                 if body.contains("<tt") || body.contains("<p") {
@@ -189,7 +195,7 @@ pub(super) async fn fetch_lyrics_from_providers(
             urlencoding_lite(&primary_artist)
         );
         if let Ok(res) = client.get(&lrc_search_url).send().await {
-        *reached = true;
+        *reached |= answered(res.status());
             if res.status().is_success() {
                 if let Ok(val) = res.json::<serde_json::Value>().await {
                     let items = val
@@ -211,7 +217,7 @@ pub(super) async fn fetch_lyrics_from_providers(
     if let Some(ref isrc) = isrc_to_try {
         let ttml_url = format!("https://lrc.red/s/{}.ttml", isrc);
         if let Ok(res) = client.get(&ttml_url).send().await {
-        *reached = true;
+        *reached |= answered(res.status());
             if res.status().is_success() {
                 if let Ok(body) = res.text().await {
                     if body.contains("<tt") || body.contains("<p") {
@@ -244,7 +250,7 @@ pub(super) async fn fetch_lyrics_from_providers(
     }
 
     if let Ok(res) = bl_req.send().await {
-        *reached = true;
+        *reached |= answered(res.status());
         if res.status().is_success() {
             if let Ok(val) = res.json::<serde_json::Value>().await {
                 let ttml = val
@@ -304,7 +310,7 @@ pub(super) async fn fetch_lyrics_from_providers(
         }
 
         if let Ok(res) = lp_req.send().await {
-        *reached = true;
+        *reached |= answered(res.status());
             if res.status().is_success() {
                 if let Ok(val) = res.json::<serde_json::Value>().await {
                     let ttml = val
@@ -350,7 +356,7 @@ pub(super) async fn fetch_lyrics_from_providers(
     }
 
     if let Ok(res) = uni_req.send().await {
-        *reached = true;
+        *reached |= answered(res.status());
         if res.status().is_success() {
             if let Ok(val) = res.json::<serde_json::Value>().await {
                 let synced = val

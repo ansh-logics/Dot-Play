@@ -20,6 +20,7 @@ import { useArtworkPalette } from "../lib/useArtworkPalette";
 import { QueueView } from "./QueueView";
 import { usePosition } from "./usePosition";
 import { command, formatTime, media, type NowPlaying, type TrayState } from "./types";
+import { MiniVinyl } from "../components/vinyl/MiniVinyl";
 
 // Lyrics parsing is the heaviest code here; only load it when the view is opened.
 const LyricsView = lazy(() => import("./LyricsView"));
@@ -104,6 +105,9 @@ export function TrayPlayer() {
   const duration = np.duration > 0 ? np.duration : 0;
   const togglePanel = (next: Panel) => setPanel((current) => (current === next ? "none" : next));
   const artStyle = palette && palette.zoom > 1 ? { transform: `scale(${palette.zoom})` } : undefined;
+  const art = np.artworkUrl && <img src={np.artworkUrl} alt="" referrerPolicy="no-referrer" style={artStyle} />;
+  // With the Vinyl player style, the artwork turns as a record here too.
+  const isVinyl = state?.skin === "vinyl";
 
   return (
     <main
@@ -112,9 +116,13 @@ export function TrayPlayer() {
     >
       {panel === "none" ? (
         <section className="tray-hero">
-          <div className={`tray-cover${np.isPlaying ? "" : " is-paused"}`}>
-            {np.artworkUrl && <img src={np.artworkUrl} alt="" referrerPolicy="no-referrer" style={artStyle} />}
-          </div>
+          {isVinyl ? (
+            <div className="tray-cover is-vinyl">
+              <MiniVinyl isPlaying={np.isPlaying}>{art}</MiniVinyl>
+            </div>
+          ) : (
+            <div className={`tray-cover${np.isPlaying ? "" : " is-paused"}`}>{art}</div>
+          )}
           <div className="tray-meta">
             <p className="tray-title" title={np.title}>{np.title}</p>
             <p className="tray-artist" title={np.artist}>{np.artist}</p>
@@ -123,8 +131,14 @@ export function TrayPlayer() {
       ) : (
         <>
           <section className="tray-compact">
-            <div className="tray-compact-art">
-              {np.artworkUrl && <img src={np.artworkUrl} alt="" referrerPolicy="no-referrer" style={artStyle} />}
+            <div className={`tray-compact-art${isVinyl ? " is-vinyl" : ""}`}>
+              {isVinyl ? (
+                <MiniVinyl isPlaying={np.isPlaying} tiny>
+                  {art}
+                </MiniVinyl>
+              ) : (
+                art
+              )}
             </div>
             <div className="tray-meta">
               <p className="tray-title" title={np.title}>{np.title}</p>

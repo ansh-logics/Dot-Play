@@ -30,6 +30,8 @@ pub(crate) fn start_player_server() -> u16 {
         for stream in listener.incoming() {
             if let Ok(mut stream) = stream {
                 thread::spawn(move || {
+                    // A connection that never sends a request must not hold its thread forever.
+                    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(5)));
                     let mut buffer = [0u8; 2048];
                     let _ = stream.read(&mut buffer);
                     let req = String::from_utf8_lossy(&buffer);

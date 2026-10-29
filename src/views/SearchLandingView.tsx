@@ -30,7 +30,7 @@ export const SearchLandingView = memo(function SearchLandingView({
         <div className="recent-searches-header">
           <div className="recent-header-left">
             <span className="dot-red-accent small" />
-            <h2 className="search-subheading-label">RECENT SEARCHES</h2>
+            <h2 className="search-subheading-label">Recent Searches</h2>
             {recentSearches.length > 0 && (
               <span className="search-count-badge">{recentSearches.length}</span>
             )}

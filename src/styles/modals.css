@@ -77,10 +77,10 @@
 }
 
 .nothing-modal-title {
-  font-family: var(--font-dot);
-  font-size: 13px;
+  font-family: var(--font-heading);
+  font-size: 15px;
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: -0.005em;
   color: var(--text-primary);
   margin: 0;
 }
@@ -119,11 +119,12 @@
 }
 
 .settings-section-title {
-  font-family: var(--font-dot);
-  font-size: 10.5px;
+  font-family: var(--font-body);
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.04em;
   color: var(--text-tertiary);
+  text-transform: none;
 }
 
 .settings-row {
@@ -219,10 +220,10 @@
   align-items: center;
   padding: 3px 10px;
   border-radius: 12px;
-  font-family: var(--font-dot);
+  font-family: var(--font-body);
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.04em;
 }
 
 .settings-status-pill.online {
@@ -282,9 +283,10 @@
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 4px;
   padding: 2px 6px;
-  font-family: var(--font-dot);
-  font-size: 10px;
+  font-family: var(--font-body);
+  font-size: 11px;
   color: #ffffff;
+  font-weight: 600;
 }
 
 .support-desc {

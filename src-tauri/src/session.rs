@@ -15,12 +15,15 @@ pub struct SessionState {
     pub image_cache: Mutex<HashMap<String, String>>,
 }
 
+/// Set once a sign-in has been verified, until the next login window opens.
+static LOGIN_COMPLETING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 fn persist_session(app: &AppHandle, cookies: &str) -> Result<(), String> {
     if let Ok(app_data) = app.path().app_data_dir() {
-        let _ = std::fs::create_dir_all(&app_data);
         let session_file = app_data.join("session.json");
         let data = serde_json::json!({ "cookies": cookies });
-        std::fs::write(&session_file, data.to_string())
+        // Atomic and owner-only: these are the account's sign-in cookies.
+        crate::fsutil::write_atomic(&session_file, data.to_string().as_bytes(), true)
             .map_err(|e| format!("Failed to write session file: {}", e))?;
         println!("[DOT Music] Successfully persisted session to {:?}", session_file);
     }
@@ -136,6 +139,11 @@ fn trigger_native_cookie_sync(app: &AppHandle) {
                             count, full_cookie_str.len()
                         );
 
+                        // Cookie sync runs on every tick, navigation and page load; only the
+                        // first authenticated pass finishes the sign-in.
+                        if LOGIN_COMPLETING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                            return;
+                        }
                         let app = app_cb.clone();
                         tauri::async_runtime::spawn(async move {
                             // Update session state FIRST so any window close events see authenticated session
@@ -172,6 +180,8 @@ pub(crate) async fn open_login_window(app: AppHandle, _clean: Option<bool>) -> R
         let _ = existing.set_focus();
         return Ok(());
     }
+    // The login window is incognito, so every sign-in starts clean; `_clean` is unused.
+    LOGIN_COMPLETING.store(false, std::sync::atomic::Ordering::SeqCst);
 
     let url = "https://accounts.google.com/AccountChooser?continue=https%3A%2F%2Fmusic.youtube.com%2F&prompt=select_account&hl=en"
         .parse()

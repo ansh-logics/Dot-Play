@@ -17,10 +17,16 @@ const YTM_ORIGIN: &str = "https://music.youtube.com";
 const YTM_REFERER: &str = "https://music.youtube.com/";
 
 /// One HTTP client for every YouTube Music request, so connections and TLS sessions are
-/// reused instead of rebuilt per call. Equivalent to the former per-call
-/// `reqwest::Client::new()`: no cookie store (cookies are attached by hand per request),
-/// default redirect policy, no timeout.
-pub(crate) static HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(reqwest::Client::new);
+/// reused. No cookie store (cookies are attached by hand per request). Timeouts matter:
+/// after sleep or a Wi-Fi switch a half-open connection would otherwise hang a request
+/// forever, and the app's "request in flight" guards would never clear.
+pub(crate) static HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
+    reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(5))
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .unwrap_or_default()
+});
 
 /// The `context` object every `youtubei/v1` request body carries.
 pub(crate) fn web_remix_context() -> serde_json::Value {

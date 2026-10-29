@@ -1,7 +1,6 @@
 import { memo } from "react";
-import { Clock, History, RefreshCw, Trash2 } from "lucide-react";
+import { History, RefreshCw } from "lucide-react";
 import { CardGrid } from "../components/TrackCard";
-import { RecentSearchChips } from "../components/RecentSearchChips";
 import { SectionHeader } from "../components/SectionHeader";
 import { SkeletonGrid } from "../components/SkeletonGrid";
 import type { HomeSection } from "../lib/search";
@@ -12,26 +11,18 @@ interface HistoryViewProps extends BrowseProps {
   isLoggingIn: boolean;
   isLoading: boolean;
   sections: HomeSection[];
-  recentSearches: string[];
   onRefresh: () => void;
   onSignIn: () => void;
-  onSelectRecent: (query: string) => void;
-  onDeleteRecent: (query: string) => void;
-  onClearRecent: () => void;
 }
 
-/** Listening history from YouTube Music, with recent searches on top. */
+/** Listening history: plays in dot(.)music merged with YouTube Music's history. */
 export const HistoryView = memo(function HistoryView({
   isLoggedIn,
   isLoggingIn,
   isLoading,
   sections,
-  recentSearches,
   onRefresh,
   onSignIn,
-  onSelectRecent,
-  onDeleteRecent,
-  onClearRecent,
   ...browse
 }: HistoryViewProps) {
   return (
@@ -40,7 +31,7 @@ export const HistoryView = memo(function HistoryView({
         <div className="history-header-meta">
           <span className="dot-red-accent" />
           <div>
-            <h2 className="history-header-title">LISTENING HISTORY</h2>
+            <h2 className="history-header-title">Listening History</h2>
             <p className="history-header-subtitle">
               {isLoggedIn
                 ? "Synchronized with your YouTube Music account"
@@ -63,38 +54,12 @@ export const HistoryView = memo(function HistoryView({
         )}
       </div>
 
-      {recentSearches.length > 0 && (
-        <div className="history-recent-searches-box">
-          <div className="recent-searches-header">
-            <div className="recent-header-left">
-              <Clock size={13} className="recent-header-icon" />
-              <span className="recent-header-title">RECENT SEARCHES</span>
-              <span className="search-count-badge">{recentSearches.length}</span>
-            </div>
-            <button
-              type="button"
-              className="clear-recent-btn"
-              onClick={onClearRecent}
-              title="Clear all recent searches"
-            >
-              <Trash2 size={12} />
-              <span>Clear All</span>
-            </button>
-          </div>
-          <RecentSearchChips
-            searches={recentSearches}
-            onSelect={onSelectRecent}
-            onDelete={onDeleteRecent}
-          />
-        </div>
-      )}
-
-      {!isLoggedIn ? (
+      {!isLoggedIn && (
         <div className="history-auth-prompt">
           <div className="history-auth-icon-wrap">
             <History size={36} strokeWidth={1.5} />
           </div>
-          <h3 className="history-auth-title">SYNC YOUR LISTENING HISTORY</h3>
+          <h3 className="history-auth-title">Sync your listening history</h3>
           <p className="history-auth-desc">
             Sign in with your YouTube Music account to stream and synchronize your listening history
             across all devices.
@@ -105,23 +70,28 @@ export const HistoryView = memo(function HistoryView({
             disabled={isLoggingIn}
             onClick={onSignIn}
           >
-            {isLoggingIn ? "CONNECTING..." : "CONNECT WITH YOUTUBE MUSIC"}
+            {isLoggingIn ? "Connecting…" : "Connect YouTube Music"}
           </button>
         </div>
-      ) : isLoading ? (
+      )}
+
+      {/* The saved history stays on screen while a refresh runs. */}
+      {isLoading && sections.length === 0 ? (
         <div className="history-shelves-loading">
           <SkeletonGrid count={12} />
         </div>
       ) : sections.length === 0 ? (
-        <div className="search-empty-state">
-          <div className="search-empty-icon-wrap">
-            <History size={34} strokeWidth={1.5} />
+        isLoggedIn && (
+          <div className="search-empty-state">
+            <div className="search-empty-icon-wrap">
+              <History size={34} strokeWidth={1.5} />
+            </div>
+            <h3 className="search-empty-title">No listening history yet</h3>
+            <p className="search-empty-desc">
+              Play songs on dot(.)music or YouTube Music, and your listening history will appear here.
+            </p>
           </div>
-          <h3 className="search-empty-title">No listening history yet</h3>
-          <p className="search-empty-desc">
-            Play songs on dot(.)music or YouTube Music, and your listening history will appear here.
-          </p>
-        </div>
+        )
       ) : (
         <div className="history-shelves-list">
           {sections.map((section, sIdx) => (

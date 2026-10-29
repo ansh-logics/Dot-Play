@@ -23,6 +23,7 @@ import { ArrowLeft } from "lucide-react";
 import { getPlaylistDetails, type PlaylistDetails, type SearchResult } from "./lib/search";
 import { cacheTracks } from "./lib/trackCache";
 import { loadFeedbackPrefs, saveFeedbackPrefs, type FeedbackPrefs } from "./lib/feedback";
+import { HISTORY_REFRESH_MS } from "./lib/listeningHistory";
 import { useAccountData } from "./lib/useAccountData";
 import { useKeyboardShortcuts } from "./lib/useKeyboardShortcuts";
 import { usePlayback } from "./lib/usePlayback";
@@ -100,6 +101,12 @@ function App() {
     () => (topPicksShelfIndex >= 0 ? homeSections[topPicksShelfIndex].items.slice(0, 8) : []),
     [homeSections, topPicksShelfIndex],
   );
+  // The queue panels show the merged history as one list of songs, newest first.
+  const recentHistory = useMemo(
+    () => historySections.flatMap((s) => s.items).filter((i) => Boolean(i.videoId)).slice(0, 50),
+    [historySections],
+  );
+
   const featuredPlaylists = useMemo(() => {
     const seen = new Set<string>();
     const list: SearchResult[] = [];
@@ -179,8 +186,18 @@ function App() {
     [contextTarget?.source, handleSelectUpcoming, selectTrack],
   );
 
+  // The menu may have been open while the queue moved; remove the song it was opened on.
+  const { removeUpcomingTrack } = playback;
+  const contextVideoId = contextTarget?.track.videoId;
+  const handleContextRemove = useCallback(
+    (index: number) => {
+      if (contextVideoId) removeUpcomingTrack(index, contextVideoId);
+    },
+    [contextVideoId, removeUpcomingTrack],
+  );
+
   // Navigation
-  const { isLoggedIn, fetchHistory, fetchLibrary, librarySections } = account;
+  const { isLoggedIn, fetchHistory, refreshHistoryIfStale, fetchLibrary, librarySections } = account;
   const focusSearch = useCallback(() => {
     searchInputRef.current?.focus();
     setActiveNav("search");
@@ -196,17 +213,22 @@ function App() {
       setSearchQuery("");
       setSelectedPlaylist(null);
       if (tab === "library" && isLoggedIn && librarySections.length === 0) void fetchLibrary();
-      if (tab === "history" && isLoggedIn && historySections.length === 0) void fetchHistory();
     },
-    [setSearchQuery, isLoggedIn, librarySections.length, historySections.length, fetchLibrary, fetchHistory],
+    [setSearchQuery, isLoggedIn, librarySections.length, fetchLibrary],
   );
 
-  // Opening History or Playlists with nothing loaded yet fetches it.
+  // History page: opening it fetches YouTube's history when the saved copy is 5+ minutes
+  // old, and while it stays open it re-fetches every 5 minutes.
+  const isHistoryPageOpen =
+    activeNav === "history" && !isSearchActive && !selectedPlaylist && !isLoadingPlaylist && !playlistError;
   useEffect(() => {
-    if (activeNav === "history" && isLoggedIn && historySections.length === 0) {
-      void fetchHistory();
-    }
-  }, [activeNav, isLoggedIn, historySections.length, fetchHistory]);
+    if (!isHistoryPageOpen || !isLoggedIn) return;
+    refreshHistoryIfStale();
+    const timer = window.setInterval(refreshHistoryIfStale, HISTORY_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [isHistoryPageOpen, isLoggedIn, refreshHistoryIfStale]);
+
+  // Opening Playlists with nothing loaded yet fetches it.
 
   useEffect(() => {
     if (activeNav === "library" && isLoggedIn && librarySections.length === 0) {
@@ -363,12 +385,8 @@ function App() {
           isLoggingIn={account.isLoggingIn}
           isLoading={account.isLoadingHistory}
           sections={historySections}
-          recentSearches={search.recentSearches}
           onRefresh={fetchHistory}
           onSignIn={handleSignInFresh}
-          onSelectRecent={handleSelectRecent}
-          onDeleteRecent={search.deleteRecentSearch}
-          onClearRecent={search.clearAllRecentSearches}
           {...browse}
         />
       );
@@ -460,7 +478,7 @@ function App() {
               <SidebarQueue
                 isOpen={showQueue}
                 upcoming={playback.session.upcoming}
-                history={playback.session.history}
+                history={recentHistory}
                 onReorder={playback.handleUpcomingReorder}
                 onSelect={handleSelectUpcoming}
                 onRemove={playback.handleRemoveUpcoming}
@@ -529,6 +547,7 @@ function App() {
         isOpen={showNowPlaying}
         onClose={closeNowPlaying}
         session={playback.session}
+        history={recentHistory}
         isPlaying={playback.playerState === "playing"}
         isBuffering={playback.playerState === "buffering"}
         isReady={playback.isPlayerReady}
@@ -562,7 +581,7 @@ function App() {
         onPlayNow={handleContextPlayNow}
         onPlayNext={playback.handlePlayNext}
         onAddToQueue={playback.handleAddToQueue}
-        onRemoveFromQueue={playback.handleRemoveUpcoming}
+        onRemoveFromQueue={handleContextRemove}
         onOpenPlaylist={openPlaylist}
       />
 

@@ -4,6 +4,9 @@ use crate::session::SessionState;
 use crate::ytmusic::parse::{is_square_cover_url, upscale_thumbnail_url};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+/// Artwork URLs remembered across launches; enough for a large library, bounded on disk.
+const MAX_IMAGE_CACHE_ENTRIES: usize = 5000;
 use std::sync::LazyLock;
 use tauri::{AppHandle, Manager, State};
 
@@ -121,18 +124,36 @@ pub(crate) async fn get_highres_thumbnails(
         }
     }
 
-    // Update memory cache and save to disk
+    // Update the memory cache, then save it to disk off the lock and off the async runtime.
     if !new_entries.is_empty() {
-        let mut cache = state.image_cache.lock().unwrap();
-        for (id, url) in new_entries {
-            cache.insert(id, url);
-        }
+        let data = {
+            let mut cache = state.image_cache.lock().unwrap();
+            let new_ids: Vec<String> = new_entries.iter().map(|(id, _)| id.clone()).collect();
+            for (id, url) in new_entries {
+                cache.insert(id, url);
+            }
+            // Bounded: drop older entries (never the ones just added) past the cap.
+            if cache.len() > MAX_IMAGE_CACHE_ENTRIES {
+                let excess = cache.len() - MAX_IMAGE_CACHE_ENTRIES;
+                let evict: Vec<String> = cache
+                    .keys()
+                    .filter(|k| !new_ids.contains(k))
+                    .take(excess)
+                    .cloned()
+                    .collect();
+                for key in evict {
+                    cache.remove(&key);
+                }
+            }
+            serde_json::to_string(&*cache).ok()
+        };
 
-        // Persist to disk
-        if let Ok(app_data) = app.path().app_data_dir() {
+        if let (Some(data), Ok(app_data)) = (data, app.path().app_data_dir()) {
             let cache_file = app_data.join("image_cache.json");
-            let data = serde_json::to_string(&*cache).unwrap_or_default();
-            let _ = std::fs::write(cache_file, data);
+            let _ = tauri::async_runtime::spawn_blocking(move || {
+                crate::fsutil::write_atomic(&cache_file, data.as_bytes(), false)
+            })
+            .await;
         }
     }
 

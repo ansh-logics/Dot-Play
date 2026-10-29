@@ -97,7 +97,7 @@ pub(crate) async fn get_lyrics(
                 let _ = std::fs::create_dir_all(dir);
                 let entry = CachedLyrics { fetched_at: now_secs(), payload: result.clone() };
                 if let Ok(data) = serde_json::to_string(&entry) {
-                    if std::fs::write(&path, data).is_ok() && should_prune_now() {
+                    if crate::fsutil::write_atomic(&path, data.as_bytes(), false).is_ok() && should_prune_now() {
                         prune_lyrics_cache(dir);
                     }
                 }

@@ -385,13 +385,27 @@ export async function loadPersistedSession(): Promise<QueueSession> {
  * Persists queue session to disk via Tauri (with atomic write),
  * with localStorage fallback.
  */
-export async function persistQueueSession(session: QueueSession): Promise<void> {
-  // Always mirror to localStorage for resilience
+/** Up Next songs kept in the localStorage backup; the saved file keeps the whole queue. */
+const MAX_MIRRORED_UPCOMING = 200
+
+/**
+ * Backup copy in localStorage, used if the saved file can't be read. Capped so a huge
+ * queue (a long playlist added) doesn't make every edit slow or overflow storage.
+ */
+export function mirrorQueueSession(session: QueueSession): void {
   try {
-    localStorage.setItem(FALLBACK_STORAGE_KEY, JSON.stringify(session))
+    const capped =
+      session.upcoming.length > MAX_MIRRORED_UPCOMING
+        ? { ...session, upcoming: session.upcoming.slice(0, MAX_MIRRORED_UPCOMING) }
+        : session
+    localStorage.setItem(FALLBACK_STORAGE_KEY, JSON.stringify(capped))
   } catch (e) {
     console.warn("[DOT Music] Failed to persist queue to localStorage:", e)
   }
+}
+
+export async function persistQueueSession(session: QueueSession): Promise<void> {
+  mirrorQueueSession(session)
 
   if (isTauriEnvironment()) {
     try {

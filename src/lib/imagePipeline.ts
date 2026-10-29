@@ -519,6 +519,8 @@ export function useArtwork({
   }
 
   const retryCountRef = useRef(0);
+  // URLs that already failed to load here; a late HD upgrade must not swap them back in.
+  const failedUrlsRef = useRef(new Set<string>());
   const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearWatchdog = useCallback(() => {
@@ -536,6 +538,7 @@ export function useArtwork({
         if (effectiveId && retryCountRef.current < 2) {
           retryCountRef.current += 1;
           setCurrentUrl((prev) => {
+            failedUrlsRef.current.add(prev);
             const fallback = getFallbackArtwork(effectiveId, prev);
             return fallback || prev;
           });
@@ -554,7 +557,7 @@ export function useArtwork({
     // Small thumbnails stay lightweight: skip heavy maxres probes if already hqdefault or google cdn
     const isLightweightThumbnail =
       variant === "thumbnail" &&
-      (currentUrl.includes("hqdefault.jpg") || currentUrl.includes("=w160"));
+      (targetUrl.includes("hqdefault.jpg") || targetUrl.includes("=w160"));
 
     const isPriority = priority || variant === "hero";
     if (!isLightweightThumbnail) {
@@ -562,7 +565,7 @@ export function useArtwork({
     }
 
     const unsubscribe = subscribeToArtwork(effectiveId, (hdUrl) => {
-      if (hdUrl && !(isSquareCover(sourceUrl) && !isSquareCover(hdUrl))) {
+      if (hdUrl && !failedUrlsRef.current.has(hdUrl) && !(isSquareCover(sourceUrl) && !isSquareCover(hdUrl))) {
         setCurrentUrl((prev) => {
           if (prev !== hdUrl) {
             setIsUpgraded(true);
@@ -575,7 +578,8 @@ export function useArtwork({
     });
 
     return unsubscribe;
-  }, [effectiveId, sourceUrl, variant, priority, currentUrl]);
+    // Not keyed on currentUrl: re-subscribing after a fallback re-applied the broken URL.
+  }, [effectiveId, sourceUrl, variant, priority, targetUrl]);
 
   const handleLoad = useCallback(() => {
     clearWatchdog();
@@ -588,6 +592,7 @@ export function useArtwork({
     if (effectiveId && retryCountRef.current < 2) {
       retryCountRef.current += 1;
       setCurrentUrl((prev) => {
+        failedUrlsRef.current.add(prev);
         const fallback = getFallbackArtwork(effectiveId, prev);
         return fallback || prev;
       });

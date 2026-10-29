@@ -4,7 +4,7 @@
   --tray-ink: 22, 22, 24;
   --tray-accent: #d71921;
   color-scheme: light dark;
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -91,6 +91,15 @@ button {
 .tray-cover.is-paused {
   transform: scale(0.86);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+}
+
+/* Vinyl style: the record has its own round shape and shadow, so the square frame goes. */
+.tray-cover.is-vinyl,
+.tray-compact-art.is-vinyl {
+  border-radius: 0;
+  overflow: visible;
+  background: none;
+  box-shadow: none;
 }
 
 .tray-cover img,

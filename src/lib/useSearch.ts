@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   clearRecentSearches,
   getRecentSearches,
@@ -12,6 +12,7 @@ import { cacheTracks } from "./trackCache";
 export type SearchFilter = "all" | "song" | "playlist";
 
 const SEARCH_DEBOUNCE_MS = 350;
+const NO_RESULTS: SearchResult[] = [];
 
 /** Live, debounced search plus the recent-searches list. */
 export function useSearch() {
@@ -21,22 +22,31 @@ export function useSearch() {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [recentSearches, setRecentSearches] = useState<string[]>(getRecentSearches);
 
+  // An empty query shows nothing; derived here rather than reset from an effect.
+  const hasQuery = searchQuery.trim().length > 0;
+  const visibleResults = hasQuery ? searchResults : NO_RESULTS;
+
   const filteredSearchResults = useMemo(() => {
-    if (searchFilter === "all") return searchResults;
-    return searchResults.filter((item) => (item.itemType || "song") === searchFilter);
-  }, [searchResults, searchFilter]);
+    if (searchFilter === "all") return visibleResults;
+    return visibleResults.filter((item) => (item.itemType || "song") === searchFilter);
+  }, [visibleResults, searchFilter]);
+
+  const queryRef = useRef(searchQuery);
+  const handleQueryChange = useCallback((query: string) => {
+    // The same query again starts no new request, so it must not show the spinner either.
+    if (query === queryRef.current) return;
+    queryRef.current = query;
+    setSearchQuery(query);
+    // Show the loading state straight away; the request itself is debounced below.
+    setIsSearching(query.trim().length > 0);
+  }, []);
 
   useEffect(() => {
     const cleanQuery = searchQuery.trim();
-    if (!cleanQuery) {
-      setSearchResults([]);
-      setIsSearching(false);
-      return;
-    }
+    if (!cleanQuery) return;
 
     // A slower, older request must not overwrite the results of a newer query.
     let isStale = false;
-    setIsSearching(true);
     const timer = setTimeout(async () => {
       try {
         const results = await searchTracks(cleanQuery);
@@ -65,9 +75,9 @@ export function useSearch() {
   }, []);
 
   const selectRecentSearch = useCallback((query: string) => {
-    setSearchQuery(query);
+    handleQueryChange(query);
     setRecentSearches(saveRecentSearch(query));
-  }, []);
+  }, [handleQueryChange]);
 
   const deleteRecentSearch = useCallback((query: string) => {
     setRecentSearches(removeRecentSearch(query));
@@ -80,11 +90,11 @@ export function useSearch() {
 
   return {
     searchQuery,
-    setSearchQuery,
+    setSearchQuery: handleQueryChange,
     searchFilter,
     setSearchFilter,
-    isSearching,
-    searchResults,
+    isSearching: hasQuery && isSearching,
+    searchResults: visibleResults,
     filteredSearchResults,
     recentSearches,
     rememberSearch,

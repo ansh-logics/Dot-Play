@@ -120,7 +120,7 @@ export const AccountCard = memo(function AccountCard({
                   onClick={() => signIn(true)}
                 >
                   <UserPlus size={14} strokeWidth={2} />
-                  <span>{isLoggingIn ? "CONNECTING..." : "Switch Account"}</span>
+                  <span>{isLoggingIn ? "Connecting…" : "Switch Account"}</span>
                 </button>
 
                 <button type="button" className="popover-signout-btn" onClick={onSignOut}>
@@ -136,7 +136,7 @@ export const AccountCard = memo(function AccountCard({
                 onClick={() => signIn(false)}
               >
                 <UserPlus size={14} strokeWidth={2} />
-                <span>{isLoggingIn ? "CONNECTING..." : "Sign In with Google"}</span>
+                <span>{isLoggingIn ? "Connecting…" : "Sign In with Google"}</span>
               </button>
             )}
           </div>

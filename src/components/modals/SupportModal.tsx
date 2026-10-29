@@ -11,7 +11,7 @@ const SHORTCUTS: Array<{ keys: string[]; label: string }> = [
 export function SupportModal({ onClose }: { onClose: () => void }) {
   return (
     <Modal
-      title="SUPPORT & SHORTCUTS"
+      title="Support & Shortcuts"
       icon={<HelpCircle size={18} strokeWidth={2} className="modal-title-icon" />}
       onClose={onClose}
     >

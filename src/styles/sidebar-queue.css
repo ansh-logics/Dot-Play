@@ -63,19 +63,21 @@
 }
 
 .sidebar-queue-count {
-  font-family: var(--font-dot);
-  font-size: 9px;
+  font-family: var(--font-body);
+  font-size: 10px;
   color: var(--text-secondary);
   background: rgba(255, 255, 255, 0.06);
   padding: 1px 6px;
   border-radius: 10px;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 .sidebar-queue-clear-btn {
-  font-family: var(--font-dot);
-  font-size: 8.5px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font-family: var(--font-body);
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--text-tertiary);
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -83,6 +85,7 @@
   padding: 1px 6px;
   cursor: pointer;
   transition: all 0.15s ease;
+  font-weight: 600;
 }
 
 .sidebar-queue-clear-btn:hover {
@@ -288,11 +291,11 @@
   border-radius: 6px;
   cursor: pointer;
   color: var(--text-tertiary);
-  font-family: var(--font-dot);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
   transition: all 0.15s ease;
 }
 

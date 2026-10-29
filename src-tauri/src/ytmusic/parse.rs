@@ -115,6 +115,17 @@ pub(crate) fn parse_ytmusic_artist_from_runs(runs: &[serde_json::Value]) -> Stri
     clean_artist_string(&all_text)
 }
 
+/// Byte index of `needle` in `haystack`, ignoring ASCII case. Matching on the original
+/// string (not a lowercased copy, whose byte offsets can differ) keeps slicing at the
+/// result on a char boundary.
+pub(crate) fn find_ascii_ci(haystack: &str, needle: &str) -> Option<usize> {
+    let (h, n) = (haystack.as_bytes(), needle.as_bytes());
+    if n.is_empty() || h.len() < n.len() {
+        return None;
+    }
+    (0..=h.len() - n.len()).find(|&i| h[i..i + n.len()].eq_ignore_ascii_case(n))
+}
+
 fn clean_artist_string(raw: &str) -> String {
     let mut s = raw.trim();
     let prefixes = [
@@ -122,7 +133,7 @@ fn clean_artist_string(raw: &str) -> String {
         "Single •", "Single ·", "EP •", "EP ·", "Album •", "Album ·",
     ];
     for p in prefixes {
-        if s.to_lowercase().starts_with(&p.to_lowercase()) {
+        if find_ascii_ci(s, p) == Some(0) {
             s = s[p.len()..].trim();
         }
     }

@@ -10,6 +10,7 @@ import type { CardContextMenuHandler } from "../../views/types";
 interface SidebarQueueProps {
   isOpen: boolean;
   upcoming: SearchResult[];
+  /** Merged listening history, newest first. */
   history: SearchResult[];
   onReorder: (upcoming: SearchResult[]) => void;
   onSelect: (track: SearchResult) => void;
@@ -49,7 +50,7 @@ export const SidebarQueue = memo(function SidebarQueue({
               className={`sidebar-queue-tab ${activeTab === "upcoming" ? "active" : ""}`}
               onClick={() => setActiveTab("upcoming")}
             >
-              <span>UPCOMING</span>
+              <span>Upcoming</span>
               <span className="sidebar-queue-count">{upcoming.length}</span>
             </button>
             <button
@@ -57,7 +58,7 @@ export const SidebarQueue = memo(function SidebarQueue({
               className={`sidebar-queue-tab ${activeTab === "history" ? "active" : ""}`}
               onClick={() => setActiveTab("history")}
             >
-              <span>HISTORY</span>
+              <span>History</span>
               <span className="sidebar-queue-count">{history.length}</span>
             </button>
           </div>
@@ -106,52 +107,49 @@ export const SidebarQueue = memo(function SidebarQueue({
             {history.length === 0 ? (
               <div className="sidebar-queue-empty">No playback history</div>
             ) : (
-              history
-                .slice()
-                .reverse()
-                .map((track, hIdx) => (
-                  <div
-                    key={`${track.videoId}-${hIdx}`}
-                    className="sidebar-queue-item history-item"
-                    onContextMenu={(e) => onContextMenu(e, track, "history")}
-                  >
-                    <ArtworkImage
-                      src={track.thumbnailUrl}
-                      videoId={track.videoId}
-                      alt={track.title}
-                      className="sidebar-queue-thumb"
-                      variant="thumbnail"
-                    />
-                    <div className="sidebar-queue-meta">
-                      <span className="sidebar-queue-item-title" title={track.title}>
-                        {track.title}
-                      </span>
-                      <span className="sidebar-queue-item-artist" title={track.artist}>
-                        {track.artist}
-                      </span>
-                    </div>
-                    <div className="sidebar-history-actions" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        type="button"
-                        className="sidebar-history-btn"
-                        onClick={() => onPlayNext(track)}
-                        title="Play next"
-                        aria-label="Play next"
-                      >
-                        <CornerDownRight size={11} />
-                      </button>
-                      <button
-                        type="button"
-                        className="sidebar-history-btn"
-                        onClick={() => onAddToQueue(track)}
-                        title="Add to queue"
-                        aria-label="Add to queue"
-                      >
-                        <ListPlus size={12} />
-                      </button>
-                    </div>
+              history.map((track, hIdx) => (
+                <div
+                  key={`${track.videoId}-${hIdx}`}
+                  className="sidebar-queue-item history-item"
+                  onContextMenu={(e) => onContextMenu(e, track, "history")}
+                >
+                  <ArtworkImage
+                    src={track.thumbnailUrl}
+                    videoId={track.videoId}
+                    alt={track.title}
+                    className="sidebar-queue-thumb"
+                    variant="thumbnail"
+                  />
+                  <div className="sidebar-queue-meta">
+                    <span className="sidebar-queue-item-title" title={track.title}>
+                      {track.title}
+                    </span>
+                    <span className="sidebar-queue-item-artist" title={track.artist}>
+                      {track.artist}
+                    </span>
                   </div>
-                ))
+                  <div className="sidebar-history-actions" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      className="sidebar-history-btn"
+                      onClick={() => onPlayNext(track)}
+                      title="Play next"
+                      aria-label="Play next"
+                    >
+                      <CornerDownRight size={11} />
+                    </button>
+                    <button
+                      type="button"
+                      className="sidebar-history-btn"
+                      onClick={() => onAddToQueue(track)}
+                      title="Add to queue"
+                      aria-label="Add to queue"
+                    >
+                      <ListPlus size={12} />
+                    </button>
+                  </div>
+                </div>
+              ))
             )}
           </div>
         )}

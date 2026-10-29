@@ -107,7 +107,7 @@ export const SearchResultsView = memo(function SearchResultsView({
         <div className="search-results-content">
           {topMatch && (
             <div className="search-top-spotlight">
-              <span className="search-subheading-label">TOP MATCH</span>
+              <span className="search-subheading-label">Top Match</span>
               <div
                 className="top-match-card"
                 onClick={() => browse.onCardClick(topMatch)}
@@ -153,7 +153,7 @@ export const SearchResultsView = memo(function SearchResultsView({
 
           <div className="search-grid-section">
             {filter === "all" && results.length > 1 && (
-              <span className="search-subheading-label">MORE RESULTS</span>
+              <span className="search-subheading-label">More Results</span>
             )}
             <CardGrid
               items={gridItems}

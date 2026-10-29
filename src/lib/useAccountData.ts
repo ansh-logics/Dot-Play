@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import {
   getAuthStatus,
@@ -16,6 +16,17 @@ import {
   type UserProfile,
 } from "./search";
 import { cacheTracks, clearAccountSpecificCache } from "./trackCache";
+import {
+  addLocalPlay,
+  clearStoredHistory,
+  EMPTY_HISTORY,
+  HISTORY_REFRESH_MS,
+  loadStoredHistory,
+  mergeHistory,
+  saveStoredHistory,
+  trimYoutubeHistory,
+  type StoredHistory,
+} from "./listeningHistory";
 
 const cacheSections = (sections: HomeSection[]) => cacheTracks(sections.flatMap((s) => s.items));
 
@@ -36,15 +47,40 @@ export function useAccountData({ showToast, isSearchActive, onSignedOut }: Accou
   const [homeSections, setHomeSections] = useState<HomeSection[]>([]);
   const [continuationToken, setContinuationToken] = useState<string | null>(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [historySections, setHistorySections] = useState<HomeSection[]>([]);
+  // Saved on the Mac, so the merged history shows instantly at launch and offline.
+  const [storedHistory, setStoredHistory] = useState<StoredHistory>(loadStoredHistory);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [librarySections, setLibrarySections] = useState<HomeSection[]>([]);
   const [isLoadingLibrary, setIsLoadingLibrary] = useState(false);
 
   const isRefreshingAuthRef = useRef(false);
+  // Bumped on sign-out: results of requests started before it are dropped, so a fetch
+  // that finishes late can't bring the previous account's data back.
+  const accountGenerationRef = useRef(0);
   const isLoadingMoreRef = useRef(false);
   const historyRequestRef = useRef(false);
   const libraryRequestRef = useRef(false);
+
+  const updateHistory = useCallback((update: (prev: StoredHistory) => StoredHistory) => {
+    setStoredHistory((prev) => {
+      const next = update(prev);
+      saveStoredHistory(next);
+      return next;
+    });
+  }, []);
+
+  /** Replaces the YouTube half of the history with a fresh copy. */
+  const applyYoutubeHistory = useCallback(
+    (sections: HomeSection[]) => {
+      cacheSections(sections);
+      updateHistory((prev) => ({
+        ...prev,
+        youtube: trimYoutubeHistory(sections),
+        syncedAt: Date.now(),
+      }));
+    },
+    [updateHistory],
+  );
 
   const applyHomeFeed = useCallback((res: HomeFeedResponse) => {
     setHomeSections(res.sections);
@@ -70,12 +106,14 @@ export function useAccountData({ showToast, isSearchActive, onSignedOut }: Accou
       setIsLoadingLibrary(true);
       setIsLoadingHistory(true);
 
+      const generation = accountGenerationRef.current;
       const [profileRes, libraryRes, historyRes, homeRes] = await Promise.allSettled([
         getUserProfile(),
         getLibraryPlaylists(),
         getHistory(),
         getHomeFeed(),
       ]);
+      if (generation !== accountGenerationRef.current) return;
 
       if (profileRes.status === "fulfilled" && profileRes.value) {
         setUserProfile(profileRes.value);
@@ -95,8 +133,7 @@ export function useAccountData({ showToast, isSearchActive, onSignedOut }: Accou
       }
 
       if (historyRes.status === "fulfilled") {
-        setHistorySections(historyRes.value.sections);
-        cacheSections(historyRes.value.sections);
+        applyYoutubeHistory(historyRes.value.sections);
       } else {
         console.error("[DOT Music] Failed to fetch history:", historyRes.reason);
       }
@@ -115,7 +152,7 @@ export function useAccountData({ showToast, isSearchActive, onSignedOut }: Accou
       setIsLoadingHistory(false);
       isRefreshingAuthRef.current = false;
     }
-  }, [applyHomeFeed, showToast]);
+  }, [applyHomeFeed, applyYoutubeHistory, showToast]);
 
   const initiateLogin = useCallback(
     async (clean = false) => {
@@ -138,6 +175,7 @@ export function useAccountData({ showToast, isSearchActive, onSignedOut }: Accou
   });
 
   const signOut = useCallback(async () => {
+    accountGenerationRef.current += 1;
     setIsLoggingIn(false);
     setAuthSyncError(null);
 
@@ -150,7 +188,9 @@ export function useAccountData({ showToast, isSearchActive, onSignedOut }: Accou
     setIsLoggedIn(false);
     setUserProfile(null);
     setLibrarySections([]);
-    setHistorySections([]);
+    // History belongs to the account: drop both halves from memory and disk.
+    setStoredHistory(EMPTY_HISTORY);
+    clearStoredHistory();
     onSignedOutRef.current();
 
     // Account-specific library and playlist metadata goes from memory and disk;
@@ -252,24 +292,26 @@ export function useAccountData({ showToast, isSearchActive, onSignedOut }: Accou
     if (!isLoggedIn || historyRequestRef.current) return;
     historyRequestRef.current = true;
     setIsLoadingHistory(true);
+    const generation = accountGenerationRef.current;
     try {
       const res = await getHistory();
-      setHistorySections(res.sections);
-      cacheSections(res.sections);
+      if (generation === accountGenerationRef.current) applyYoutubeHistory(res.sections);
     } catch (e) {
       console.error("Failed to fetch history:", e);
     } finally {
       historyRequestRef.current = false;
       setIsLoadingHistory(false);
     }
-  }, [isLoggedIn]);
+  }, [isLoggedIn, applyYoutubeHistory]);
 
   const fetchLibrary = useCallback(async () => {
     if (!isLoggedIn || libraryRequestRef.current) return;
     libraryRequestRef.current = true;
     setIsLoadingLibrary(true);
+    const generation = accountGenerationRef.current;
     try {
       const res = await getLibraryPlaylists();
+      if (generation !== accountGenerationRef.current) return;
       setLibrarySections(res.sections);
       cacheSections(res.sections);
     } catch (e) {
@@ -304,21 +346,28 @@ export function useAccountData({ showToast, isSearchActive, onSignedOut }: Accou
     }
   }, [continuationToken, isSearchActive]);
 
-  /** Puts a just-played song at the top of the first history shelf (signed in only). */
+  /** Logs a song played here; it shows on top of the history until YouTube has it too. */
   const addToHistory = useCallback(
     (track: SearchResult) => {
-      if (!isLoggedIn) return;
-      setHistorySections((prev) => {
-        if (prev.length === 0) return [{ title: "Today", items: [track] }];
-        const [first, ...rest] = prev;
-        return [
-          { ...first, items: [track, ...first.items.filter((i) => i.videoId !== track.videoId)] },
-          ...rest,
-        ];
-      });
+      updateHistory((prev) => ({
+        ...prev,
+        localPlays: addLocalPlay(prev.localPlays, track, Date.now()),
+      }));
     },
-    [isLoggedIn],
+    [updateHistory],
   );
+
+  const historySections = useMemo(() => mergeHistory(storedHistory), [storedHistory]);
+
+  /** Fetches YouTube's history if the saved copy is older than 5 minutes (or missing). */
+  const syncedAtRef = useRef(storedHistory.syncedAt);
+  useEffect(() => {
+    syncedAtRef.current = storedHistory.syncedAt;
+  }, [storedHistory.syncedAt]);
+  const refreshHistoryIfStale = useCallback(() => {
+    const syncedAt = syncedAtRef.current;
+    if (syncedAt === null || Date.now() - syncedAt >= HISTORY_REFRESH_MS) void fetchHistory();
+  }, [fetchHistory]);
 
   return {
     userProfile,
@@ -338,5 +387,6 @@ export function useAccountData({ showToast, isSearchActive, onSignedOut }: Accou
     fetchLibrary,
     loadMoreShelves,
     addToHistory,
+    refreshHistoryIfStale,
   };
 }

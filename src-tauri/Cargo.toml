@@ -1,6 +1,6 @@
 [package]
 name = "dot-music"
-version = "1.0.1"
+version = "1.0.2"
 description = "A Tauri App"
 authors = ["you"]
 license = ""
@@ -27,7 +27,7 @@ reqwest = { version = "0.12", features = ["json"] }
 sha1 = "0.10"
 tauri-plugin-localhost = "2"
 portpicker = "0.1"
-tokio = { version = "1", features = ["time"] }
+tokio = { version = "1", features = ["time", "macros"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"

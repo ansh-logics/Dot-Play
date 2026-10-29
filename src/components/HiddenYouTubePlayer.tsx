@@ -137,6 +137,8 @@ export function HiddenYouTubePlayer({
   const currentVideoIdRef = useRef<string | undefined>(undefined)
   const isInitializingRef = useRef(false)
   const isFirstMountPlaybackHandled = useRef(false)
+  /** True once the current song has reached "playing" (see the watchdog below). */
+  const startedSinceLoadRef = useRef(false)
   const isBridgeReadyRef = useRef(false)
   const pendingActionsRef = useRef<Array<Record<string, unknown>>>([])
 
@@ -285,9 +287,12 @@ export function HiddenYouTubePlayer({
           break
         }
 
-        case "stateChange":
-          callbacksRef.current.onStateChange(getPlaybackState(data.stateCode))
+        case "stateChange": {
+          const state = getPlaybackState(data.stateCode)
+          if (state === "playing") startedSinceLoadRef.current = true
+          callbacksRef.current.onStateChange(state)
           break
+        }
 
         case "timeUpdate":
           if (typeof data.currentTime === "number") {
@@ -410,7 +415,9 @@ export function HiddenYouTubePlayer({
               }
             },
             onStateChange: (event) => {
-              callbacksRef.current.onStateChange(getPlaybackState(event.data))
+              const state = getPlaybackState(event.data)
+              if (state === "playing") startedSinceLoadRef.current = true
+              callbacksRef.current.onStateChange(state)
               const instance = event.target || player || playerRef.current
               if (instance) checkTrackChangeDirect(instance)
             },
@@ -439,10 +446,13 @@ export function HiddenYouTubePlayer({
     }
   }, [useFallbackDirect, videoId, initDirectPlayer])
 
-  // Watchdog: ensure track doesn't freeze in unstarted/paused state when auto-advancing
+  // Watchdog: ensure track doesn't freeze in unstarted/paused state when auto-advancing.
+  // Once the song has started, any pause is the listener's, so it is left alone.
   useEffect(() => {
+    startedSinceLoadRef.current = false
     if (!videoId || !autoPlayOnMount || !isFirstMountPlaybackHandled.current) return
     const timer = setTimeout(() => {
+      if (startedSinceLoadRef.current) return
       const instance = playerRef.current
       if (instance && typeof instance.playVideo === "function") {
         instance.playVideo()

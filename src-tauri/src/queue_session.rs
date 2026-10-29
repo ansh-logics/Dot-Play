@@ -19,15 +19,15 @@ pub struct QueueSession {
 #[tauri::command]
 pub(crate) async fn save_queue_session(app: AppHandle, session: QueueSession) -> Result<bool, String> {
     if let Ok(app_data) = app.path().app_data_dir() {
-        let _ = std::fs::create_dir_all(&app_data);
         let queue_file = app_data.join("queue_session.json");
-        let tmp_file = app_data.join("queue_session.json.tmp");
-        let data = serde_json::to_string_pretty(&session)
+        // Saves arrive close together (queue edit + position); one at a time, in order,
+        // so an older snapshot can't land after a newer one.
+        static SAVE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _guard = SAVE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let data = serde_json::to_string(&session)
             .map_err(|e| format!("Failed to serialize queue session: {}", e))?;
-        std::fs::write(&tmp_file, data)
-            .map_err(|e| format!("Failed to write tmp queue session: {}", e))?;
-        std::fs::rename(&tmp_file, &queue_file)
-            .map_err(|e| format!("Failed to atomically rename queue session: {}", e))?;
+        crate::fsutil::write_atomic(&queue_file, data.as_bytes(), false)
+            .map_err(|e| format!("Failed to save queue session: {}", e))?;
         return Ok(true);
     }
     Err("Could not access app data directory".to_string())

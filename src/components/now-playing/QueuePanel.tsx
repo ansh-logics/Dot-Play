@@ -16,6 +16,8 @@ export type QueueContextMenuHandler = (
 
 export interface QueuePanelProps {
   session: QueueSession;
+  /** Merged listening history, newest first. */
+  history: SearchResult[];
   autoplay: boolean;
   isOpen: boolean;
   onSelectTrack: (track: SearchResult) => void;
@@ -33,6 +35,7 @@ export interface QueuePanelProps {
  */
 export const QueuePanel = memo(function QueuePanel({
   session,
+  history,
   autoplay,
   isOpen,
   onSelectTrack,
@@ -45,7 +48,6 @@ export const QueuePanel = memo(function QueuePanel({
 }: QueuePanelProps) {
   const [tab, setTab] = useState<"upcoming" | "history">("upcoming");
   const { listRef, onDragStateChange } = useDragAutoScroll();
-  const history = session.history.slice().reverse();
 
   return (
     <div className="np-queue" aria-hidden={!isOpen} inert={!isOpen}>
@@ -61,7 +63,7 @@ export const QueuePanel = memo(function QueuePanel({
               onClick={() => setTab(t)}
             >
               {t === "upcoming" ? "Up Next" : "History"}
-              <span className="np-count">{t === "upcoming" ? session.upcoming.length : session.history.length}</span>
+              <span className="np-count">{t === "upcoming" ? session.upcoming.length : history.length}</span>
             </button>
           ))}
         </div>

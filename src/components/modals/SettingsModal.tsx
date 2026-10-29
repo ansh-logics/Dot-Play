@@ -54,7 +54,7 @@ export function SettingsModal({
 }: SettingsModalProps) {
   return (
     <Modal
-      title="SETTINGS"
+      title="Settings"
       icon={<Settings size={18} strokeWidth={2} className="modal-title-icon" />}
       onClose={onClose}
     >

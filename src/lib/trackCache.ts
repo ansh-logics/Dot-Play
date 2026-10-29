@@ -131,6 +131,16 @@ function pickThumbnail(incoming: string | undefined, existing: string | undefine
 }
 
 /**
+ * Stable key for an item: its video, else its playlist, else its name. A fresh random key
+ * per call (as before) added a duplicate every time a playlist shelf was cached.
+ */
+function cacheKey(videoId: string | undefined, playlistId: string | undefined, title: string | undefined, artist: string | undefined): string {
+  if (videoId) return videoId;
+  if (playlistId?.trim()) return `playlist_${playlistId.trim()}`;
+  return `custom_${normalizeTrackKey(title ?? "", artist ?? "")}`;
+}
+
+/**
  * Adds or updates a single track in the cache.
  */
 export function cacheTrack(
@@ -140,7 +150,7 @@ export function cacheTrack(
   const title = item.title?.trim();
   if (!videoId && !title) return null;
 
-  const key = videoId || `custom_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const key = cacheKey(videoId, item.playlistId, title, item.artist);
   const existing = trackMap.get(key);
 
   const merged: TrackMetadata = {
@@ -178,7 +188,7 @@ export function cacheTracks(
     const title = t.title?.trim();
     if (!videoId && !title) continue;
 
-    const key = videoId || `custom_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const key = cacheKey(videoId, t.playlistId, title, t.artist);
     const existing = trackMap.get(key);
 
     const merged: TrackMetadata = {

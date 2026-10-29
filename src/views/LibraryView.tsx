@@ -32,7 +32,7 @@ export const LibraryView = memo(function LibraryView({
         <div className="history-header-meta">
           <span className="dot-red-accent" />
           <div>
-            <h2 className="history-header-title">PLAYLISTS & LIBRARY</h2>
+            <h2 className="history-header-title">Playlists & Library</h2>
             <p className="history-header-subtitle">
               {isLoggedIn
                 ? "Your liked music, saved playlists, and collections"
@@ -60,7 +60,7 @@ export const LibraryView = memo(function LibraryView({
           <div className="history-auth-icon-wrap">
             <Library size={28} strokeWidth={1.8} />
           </div>
-          <h3 className="history-auth-title">SYNC YOUR SAVED PLAYLISTS</h3>
+          <h3 className="history-auth-title">Sync your saved playlists</h3>
           <p className="history-auth-desc">
             Sign in with your Google account to access your Liked Music, custom playlists, and saved
             albums in one click.
@@ -72,7 +72,7 @@ export const LibraryView = memo(function LibraryView({
             onClick={onSignIn}
           >
             <UserPlus size={14} />
-            <span>{isLoggingIn ? "CONNECTING..." : "Sign In with Google"}</span>
+            <span>{isLoggingIn ? "Connecting…" : "Sign In with Google"}</span>
           </button>
         </div>
       )}

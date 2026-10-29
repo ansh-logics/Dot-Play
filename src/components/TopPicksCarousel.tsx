@@ -153,13 +153,15 @@ export const TopPicksCarousel: React.FC<TopPicksCarouselProps> = ({
     setActiveIndex((prev) => (prev + 1) % total);
   }, [total]);
 
-  // Keyboard arrow controls
+  // Arrow keys turn the carousel only while focus is inside it; elsewhere they seek the song.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (document.activeElement?.tagName === "INPUT") return;
+      if (!(e.target instanceof Node) || !containerRef.current?.contains(e.target)) return;
       if (e.key === "ArrowLeft") {
+        e.preventDefault(); // tells the global seek shortcut the key is taken
         handlePrev();
       } else if (e.key === "ArrowRight") {
+        e.preventDefault();
         handleNext();
       }
     };
@@ -193,7 +195,7 @@ export const TopPicksCarousel: React.FC<TopPicksCarouselProps> = ({
       <div className="carousel-header">
         <div className="carousel-header-title">
           <span className="dot-red-accent" />
-          <span className="carousel-heading-label">TOP PICKS</span>
+          <span className="carousel-heading-label">Top Picks</span>
         </div>
         <div className="carousel-nav-arrows">
           <button

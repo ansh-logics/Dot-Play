@@ -31,7 +31,8 @@ export function useKeyboardShortcuts(options: KeyboardShortcutOptions) {
       e.preventDefault();
       return;
     }
-    if (isTyping(e.target)) return;
+    // Typing, or a key a focused control (e.g. the Top Picks carousel) already handled.
+    if (isTyping(e.target) || e.defaultPrevented) return;
 
     if (e.code === "Space") {
       e.preventDefault();

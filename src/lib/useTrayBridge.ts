@@ -3,6 +3,7 @@ import { emitTo, listen } from "@tauri-apps/api/event"
 import { cleanDisplayTitle } from "./displayText"
 import { optimizeThumbnailUrl } from "./imagePipeline"
 import type { PlaybackModes } from "./playbackModes"
+import type { PlayerSkinId } from "./playerSkins"
 import { isTauriEnvironment, type SearchResult } from "./search"
 
 /** One Up Next row, as the menu bar popover renders it. Mirrors src/tray/types.ts. */
@@ -20,6 +21,8 @@ export interface TrayState {
   autoplay: boolean
   volume: number
   muted: boolean
+  /** The Vinyl style shows the artwork as a turning record in the popover too. */
+  skin: PlayerSkinId
 }
 
 export type TrayCommand =
@@ -34,6 +37,7 @@ const MAX_UPCOMING = 50
 interface TrayBridgeOptions {
   upcoming: SearchResult[]
   playbackModes: PlaybackModes
+  skin: PlayerSkinId
   volume: number
   isMuted: boolean
   onSelectUpcoming: (track: SearchResult) => void
@@ -53,6 +57,7 @@ interface TrayBridgeOptions {
 export function useTrayBridge({
   upcoming,
   playbackModes,
+  skin,
   volume,
   isMuted,
   onSelectUpcoming,
@@ -137,7 +142,8 @@ export function useTrayBridge({
       autoplay: playbackModes.autoplay,
       volume,
       muted: isMuted,
+      skin,
     }
     void emitTo("tray", "tray-state", state).catch(() => {})
-  }, [enabled, open, readyCount, upcoming, playbackModes, volume, isMuted])
+  }, [enabled, open, readyCount, upcoming, playbackModes, skin, volume, isMuted])
 }

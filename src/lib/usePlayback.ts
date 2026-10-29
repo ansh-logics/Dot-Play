@@ -31,6 +31,7 @@ import {
 } from "./playbackModes";
 import { useSystemMediaControls } from "./useSystemMediaControls";
 import { useTrayBridge } from "./useTrayBridge";
+import { usePlayerSkin } from "./usePlayerSkin";
 
 const PLAYER_ERROR_MESSAGES: Record<number, string> = {
   [-1]: "Could not load YouTube Player API.",
@@ -87,7 +88,7 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks }: P
   const preShuffleOrderRef = useRef<SearchResult[] | null>(null);
   const recordedTrackIdRef = useRef<string | null>(null);
   const shouldAutoPlayRef = useRef(false);
-  const queueFetchForRef = useRef<string | null>(null);
+  const queueFilledForRef = useRef<string | null>(null);
 
   // Latest values for callbacks that are handed to memoized children and native bridges.
   const onPlaybackRecordedRef = useRef(onPlaybackRecorded);
@@ -118,13 +119,18 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks }: P
     savePlaybackModes(playbackModes);
   }, [playbackModes]);
 
-  /** Applies a queue change and persists it; every queue edit goes through here. */
+  /**
+   * Applies a queue change and persists it; every queue edit goes through here. The update
+   * runs once against the latest session (not inside a state updater, which React may run
+   * twice), so updates are free to show toasts or start playback.
+   */
   const commitSession = useCallback((update: (prev: QueueSession) => QueueSession) => {
-    setSession((prev) => {
-      const next = update(prev);
-      if (next !== prev) void persistQueueSession(next);
-      return next;
-    });
+    const prev = sessionRef.current;
+    const next = update(prev);
+    if (next === prev) return;
+    sessionRef.current = next;
+    setSession(next);
+    void persistQueueSession(next);
   }, []);
 
   const persistCurrentPosition = useCallback((seconds: number) => {
@@ -138,6 +144,8 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks }: P
       if (cancelled) return;
       setSession(restored);
       sessionRef.current = restored;
+      // The restored song was already counted when it played; don't record it again.
+      recordedTrackIdRef.current = restored.currentTrack?.videoId ?? null;
       if (restored.currentTrack) {
         setInitialPlaybackSeconds(restored.currentTime);
         setCurrentTime(restored.currentTime);
@@ -152,13 +160,7 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks }: P
   // Best-effort save when the window closes or reloads.
   useEffect(() => {
     const handleBeforeUnload = () => {
-      const snap = { ...sessionRef.current, currentTime: currentTimeRef.current };
-      try {
-        localStorage.setItem("dot_music_queue_session", JSON.stringify(snap));
-      } catch {
-        // Storage full or unavailable; the native save below still runs.
-      }
-      void persistQueueSession(snap);
+      void persistQueueSession({ ...sessionRef.current, currentTime: currentTimeRef.current });
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
@@ -166,45 +168,34 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks }: P
 
   const currentTrack = session.currentTrack;
 
-  // Fill an empty upcoming queue with 10 recommendations for the current song.
+  // With Autoplay on, fill an empty upcoming queue with 10 recommendations for the current
+  // song. Once per song: a queue the user clears stays empty.
   useEffect(() => {
     const sourceVideoId = currentTrack?.videoId;
-    if (!sourceVideoId) {
-      queueFetchForRef.current = null;
-      return;
-    }
+    if (!sourceVideoId || !playbackModes.autoplay) return;
     if (session.upcoming.length > 0) return;
-    if (queueFetchForRef.current === sourceVideoId) return;
-    queueFetchForRef.current = sourceVideoId;
+    if (queueFilledForRef.current === sourceVideoId) return;
+    queueFilledForRef.current = sourceVideoId;
 
     let isCancelled = false;
     void getAutoplayTracks(sessionRef.current, 10)
       .then((tracks) => {
         if (isCancelled || tracks.length === 0) return;
         cacheTracks(tracks);
-        setSession((prev) => {
-          if (prev.currentTrack?.videoId !== sourceVideoId || prev.upcoming.length > 0) {
-            return prev;
-          }
-          const next = { ...prev, upcoming: tracks, isAutoplay: false };
-          sessionRef.current = next;
-          void persistQueueSession(next);
-          return next;
-        });
+        commitSession((prev) =>
+          prev.currentTrack?.videoId !== sourceVideoId || prev.upcoming.length > 0
+            ? prev
+            : { ...prev, upcoming: tracks, isAutoplay: false },
+        );
       })
       .catch((err) => {
         console.warn("[DOT Music] Failed to fetch queue recommendations:", err);
-      })
-      .finally(() => {
-        if (queueFetchForRef.current === sourceVideoId) {
-          queueFetchForRef.current = null;
-        }
       });
 
     return () => {
       isCancelled = true;
     };
-  }, [currentTrack?.videoId, session.upcoming.length]);
+  }, [currentTrack?.videoId, session.upcoming.length, playbackModes.autoplay, commitSession]);
 
   // Queue operations
   const handleUpcomingReorder = useCallback(
@@ -221,6 +212,19 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks }: P
 
   const handleRemoveUpcoming = useCallback(
     (indexToRemove: number) => commitSession((prev) => removeUpcoming(prev, indexToRemove)),
+    [commitSession],
+  );
+
+  /** Removes by song, re-finding its position: the queue may have moved since the UI drew it. */
+  const removeUpcomingTrack = useCallback(
+    (index: number, videoId: string) =>
+      commitSession((prev) => {
+        const at =
+          prev.upcoming[index]?.videoId === videoId
+            ? index
+            : prev.upcoming.findIndex((t) => t.videoId === videoId);
+        return at >= 0 ? removeUpcoming(prev, at) : prev;
+      }),
     [commitSession],
   );
 
@@ -269,9 +273,9 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks }: P
         preShuffleOrderRef.current = shuffled.originalOrder;
         return shuffled.session;
       }
-      const next = unshuffleUpcoming(prev, preShuffleOrderRef.current ?? prev.upcoming);
+      const original = preShuffleOrderRef.current ?? prev.upcoming;
       preShuffleOrderRef.current = null;
-      return next;
+      return unshuffleUpcoming(prev, original);
     });
     setPlaybackModes((m) => ({ ...m, shuffle: turningOn }));
   }, [commitSession]);
@@ -451,18 +455,32 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks }: P
     [commitSession, showToast, playTrack],
   );
 
-  /** Fetches recommendations and plays the first; false when none came back. */
+  /**
+   * Fetches recommendations and plays the first. Returns "played", "none" (nothing came
+   * back) or "stale": while it waited the user picked another song or queued some, and
+   * their choice wins.
+   */
   const playAutoplayFrom = useCallback(
-    async (seed: QueueSession, apply: (prev: QueueSession, first: SearchResult, rest: SearchResult[]) => QueueSession) => {
+    async (
+      seed: QueueSession,
+      apply: (prev: QueueSession, first: SearchResult, rest: SearchResult[]) => QueueSession,
+    ): Promise<"played" | "none" | "stale"> => {
+      const playingBefore = sessionRef.current.currentTrack?.videoId;
       const recs = await getAutoplayTracks(seed, 10);
-      if (recs.length === 0) return false;
+      const now = sessionRef.current;
+      if (now.currentTrack?.videoId !== playingBefore || now.upcoming.length > 0) return "stale";
+      if (recs.length === 0) return "none";
       const [nextPlay, ...remaining] = recs;
       cacheTracks(recs);
       startTrack(nextPlay, (prev) => apply(prev, nextPlay, remaining));
-      return true;
+      return "played";
     },
     [startTrack],
   );
+
+  // Latest versions, for the player callback and for retrying after a stale autoplay fetch.
+  const handleTrackCompletedRef = useRef<() => Promise<void>>(async () => {});
+  const handleNextTrackRef = useRef<() => Promise<void>>(async () => {});
 
   const handleTrackCompleted = useCallback(async () => {
     const current = sessionRef.current;
@@ -486,14 +504,21 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks }: P
     if (autoplay && current.currentTrack?.videoId) {
       try {
         // nextSession already has the finished song in history, so it's excluded and seeds the radio.
-        const played = await playAutoplayFrom(nextSession, (_prev, first, rest) => ({
+        const result = await playAutoplayFrom(nextSession, (_prev, first, rest) => ({
           ...nextSession,
           currentTrack: first,
           upcoming: rest,
           currentTime: 0,
           isAutoplay: false,
         }));
-        if (played) return;
+        if (result === "played") return;
+        if (result === "stale") {
+          // Songs were queued while waiting: continue with them; a picked song just plays on.
+          if (sessionRef.current.currentTrack?.videoId === current.currentTrack.videoId) {
+            void handleTrackCompletedRef.current();
+          }
+          return;
+        }
       } catch (e) {
         console.warn("[DOT Music] Autoplay recommendation failed:", e);
       }
@@ -518,12 +543,18 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks }: P
 
     if (autoplay && current.currentTrack?.videoId) {
       try {
-        const played = await playAutoplayFrom(current, (prev, first, rest) => ({
+        const result = await playAutoplayFrom(current, (prev, first, rest) => ({
           ...playTrackImmediate(prev, first),
           upcoming: rest,
           isAutoplay: false,
         }));
-        if (played) return;
+        if (result === "played") return;
+        if (result === "stale") {
+          if (sessionRef.current.currentTrack?.videoId === current.currentTrack.videoId) {
+            void handleNextTrackRef.current();
+          }
+          return;
+        }
       } catch (e) {
         console.warn("[DOT Music] Failed to fetch next track recommendation:", e);
       }
@@ -558,10 +589,10 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks }: P
   }, [startTrack]);
 
   // Hidden player callbacks
-  const handleTrackCompletedRef = useRef(handleTrackCompleted);
   useEffect(() => {
     handleTrackCompletedRef.current = handleTrackCompleted;
-  }, [handleTrackCompleted]);
+    handleNextTrackRef.current = handleNextTrack;
+  }, [handleTrackCompleted, handleNextTrack]);
 
   const handlePlayerReady = useCallback((player: YouTubePlayerInstance) => {
     playerRef.current = player;
@@ -599,7 +630,7 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks }: P
   const handleTrackChangeFromIframe = useCallback(
     (info: { videoId: string; title?: string; artist?: string }) => {
       if (!info.videoId) return;
-      setSession((prev) => {
+      commitSession((prev) => {
         if (!prev.currentTrack || prev.currentTrack.videoId !== info.videoId) return prev;
         if (prev.currentTrack.title || !info.title) return prev;
         return {
@@ -612,7 +643,7 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks }: P
         };
       });
     },
-    [],
+    [commitSession],
   );
 
   // Progress sync: 100 ms while playing keeps lyrics tight, 250 ms otherwise.
@@ -636,10 +667,10 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks }: P
     return () => window.clearInterval(timer);
   }, [isPlayerReady, currentTrack, playerState]);
 
-  // Record the song to YouTube Music history once it has played long enough.
+  // Record the song once it has actually played long enough (not on a restored position).
   useEffect(() => {
-    if (currentTime >= RECORD_AFTER_SECONDS) recordIfNeeded(currentTrack);
-  }, [currentTime, currentTrack, recordIfNeeded]);
+    if (playerState === "playing" && currentTime >= RECORD_AFTER_SECONDS) recordIfNeeded(currentTrack);
+  }, [currentTime, currentTrack, playerState, recordIfNeeded]);
 
   useSystemMediaControls({
     track: currentTrack,
@@ -652,9 +683,11 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks }: P
     onSeek: seekTo,
   });
 
+  const skin = usePlayerSkin();
   useTrayBridge({
     upcoming: session.upcoming,
     playbackModes,
+    skin,
     volume,
     isMuted,
     onSelectUpcoming: handleSelectUpcoming,
@@ -666,14 +699,10 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks }: P
   });
 
   /** Signing out drops the account's listening history from the local queue. */
-  const clearSessionHistory = useCallback(() => {
-    setSession((prev) => {
-      const updated = { ...prev, history: [] };
-      sessionRef.current = updated;
-      void persistQueueSession(updated);
-      return updated;
-    });
-  }, []);
+  const clearSessionHistory = useCallback(
+    () => commitSession((prev) => ({ ...prev, history: [] })),
+    [commitSession],
+  );
 
   return {
     session,
@@ -691,6 +720,7 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks }: P
     // queue
     handleUpcomingReorder,
     handleRemoveUpcoming,
+    removeUpcomingTrack,
     handleClearUpcoming,
     handleAddToQueue,
     handleAppendTracksToQueue,

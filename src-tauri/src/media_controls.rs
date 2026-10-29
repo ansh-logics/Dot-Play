@@ -120,7 +120,11 @@ pub fn emit_action(app: &AppHandle, action: MediaControlAction) {
 
 #[cfg(target_os = "macos")]
 async fn fetch_artwork(url: &str) -> Result<Vec<u8>, String> {
-    let response = reqwest::get(url).await.map_err(|e| e.to_string())?;
+    let response = crate::ytmusic::HTTP_CLIENT
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
     if !response.status().is_success() {
         return Err(format!("HTTP {}", response.status()));
     }
@@ -221,6 +225,10 @@ mod macos {
     }
 
     pub fn set_artwork(url: String, bytes: Vec<u8>) {
+        // A slow fetch for a song already skipped past must not replace the current artwork.
+        if ARTWORK_URL.lock().unwrap().as_deref() != Some(url.as_str()) {
+            return;
+        }
         let data = NSData::with_bytes(&bytes);
         let Some(image) = NSImage::initWithData(NSImage::alloc(), &data) else {
             release_artwork_fetch(&url);

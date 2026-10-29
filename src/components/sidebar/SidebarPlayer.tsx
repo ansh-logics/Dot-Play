@@ -10,12 +10,14 @@ import {
   VolumeX,
 } from "lucide-react";
 import { ArtworkImage } from "../ArtworkImage";
+import { MiniVinyl } from "../vinyl/MiniVinyl";
 import type { YouTubePlaybackState } from "../HiddenYouTubePlayer";
 import { cleanDisplayTitle } from "../../lib/displayText";
 import { formatTime } from "../../lib/formatTime";
 import { useArtwork } from "../../lib/imagePipeline";
 import type { SearchResult } from "../../lib/search";
 import { useArtworkPalette } from "../../lib/useArtworkPalette";
+import { usePlayerSkin } from "../../lib/usePlayerSkin";
 
 interface SidebarPlayerProps {
   track: SearchResult;
@@ -76,6 +78,8 @@ export function SidebarPlayer({
     priority: true,
   });
   const palette = useArtworkPalette(artUrl);
+  // The Vinyl player style carries over to the card: the artwork becomes a turning record.
+  const isVinyl = usePlayerSkin() === "vinyl";
   const isBusy = playerState === "buffering" || !isPlayerReady;
 
   return (
@@ -86,7 +90,7 @@ export function SidebarPlayer({
     >
       <div className={`sidebar-player-header ${isQueueOpen ? "queue-view" : "hero-view"}`}>
         <div
-          className="sidebar-artwork-container"
+          className={`sidebar-artwork-container${isVinyl ? " is-vinyl" : ""}`}
           onClick={(e) => {
             if (e.altKey) onOpenNowPlaying();
             else onToggleQueue();
@@ -95,14 +99,28 @@ export function SidebarPlayer({
           tabIndex={0}
           title={isQueueOpen ? "Click to expand album artwork" : "Click to view upcoming queue"}
         >
-          <ArtworkImage
-            src={track.thumbnailUrl}
-            videoId={track.videoId}
-            alt={track.title}
-            className="sidebar-player-thumb"
-            variant="hero"
-            priority
-          />
+          {isVinyl ? (
+            <div className="sidebar-vinyl">
+              <MiniVinyl isPlaying={playerState === "playing"} tiny={isQueueOpen}>
+                <ArtworkImage
+                  src={track.thumbnailUrl}
+                  videoId={track.videoId}
+                  alt={track.title}
+                  variant="hero"
+                  priority
+                />
+              </MiniVinyl>
+            </div>
+          ) : (
+            <ArtworkImage
+              src={track.thumbnailUrl}
+              videoId={track.videoId}
+              alt={track.title}
+              className="sidebar-player-thumb"
+              variant="hero"
+              priority
+            />
+          )}
           <span className="sidebar-artwork-hint-badge">
             <ListMusic size={11} />
           </span>

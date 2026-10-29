@@ -33,6 +33,8 @@ export interface NowPlayingProps {
   isOpen: boolean;
   onClose: () => void;
   session: QueueSession;
+  /** Merged listening history for the queue's History tab, newest first. */
+  history: SearchResult[];
   isPlaying: boolean;
   isBuffering: boolean;
   isReady: boolean;
@@ -547,6 +549,7 @@ function NowPlayingScreen(props: NowPlayingProps) {
           <motion.div ref={listScrollRef} className="np-card-body" style={{ opacity: queueOpacity, y: contentShift }}>
             <QueuePanel
               session={session}
+              history={props.history}
               autoplay={props.modes.autoplay}
               isOpen={sheetOpen}
               onSelectTrack={props.onSelectTrack}

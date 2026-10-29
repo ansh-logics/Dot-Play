@@ -3,11 +3,13 @@ import { motion, useAnimationFrame, useMotionValue } from "motion/react";
 import { ArtworkImage } from "../ArtworkImage";
 import type { SearchResult } from "../../lib/search";
 import { useLyricClock } from "./useLyricClock";
+import { TonearmParts } from "../vinyl/TonearmParts";
+import "../vinyl/vinyl.css";
 
-/** One revolution every 3.6s: calmer than a real 33⅓ rpm (1.8s), which reads as frantic on screen. */
-const PLAYING_DEG_PER_MS = 360 / 3600;
+/** One revolution every 5s: a real 33⅓ rpm (1.8s) reads as frantic on screen. */
+const PLAYING_DEG_PER_MS = 360 / 5000;
 /** Time constant for spin-up / spin-down, so the platter eases instead of snapping. */
-const SPIN_EASE_MS = 450;
+const SPIN_EASE_MS = 700;
 
 /*
  * Tonearm geometry (SVG units, the record fills a 100×100 box centred at 50,50, radius 46;
@@ -60,9 +62,9 @@ export function VinylRecord({ track, isPlaying, currentTime, duration, reduceMot
   });
 
   return (
-    <div className={`np-vinyl ${isPlaying ? "is-playing" : ""}`}>
-      <motion.div className="np-vinyl-disc" style={{ rotate: angle }}>
-        <div className="np-vinyl-label">
+    <div className={`vinyl ${isPlaying ? "is-playing" : ""}`}>
+      <motion.div className="vinyl-disc" style={{ rotate: angle }}>
+        <div className="vinyl-label">
           <ArtworkImage
             key={track.videoId}
             src={track.thumbnailUrl}
@@ -73,18 +75,12 @@ export function VinylRecord({ track, isPlaying, currentTime, duration, reduceMot
             priority
           />
         </div>
-        <div className="np-vinyl-spindle" />
+        <div className="vinyl-spindle" />
       </motion.div>
       {/* Fixed highlight: the light doesn't turn with the record, which is what sells the spin. */}
-      <div className="np-vinyl-sheen" aria-hidden="true" />
-      <motion.svg className="np-vinyl-arm" viewBox="0 0 100 100" aria-hidden="true" style={{ rotate: arm }}>
-        {/* soft shadow: the arm path offset, no filter */}
-        <path d="M84 18 L71 65 L68 72" className="np-arm-shadow" />
-        <line x1="82" y1="16" x2="89" y2="5" className="np-arm-weight" />
-        <circle cx="82" cy="16" r="6.5" className="np-arm-base" />
-        <path d="M82 16 L69 63 L66 70" className="np-arm-tube" />
-        <path d="M63.2 67.6 L69.4 69.9 L67.4 76.2 L61.2 73.9 Z" className="np-arm-head" />
-        <circle cx="82" cy="16" r="2.6" className="np-arm-cap" />
+      <div className="vinyl-sheen" aria-hidden="true" />
+      <motion.svg className="vinyl-arm" viewBox="0 0 100 100" aria-hidden="true" style={{ rotate: arm }}>
+        <TonearmParts />
       </motion.svg>
     </div>
   );

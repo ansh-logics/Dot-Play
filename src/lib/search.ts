@@ -161,24 +161,18 @@ export async function getPlaylistDetails(
   throw new Error("Tauri environment not available")
 }
 
+/** Rejects when YouTube can't be reached, so callers keep their saved history. */
 export async function getHistory(): Promise<HomeFeedResponse> {
   if (isTauriEnvironment()) {
-    try {
-      return await invoke<HomeFeedResponse>("get_history")
-    } catch {
-      return { sections: [] }
-    }
+    return await invoke<HomeFeedResponse>("get_history")
   }
   return { sections: [] }
 }
 
+/** Rejects when YouTube can't be reached, so callers keep the playlists already shown. */
 export async function getLibraryPlaylists(): Promise<HomeFeedResponse> {
   if (isTauriEnvironment()) {
-    try {
-      return await invoke<HomeFeedResponse>("get_library_playlists")
-    } catch {
-      return { sections: [] }
-    }
+    return await invoke<HomeFeedResponse>("get_library_playlists")
   }
   return { sections: [] }
 }
@@ -261,7 +255,7 @@ export function cleanSearchResultMetadata(item: SearchResult): SearchResult {
   }
 
   // Clean trailing video markers from title e.g. "(Official Video)", "[Lyric Video]"
-  title = title.replace(/\s*[\(\[](?:official\s*(?:music\s*)?video|official\s*audio|lyric\s*video|visualizer|audio)[\)\]]/gi, "").trim();
+  title = title.replace(/\s*[([](?:official\s*(?:music\s*)?video|official\s*audio|lyric\s*video|visualizer|audio)[)\]]/gi, "").trim();
 
   return {
     ...item,

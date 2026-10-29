@@ -21,12 +21,12 @@
 
 .section-heading {
   margin: 0;
-  font-family: var(--font-dot);
-  font-size: 15px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
+  font-family: var(--font-heading);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
   color: #ffffff;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .shelves-grid,

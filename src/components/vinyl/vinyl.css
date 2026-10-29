@@ -1,0 +1,174 @@
+/* ---------- Vinyl record ----------
+   Shared by the full-screen player, the sidebar card and the menu bar. The artwork is the
+   label. Kept calm on purpose: warm black, low-contrast grooves that don't shimmer while
+   turning, a soft fixed sheen, and a slow spin. */
+
+.vinyl {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  --vinyl-black: #15120f;
+  --vinyl-cream: 239, 227, 203;
+}
+
+.vinyl-disc {
+  position: absolute;
+  inset: 4%;
+  border-radius: 50%;
+  background:
+    /* wide, faint grooves: fine stripes moiré when they rotate */
+    repeating-radial-gradient(
+      circle at 50% 50%,
+      rgba(255, 255, 255, 0) 0 2.2px,
+      rgba(255, 248, 235, 0.028) 2.6px,
+      rgba(255, 255, 255, 0) 3.2px
+    ),
+    /* lead-in and lead-out bands */
+    radial-gradient(
+      circle,
+      transparent 44%,
+      rgba(0, 0, 0, 0.35) 44.6%,
+      transparent 45.4%,
+      transparent 95.5%,
+      rgba(255, 245, 230, 0.06) 96.5%,
+      transparent 98%
+    ),
+    radial-gradient(circle, #1b1713 0%, var(--vinyl-black) 70%, #100d0b 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 245, 230, 0.06),
+    0 22px 44px -18px rgba(0, 0, 0, 0.65),
+    0 6px 14px -6px rgba(0, 0, 0, 0.4);
+}
+
+/* Smooth run-out band around the label. */
+.vinyl-disc::before {
+  content: "";
+  position: absolute;
+  inset: 27%;
+  border-radius: 50%;
+  background: radial-gradient(circle, #171310 62%, #120f0c 63%, #18140f 100%);
+}
+
+.vinyl-label {
+  position: absolute;
+  inset: 31%;
+  border-radius: 50%;
+  overflow: hidden;
+  background: rgb(var(--vinyl-cream));
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.5),
+    0 0 0 2.5px rgba(var(--vinyl-cream), 0.12);
+}
+
+.vinyl-label img,
+.vinyl-label .np-art {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Paper feel on the label: a soft inner vignette over the artwork. */
+.vinyl-label::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: inset 0 0 12px rgba(40, 25, 10, 0.35);
+  pointer-events: none;
+}
+
+.vinyl-spindle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3.2%;
+  height: 3.2%;
+  margin: -1.6% 0 0 -1.6%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #f4ecdf, #a89c8a 60%, #5a5148);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+/* Fixed light: two broad, warm wedges that stay put while the record turns. */
+.vinyl-sheen {
+  position: absolute;
+  inset: 4%;
+  border-radius: 50%;
+  pointer-events: none;
+  background: conic-gradient(
+    from 25deg,
+    transparent 0deg,
+    rgba(255, 240, 220, 0.055) 40deg,
+    transparent 85deg,
+    transparent 185deg,
+    rgba(255, 240, 220, 0.035) 225deg,
+    transparent 265deg
+  );
+  -webkit-mask-image: radial-gradient(circle, transparent 29%, #000 31%);
+  mask-image: radial-gradient(circle, transparent 29%, #000 31%);
+}
+
+/* Tonearm: warm brushed aluminium. Its rotation is set by the parent (per frame in the
+   full-screen player, by a CSS transition in the small records). */
+.vinyl-arm {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  transform-origin: 82% 16%;
+  pointer-events: none;
+}
+
+.vinyl-arm-shadow { fill: none; stroke: rgba(0, 0, 0, 0.28); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.vinyl-arm-weight { stroke: #3b352f; stroke-width: 5; stroke-linecap: round; }
+.vinyl-arm-base { fill: #24201c; stroke: #4a433b; stroke-width: 0.8; }
+.vinyl-arm-tube { fill: none; stroke: #d9d0c2; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.vinyl-arm-head { fill: #8f8678; stroke: #5f574d; stroke-width: 0.4; }
+.vinyl-arm-cap { fill: #cfc5b6; }
+
+/* ---------- Small records (sidebar card, menu bar) ----------
+   CSS-only: a slow spin that pauses in place, and an arm that lifts when paused. */
+
+.vinyl--mini .vinyl-disc {
+  animation: vinyl-spin 5s linear infinite;
+  animation-play-state: paused;
+}
+
+.vinyl--mini.is-playing .vinyl-disc {
+  animation-play-state: running;
+}
+
+.vinyl--mini .vinyl-arm {
+  transform: rotate(-32deg);
+  transition: transform 0.9s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.vinyl--mini.is-playing .vinyl-arm {
+  transform: rotate(-12deg);
+}
+
+/* Very small (collapsed sidebar card): no arm, and a lighter shadow. */
+.vinyl--tiny .vinyl-disc {
+  inset: 0;
+  box-shadow: inset 0 0 0 1px rgba(255, 245, 230, 0.06);
+}
+.vinyl--tiny .vinyl-sheen {
+  inset: 0;
+}
+
+@keyframes vinyl-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vinyl--mini .vinyl-disc {
+    animation: none;
+  }
+  .vinyl--mini .vinyl-arm {
+    transition: none;
+  }
+}

@@ -1,4 +1,5 @@
 mod feed;
+mod fsutil;
 mod haptics;
 mod lyrics;
 mod media_controls;

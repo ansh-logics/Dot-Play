@@ -49,7 +49,7 @@
 }
 
 .brand-title {
-  font-family: var(--font-heading);
+  font-family: var(--font-wordmark);
   font-size: 18px;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -79,13 +79,13 @@
 }
 
 .nav-group-label {
-  font-family: var(--font-dot);
-  font-size: 12px;
+  font-family: var(--font-body);
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.01em;
   color: var(--text-secondary);
   padding: 12px 10px 6px;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .sidebar-nav-item {
@@ -245,10 +245,10 @@
   border-radius: 20px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  font-family: var(--font-dot);
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   color: var(--text-secondary);
 }
 

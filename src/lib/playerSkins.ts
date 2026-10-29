@@ -31,13 +31,30 @@ export function loadSkin(): PlayerSkinId {
   }
 }
 
+const listeners = new Set<() => void>()
+let current: PlayerSkinId | null = null
+
+/** The chosen style, read from storage once and then kept in memory. */
+export function getSkin(): PlayerSkinId {
+  current ??= loadSkin()
+  return current
+}
+
 export function saveSkin(id: PlayerSkinId): void {
   if (!isSelectable(id)) return
+  current = id
   try {
     localStorage.setItem(STORAGE_KEY, id)
   } catch {
     // ignore
   }
+  listeners.forEach((fn) => fn())
+}
+
+/** Notifies when the style is changed in this window (the sidebar card follows it). */
+export function subscribeSkin(listener: () => void): () => void {
+  listeners.add(listener)
+  return () => listeners.delete(listener)
 }
 
 const N = PLAYER_SKINS.length

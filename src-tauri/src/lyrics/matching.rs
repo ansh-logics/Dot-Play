@@ -19,9 +19,8 @@ pub(crate) fn clean_query_title(title: &str) -> String {
         "(full video)",
         "(full song)",
     ];
-    let lower = t.to_lowercase();
     for marker in re_markers {
-        if let Some(pos) = lower.find(marker) {
+        if let Some(pos) = crate::ytmusic::parse::find_ascii_ci(t, marker) {
             return t[..pos].trim().to_string();
         }
     }

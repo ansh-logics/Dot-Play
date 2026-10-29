@@ -1,4 +1,6 @@
-//! Reports finished plays to YouTube so they show up in the listener's history.
+//! Reports plays to YouTube so they can show up in the listener's history.
+//! Best effort: this mimics the web player's pings and YouTube may ignore them, so the
+//! app keeps its own listening history and never depends on these landing.
 
 use crate::session::SessionState;
 use crate::ytmusic::{attach_youtube_auth, web_remix_context, with_ytm_headers, HTTP_CLIENT};
