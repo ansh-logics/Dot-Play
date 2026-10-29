@@ -1,5 +1,6 @@
 mod media_controls;
 mod tray;
+mod updater;
 
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
@@ -2875,7 +2876,9 @@ pub fn run() {
         .manage(SessionState::default())
         .manage(PlayerServerState(player_port))
         .manage(media_controls::LastNowPlaying::default())
-        .plugin(tauri_plugin_log::Builder::default().build());
+        .manage(updater::PendingUpdate::default())
+        .plugin(tauri_plugin_log::Builder::default().build())
+        .plugin(tauri_plugin_updater::Builder::new().build());
 
     let builder = if let Some(port) = local_app_port {
         builder.plugin(
@@ -2936,7 +2939,9 @@ pub fn run() {
                         .permission("allow-get-now-playing")
                         .permission("allow-tray-media-control")
                         .permission("allow-show-main-window")
-                        .permission("allow-hide-tray-popover"),
+                        .permission("allow-hide-tray-popover")
+                        .permission("allow-get-pending-update")
+                        .permission("allow-install-update"),
                 )?;
                 tray_url = Some(app_url.clone());
 
@@ -2946,6 +2951,7 @@ pub fn run() {
             }
 
             tray::init(app.handle(), tray_url)?;
+            updater::init(app.handle());
 
             // Restore saved session & image cache from disk on startup
             if let Ok(app_data) = app.path().app_data_dir() {
@@ -3002,7 +3008,9 @@ pub fn run() {
             media_controls::get_now_playing,
             media_controls::tray_media_control,
             tray::show_main_window,
-            tray::hide_tray_popover
+            tray::hide_tray_popover,
+            updater::get_pending_update,
+            updater::install_update
         ])
         // Closing the main window keeps the music playing; the menu bar icon controls it.
         // Quit from the tray menu or with Cmd+Q.

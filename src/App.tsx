@@ -67,6 +67,7 @@ import {
 } from "./lib/search";
 import { cacheTracks, cacheTrack, clearAccountSpecificCache } from "./lib/trackCache";
 import { Toast } from "./components/Toast";
+import { UpdatePrompt } from "./components/UpdatePrompt";
 import {
   addToUpcoming,
   playNextUpcoming,
@@ -3260,6 +3261,8 @@ function App() {
 
       {/* Accessible Non-Blocking Toast Notification */}
       <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
+
+      <UpdatePrompt />
     </div>
   );
 }

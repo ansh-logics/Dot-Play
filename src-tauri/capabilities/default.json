@@ -32,6 +32,8 @@
     "allow-get-now-playing",
     "allow-tray-media-control",
     "allow-show-main-window",
-    "allow-hide-tray-popover"
+    "allow-hide-tray-popover",
+    "allow-get-pending-update",
+    "allow-install-update"
   ]
 }

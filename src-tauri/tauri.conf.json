@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "dot-music",
-  "version": "0.1.2",
+  "version": "1.0.0",
   "identifier": "com.anshbhatt.dotmusic",
   "build": {
     "frontendDist": "../dist",
@@ -45,6 +45,15 @@
     },
     "android": {
       "debugApplicationIdSuffix": ".debug"
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ0QjNGNUE3OTJGNEU0NjcKUldSbjVQU1NwL1d6MUFLSkhJaW5VUFlZakZGK0F5VCtLK3hqVjRCK0pFUUp2SDhPOFlIYlBvbU4K",
+      "endpoints": [
+        "https://github.com/ansh-logics/Dot-Play/releases/latest/download/latest.json"
+      ]
     }
   }
 }

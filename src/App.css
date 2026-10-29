@@ -3685,6 +3685,123 @@ body {
 }
 
 /* ==========================================================================
+   Update Prompt (new release from the auto-updater)
+   ========================================================================== */
+
+.update-prompt {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 99998;
+  animation: toastFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Compound selector so LiquidGlassSurface.css's base rule (padding: 0, inline-flex) loses. */
+.liquid-glass-surface.update-prompt-card {
+  display: block;
+  width: 300px;
+  padding: 14px 14px 12px;
+  background: rgba(18, 18, 18, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65);
+  cursor: default;
+}
+
+.update-prompt-card .liquid-glass-content-layer {
+  display: block;
+  height: auto;
+}
+
+.update-prompt-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.update-prompt-row .dot-red-accent {
+  margin-top: 5px;
+  flex-shrink: 0;
+}
+
+.update-prompt-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.update-prompt-title {
+  font-family: var(--font-heading);
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.update-prompt-sub {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.update-prompt-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.update-prompt-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-family: var(--font-heading);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.update-prompt-later {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.update-prompt-later:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.update-prompt-install {
+  border: none;
+  background: var(--accent-red);
+  color: #ffffff;
+}
+
+.update-prompt-install:hover {
+  background: var(--accent-red-hover);
+}
+
+.update-prompt-bar {
+  height: 3px;
+  margin-top: 12px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.update-prompt-bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent-red);
+  transition: width 0.2s ease;
+}
+
+/* ==========================================================================
    Custom Music Context Menu (Nothing OS Aesthetic)
    ========================================================================== */
 

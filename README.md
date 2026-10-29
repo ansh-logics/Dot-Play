@@ -81,6 +81,22 @@ npm run lint
 cargo check --manifest-path src-tauri/Cargo.toml
 ```
 
+## Releases and auto-update
+
+Installed apps update themselves from GitHub Releases (`tauri-plugin-updater`). A release build
+checks `releases/latest/download/latest.json` shortly after launch and every 6 hours, verifies the
+download against the public key in `src-tauri/tauri.conf.json`, and offers "Restart to update".
+
+To publish a release:
+
+1. Bump `version` in `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`, then commit.
+2. Write the release notes to a Markdown file.
+3. Run `scripts/release.sh notes.md`. It builds, signs the update, writes `latest.json` and
+   creates the GitHub release with the `.dmg` (first installs) and the `.app.tar.gz` (updates).
+
+The private signing key lives at `~/.tauri/dot-music.key` and is never committed. Keep a backup:
+without it, installed apps can't be updated, and a new key means everyone reinstalls by hand.
+
 ## Current Scope
 
 DOT Music is an active personal product project, not a production streaming service. Account connection, persistent session handling, source reliability, desktop packaging, and cross-platform support are still evolving. Do not treat it as a replacement for official music-provider clients.

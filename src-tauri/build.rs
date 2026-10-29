@@ -26,6 +26,8 @@ fn main() {
         "tray_media_control",
         "show_main_window",
         "hide_tray_popover",
+        "get_pending_update",
+        "install_update",
       ]),
     ),
   )
