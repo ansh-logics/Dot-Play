@@ -1,0 +1,9 @@
+/* ==========================================================================
+   Playlists & Library View
+   ========================================================================== */
+.library-view-container {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  animation: fadeIn 0.25s ease-out;
+}

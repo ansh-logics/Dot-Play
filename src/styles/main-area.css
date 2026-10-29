@@ -1,0 +1,121 @@
+/* --------------------------------------------------------------------------
+   Right Main Content Area
+   -------------------------------------------------------------------------- */
+.app-main-area {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-oled);
+}
+
+/* Top Bar / Search */
+.app-top-bar {
+  height: var(--topbar-height);
+  min-height: var(--topbar-height);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 36px;
+  background: rgba(0, 0, 0, 1);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border-subtle);
+  z-index: 40;
+}
+
+.top-search-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 500px;
+  display: flex;
+  align-items: center;
+}
+
+.top-search-svg {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 17px;
+  height: 17px;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+.top-search-input {
+  width: 100%;
+  height: 42px;
+  padding: 0 36px 0 38px;
+  border-radius: 8px;
+  background: #0c0c0d;
+  border: none;
+  color: var(--text-primary);
+  font-family: var(--font-heading);
+  font-size: 14.5px;
+  letter-spacing: 0.04em;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+/* Placeholder is body text, so Inter: dot-matrix is reserved for headings and numerals. */
+.top-search-input::placeholder {
+  font-family: var(--font-body);
+  letter-spacing: 0;
+  color: #6e6e73;
+  font-size: 14px;
+}
+
+.top-search-input:focus {
+  /* Increased from 0.03 to 0.12 for a noticeably brighter background */
+  background: rgba(255, 255, 255, 0.12);
+  border: none;
+  /* Added a very subtle focus ring to make it pop more, remove if you only want the background change */
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.05);
+}
+
+.search-clear-btn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px;
+  transition: color 0.15s ease;
+}
+
+.search-clear-btn:hover {
+  color: #fff;
+}
+
+/* Scrollable Container */
+.app-main-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 28px 36px 48px;
+  position: relative;
+}
+
+.app-main-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.app-main-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-main-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.app-main-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}

@@ -1,0 +1,71 @@
+/* --------------------------------------------------------------------------
+   Spinners & Loaders
+   -------------------------------------------------------------------------- */
+.spin-icon {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 0.4;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.loading-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-top-color: var(--accent-red);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  display: inline-block;
+}
+
+.loading-spinner.large {
+  width: 32px;
+  height: 32px;
+  border-width: 3px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.shelves-loading-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  color: var(--text-tertiary);
+  font-family: var(--font-dot);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+
+.empty-message {
+  text-align: center;
+  padding: 48px;
+  color: var(--text-tertiary);
+  font-family: var(--font-heading);
+  font-size: 14px;
+}
+
+/* Hidden YouTube Player container & iframe */
+.hidden-youtube-player,
+.hidden-youtube-player iframe {
+  position: fixed !important;
+  top: -9999px !important;
+  left: -9999px !important;
+  width: 1px !important;
+  height: 1px !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+  z-index: -999 !important;
+}

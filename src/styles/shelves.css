@@ -1,0 +1,38 @@
+/* --------------------------------------------------------------------------
+   Nothing OS Shelves & Cards
+   -------------------------------------------------------------------------- */
+.home-shelves-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-section);
+}
+
+.content-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-heading);
+}
+
+.section-header-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.section-heading {
+  margin: 0;
+  font-family: var(--font-dot);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: #ffffff;
+  text-transform: uppercase;
+}
+
+.shelves-grid,
+.search-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 28px 20px; /* rows breathe more than columns, Apple-style */
+  width: 100%;
+}

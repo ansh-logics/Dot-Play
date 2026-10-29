@@ -1,0 +1,313 @@
+/* ==========================================================================
+   Sidebar Floating Player Card (Image 1)
+   ========================================================================== */
+/* Solid surface with a faint album-colour wash (--tint, set from the artwork palette in
+   App.tsx) so the sidebar matches the Now Playing screen. Glass would be invisible on black. */
+@property --tint {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: transparent;
+}
+
+.sidebar-player-card {
+  --tint: transparent;
+  background:
+    radial-gradient(120% 70% at 50% 0%, color-mix(in srgb, var(--tint) 30%, transparent), transparent 72%),
+    #0e0e11;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 12px 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
+  transition: border-color 0.3s ease, --tint 1.2s ease;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  flex-shrink: 0;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.sidebar-player-card:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.sidebar-player-header {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  height: 252px;
+  transition: height 0.42s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.sidebar-player-header.queue-view {
+  height: 44px;
+}
+
+.sidebar-artwork-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 204px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: width 0.42s cubic-bezier(0.32, 0.72, 0, 1),
+              height 0.42s cubic-bezier(0.32, 0.72, 0, 1),
+              border-radius 0.42s cubic-bezier(0.32, 0.72, 0, 1),
+              box-shadow 0.42s cubic-bezier(0.32, 0.72, 0, 1),
+              border-color 0.42s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.sidebar-player-header.queue-view .sidebar-artwork-container {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.sidebar-artwork-container .sidebar-player-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.sidebar-artwork-container:hover .sidebar-player-thumb {
+  transform: scale(1.03);
+}
+
+.sidebar-artwork-hint-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s ease,
+              width 0.42s cubic-bezier(0.32, 0.72, 0, 1),
+              height 0.42s cubic-bezier(0.32, 0.72, 0, 1),
+              top 0.42s cubic-bezier(0.32, 0.72, 0, 1),
+              right 0.42s cubic-bezier(0.32, 0.72, 0, 1);
+  pointer-events: none;
+}
+
+.sidebar-player-header.queue-view .sidebar-artwork-hint-badge {
+  top: 4px;
+  right: 4px;
+  width: 18px;
+  height: 18px;
+}
+
+.sidebar-artwork-container:hover .sidebar-artwork-hint-badge {
+  opacity: 1;
+}
+
+.sidebar-expand-btn {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.2s ease, background 0.2s ease;
+}
+
+.sidebar-artwork-container:hover .sidebar-expand-btn,
+.sidebar-expand-btn:focus-visible {
+  opacity: 1;
+}
+
+.sidebar-expand-btn:hover {
+  background: rgba(0, 0, 0, 0.85);
+}
+
+.sidebar-player-header.queue-view .sidebar-expand-btn {
+  display: none;
+}
+
+.sidebar-player-meta {
+  position: absolute;
+  top: 216px;
+  left: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  overflow: hidden;
+  transition: top 0.42s cubic-bezier(0.32, 0.72, 0, 1),
+              left 0.42s cubic-bezier(0.32, 0.72, 0, 1),
+              width 0.42s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.sidebar-player-header.queue-view .sidebar-player-meta {
+  top: 3px;
+  left: 54px;
+  width: calc(100% - 54px);
+}
+
+.sidebar-player-title {
+  font-family: var(--font-heading);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.sidebar-player-artist {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+  line-height: 1.2;
+}
+
+.sidebar-player-artist.error {
+  color: #ff453a;
+}
+
+.sidebar-player-progress-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+}
+
+.sidebar-player-scrubber {
+  width: 100%;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+  transition: height 0.15s ease;
+  padding: 0;
+  margin: 2px 0;
+}
+
+.sidebar-player-scrubber:hover {
+  height: 6px;
+}
+
+.sidebar-player-scrubber::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.sidebar-player-scrubber:hover::-webkit-slider-thumb {
+  transform: scale(1.3);
+  background: var(--accent-red);
+  box-shadow: 0 0 8px var(--accent-red-glow);
+}
+
+/* Dot-matrix numerals are a Nothing signature; keep them, but legible. */
+.sidebar-player-times {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-dot);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+  padding: 0 1px;
+}
+
+.sidebar-player-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 2px 0;
+}
+
+.sidebar-ctrl-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  padding: 6px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.18s ease;
+}
+
+.sidebar-ctrl-btn:hover:not(:disabled) {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+  transform: scale(1.08);
+}
+
+.sidebar-ctrl-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.sidebar-ctrl-btn.volume.active-muted {
+  color: #ff453a;
+}
+
+.sidebar-ctrl-btn.play-pause {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #000000;
+  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.18);
+  padding: 0;
+}
+
+.sidebar-ctrl-btn.play-pause:hover:not(:disabled) {
+  background: #ececef;
+  color: #000000;
+  transform: scale(1.08);
+  box-shadow: 0 4px 16px rgba(255, 255, 255, 0.32);
+}
+
+.sidebar-ctrl-btn.play-pause:active:not(:disabled) {
+  transform: scale(0.96);
+}

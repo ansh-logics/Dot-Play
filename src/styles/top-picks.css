@@ -1,0 +1,261 @@
+/* --------------------------------------------------------------------------
+   3D Cover Flow Top Picks Carousel (Matching Reference Screenshot)
+   -------------------------------------------------------------------------- */
+.top-picks-carousel-container {
+  width: 100%;
+  margin-bottom: 0; /* spacing comes from .home-shelves-container gap */
+  display: flex;
+  flex-direction: column;
+}
+
+.carousel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-heading);
+}
+
+.carousel-header-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dot-red-accent {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-red);
+  box-shadow: 0 0 8px var(--accent-red-glow);
+}
+
+.dot-red-accent.small {
+  width: 6px;
+  height: 6px;
+}
+
+.carousel-heading-label {
+  font-family: var(--font-dot);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: #ffffff;
+  text-transform: uppercase;
+}
+
+.carousel-nav-arrows {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.carousel-arrow-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #101014;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  line-height: 1;
+}
+
+.carousel-arrow-btn:hover {
+  background: #1a1a20;
+  color: #fff;
+  border-color: var(--border-glass);
+}
+
+/* Carousel 3D Stage */
+.carousel-stage {
+  perspective: 1200px;
+  transform-style: preserve-3d;
+  width: 100%;
+  height: 320px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: visible;
+}
+
+.carousel-cards-track {
+  position: relative;
+  width: 300px;
+  height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-style: preserve-3d;
+}
+
+/* Individual Card in 3D Space */
+.carousel-card {
+  position: absolute;
+  width: 300px;
+  height: 300px;
+  border-radius: 20px;
+  overflow: hidden;
+  cursor: pointer;
+  border: none; /* User requirement: no white outline */
+  outline: none;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.85);
+  transition:
+    transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 0.45s ease,
+    filter 0.45s ease;
+  will-change: transform, opacity, filter;
+  background: #000;
+}
+
+.carousel-card.is-center {
+  box-shadow:
+    0 24px 50px rgba(0, 0, 0, 0.95),
+    0 4px 20px rgba(0, 0, 0, 0.6);
+}
+
+/* Shimmering Skeleton Loader */
+.carousel-shimmer-skeleton {
+  position: absolute;
+  inset: 0;
+  border-radius: 20px;
+  background: linear-gradient(90deg, #0e0e12 0%, #1e1e26 50%, #0e0e12 100%);
+  background-size: 200% 100%;
+  animation: carousel-shimmer 1.6s infinite linear;
+  z-index: 1;
+}
+
+@keyframes carousel-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.carousel-card-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  z-index: 2;
+  position: relative;
+}
+
+.carousel-card-img.loaded {
+  opacity: 1;
+}
+
+/* Centre card: only the play control sits on the artwork (glass over art is legitimate). */
+.carousel-card-actions {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 5;
+}
+
+/* Caption under the stage (Apple Cover Flow style) instead of text over the poster. */
+.carousel-caption {
+  /* Above the cover cards (z-index ≤ 20), whose deep drop shadow would otherwise grey it out. */
+  position: relative;
+  z-index: 25;
+  margin-top: 6px;
+  text-align: center;
+  animation: carouselCaptionIn 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.carousel-caption-title {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.carousel-caption-artist {
+  margin: 3px 0 0;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@keyframes carouselCaptionIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .carousel-caption { animation: none; }
+}
+
+/* Sleek Circular Play Button (Matching Screenshot) */
+.carousel-play-btn {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  border-radius: 50%;
+  background: rgba(38, 38, 42, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #fff;
+  transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.carousel-play-btn:hover {
+  transform: scale(1.08);
+  background: rgba(55, 55, 60, 0.9);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.carousel-play-btn.playing {
+  background: var(--accent-red);
+  border-color: transparent;
+  box-shadow: 0 0 16px var(--accent-red-glow);
+}
+
+/* Indicators below carousel */
+.carousel-indicators {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.carousel-dot-btn {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.25s ease;
+}
+
+.carousel-dot-btn.active {
+  background: var(--accent-red);
+  width: 18px;
+  border-radius: 3px;
+  box-shadow: 0 0 6px var(--accent-red-glow);
+}
