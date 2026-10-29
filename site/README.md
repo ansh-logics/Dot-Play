@@ -43,7 +43,17 @@ npm run capture   # → public/shots/*.jpg (needs Google Chrome)
 
 ## Social preview
 
-`public/og.png` is the social preview image.
+`public/og.png` (1200×630) is the card shown when the link is shared. It's rendered from
+`scripts/og.html`:
+
+```bash
+npm run dev   # then, in another terminal:
+npm run og    # → public/og.png (needs Google Chrome)
+```
+
+Social sites need absolute image URLs, so the build fills `%SITE_URL%` in `index.html` from
+Vercel's `VERCEL_PROJECT_PRODUCTION_URL`. Set `SITE_URL` (e.g. `https://dotmusic.app`) in the
+Vercel project to use a custom domain instead.
 
 ## Deploy (Vercel)
 

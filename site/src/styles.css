@@ -442,10 +442,24 @@ svg {
   100% { background-position: 100% 0; }
 }
 
+.lyrics-stage {
+  margin-top: clamp(48px, 8vh, 88px);
+}
+
 /* Slow push-in on the record, like a product film. */
 .kenburns img {
   animation: kenburns 14s ease-in-out infinite alternate;
   transform-origin: 50% 30%;
+}
+
+/* On the lyrics shot, drift in towards the line being sung. */
+.kenburns--lyrics img {
+  transform-origin: 66% 36%;
+}
+
+@keyframes pan {
+  from { object-position: 0% 50%; }
+  to { object-position: 100% 50%; }
 }
 
 @keyframes kenburns {
@@ -803,8 +817,53 @@ svg {
 
 
   .kicker {
-    letter-spacing: 0.1em;
-    font-size: 12px;
+    letter-spacing: 0.06em;
+    font-size: 11px;
+  }
+
+  /* On the narrowest phones let the hero line wrap as centred text, the dot leading it. */
+  .hero .kicker {
+    display: block;
+    text-align: center;
+    text-wrap: balance;
+  }
+
+  .hero .kicker .red-dot {
+    margin-right: 8px;
+    vertical-align: 1px;
+  }
+
+  /* Phones: a taller crop of each shot that pans slowly across the whole screen, so the UI
+     stays big enough to read instead of shrinking to a thumbnail. */
+  .screen {
+    aspect-ratio: 1 / 1;
+  }
+
+  .hero-shot .screen {
+    aspect-ratio: 4 / 3;
+  }
+
+  .screen img {
+    object-position: 0% 50%;
+    animation: pan 16s ease-in-out infinite alternate;
+  }
+
+  .kenburns img {
+    animation: pan 16s ease-in-out infinite alternate, kenburns 14s ease-in-out infinite alternate;
+  }
+
+  .lyrics-stage {
+    margin-top: 40px;
+  }
+
+  /* A portrait desk so the mini player shows near phone size. */
+  .desk {
+    aspect-ratio: 4 / 5;
+  }
+
+  .desk-popover {
+    right: 7%;
+    width: 60%;
   }
 
 
@@ -819,7 +878,8 @@ svg {
     color: var(--ink);
   }
 
-  .kenburns img {
+  .kenburns img,
+  .screen img {
     animation: none;
   }
 

@@ -9,6 +9,7 @@ const SHOTS = {
   nothing: "/shots/app-nothing.jpg",
   vinyl: "/shots/app-vinyl.jpg",
   queue: "/shots/app-queue.jpg",
+  lyrics: "/shots/app-lyrics.jpg",
   menubar: "/shots/menubar-player.jpg",
 };
 const SHOT_SIZE = { width: 2000, height: 1256 };
@@ -115,7 +116,7 @@ function Moods() {
   );
 }
 
-/** Lyrics, told in type: a highlight sweeps across the headline the way the app sweeps words. */
+/** Lyrics: a highlight sweeps across the headline the way the app sweeps words, then the real thing. */
 function Lyrics() {
   return (
     <section className="showcase lyrics-show">
@@ -130,6 +131,11 @@ function Lyrics() {
           Word-by-word synced lyrics with backing vocals underneath and breathing dots for instrumental breaks. Hindi, Arabic,
           Tamil and every other script render properly.
         </p>
+      </Reveal>
+      <Reveal className="lyrics-stage" delay={0.1}>
+        <div className="screen kenburns kenburns--lyrics">
+          <img src={SHOTS.lyrics} alt="Synced Hindi lyrics for Ehsaas in the Apple style" {...SHOT_SIZE} loading="lazy" />
+        </div>
       </Reveal>
     </section>
   );

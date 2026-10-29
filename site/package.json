@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "capture": "node scripts/capture.mjs"
+    "capture": "node scripts/capture.mjs",
+    "og": "node scripts/og.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.63.0",
