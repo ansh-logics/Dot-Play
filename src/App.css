@@ -3688,7 +3688,9 @@ body {
    Custom Music Context Menu (Nothing OS Aesthetic)
    ========================================================================== */
 
-.music-context-menu {
+/* Compound selector: LiquidGlassSurface.css loads after this file and its base rule
+   (position: relative, padding: 0) would otherwise drop the menu into the page flow. */
+.liquid-glass-surface.music-context-menu {
   position: fixed;
   z-index: 1000;
   width: 230px;
@@ -3710,6 +3712,12 @@ body {
     inset 0 0 16px rgba(255, 255, 255, 0.02);
   animation: context-menu-in 0.12s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
+}
+
+/* Stack header, dividers and items; the glass content layer centres a row by default. */
+.music-context-menu .liquid-glass-content-layer {
+  display: block;
+  height: auto;
 }
 
 @keyframes context-menu-in {
