@@ -17,7 +17,7 @@ A plain React page with screenshots of the **real app** and simple Apple-style m
 shot settles from a tilt, the three styles cross-fade, the vinyl slowly pushes in, a highlight
 sweeps the lyrics headline, and the menu bar player drops from its icon.
 
-- `src/sections/`: Nav, Hero, Showcase (styles, lyrics, vinyl, menu bar), Film, Built light,
+- `src/sections/`: Nav, Hero, Showcase (styles, lyrics, vinyl, menu bar, queue), Built light,
   Install, FAQ and Footer.
 - `public/shots/`: the product screenshots.
 - `src/lib/github.ts`: the live star count and the latest release, with plain-link fallbacks.
@@ -41,11 +41,9 @@ npm run capture   # → public/shots/*.jpg (needs Google Chrome)
 - Captures leave the lyrics panel closed.
 - These pages are only used for capturing and aren't part of the deployed site.
 
-## Launch video
+## Social preview
 
-The "See it in action" section plays `public/media/launch.mp4` (re-muxed with `-movflags
-+faststart` so it streams) with `public/media/launch-poster.jpg` as its poster. If the file is
-missing it shows a "coming soon" frame. `public/og.png` is the social preview image.
+`public/og.png` is the social preview image.
 
 ## Deploy (Vercel)
 

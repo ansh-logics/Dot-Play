@@ -543,66 +543,6 @@ svg {
   letter-spacing: -0.035em;
 }
 
-/* ---------- Launch film ---------- */
-
-.film {
-  padding-bottom: clamp(40px, 6vh, 80px);
-}
-
-.film-frame {
-  position: relative;
-  aspect-ratio: 16 / 9;
-  border-radius: var(--radius);
-  overflow: hidden;
-  border: 1px solid var(--line);
-  background: #070708;
-  box-shadow: 0 40px 100px -40px rgba(0, 0, 0, 0.9);
-}
-
-.film-frame video {
-  width: 100%;
-  height: 100%;
-  display: block;
-  object-fit: cover;
-  background: #000;
-}
-
-.film-placeholder {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  align-content: center;
-  gap: 18px;
-  background: radial-gradient(60% 70% at 50% 50%, rgba(215, 25, 33, 0.12), transparent 70%);
-}
-
-.film-pulse {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--red);
-  box-shadow: 0 0 0 0 rgba(215, 25, 33, 0.6);
-  animation: film-pulse 1.8s ease-out infinite;
-}
-
-@keyframes film-pulse {
-  to {
-    box-shadow: 0 0 0 26px rgba(215, 25, 33, 0);
-  }
-}
-
-.film-soon {
-  position: relative;
-  margin: 0;
-  font-family: Doto, monospace;
-  font-weight: 800;
-  font-size: clamp(18px, 2.4vw, 28px);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--dim);
-}
-
 .stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

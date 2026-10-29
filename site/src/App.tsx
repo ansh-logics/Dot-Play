@@ -1,5 +1,4 @@
 import { useRepoInfo } from "./lib/github";
-import { Film } from "./sections/Film";
 import { Hero } from "./sections/Hero";
 import { Nav } from "./sections/Nav";
 import { BuiltLight, Faq, FinalCta, Footer, Install } from "./sections/Rest";
@@ -13,7 +12,6 @@ export function App() {
       <main>
         <Hero info={info} />
         <Showcase />
-        <Film />
         <BuiltLight />
         <Install info={info} />
         <Faq />
