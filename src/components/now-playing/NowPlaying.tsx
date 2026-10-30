@@ -11,7 +11,7 @@ import {
   useTransform,
   type PanInfo,
 } from "motion/react";
-import { Disc3, ListMusic, MessageSquareQuote, Minimize2 } from "lucide-react";
+import { Disc3, Expand, MessageSquareQuote, Minimize2, Shrink } from "lucide-react";
 import "./NowPlaying.css";
 import { ArtworkImage } from "../ArtworkImage";
 import { useArtwork } from "../../lib/imagePipeline";
@@ -27,6 +27,7 @@ import { QueuePanel, type QueueContextMenuHandler } from "./QueuePanel";
 import { useLyrics } from "./useLyrics";
 import { SkinWheel } from "./SkinWheel";
 import { VinylRecord } from "./VinylRecord";
+import { useWindowFullscreen } from "../../lib/useWindowFullscreen";
 import { loadSkin, saveSkin, type PlayerSkinId } from "../../lib/playerSkins";
 
 export interface NowPlayingProps {
@@ -88,6 +89,7 @@ function NowPlayingScreen(props: NowPlayingProps) {
   const { session, onClose } = props;
   const track = session.currentTrack!;
   const reduceMotion = useReducedMotion() ?? false;
+  const { isFullscreen, toggleFullscreen } = useWindowFullscreen();
   const compact = useMediaQuery("(max-width: 819px), (max-height: 599px)");
 
   const [lyricsOn, setLyricsOn] = useState(() => !window.matchMedia("(max-width: 819px), (max-height: 599px)").matches);
@@ -252,6 +254,7 @@ function NowPlayingScreen(props: NowPlayingProps) {
     },
     [closedYMV, reduceMotion, y],
   );
+  const toggleSheet = useCallback(() => setSheet(!sheetOpenRef.current), [setSheet]);
 
   const progress = useTransform([y, closedYMV], ([v, c]: number[]) => (c > 0 ? Math.min(1, Math.max(0, 1 - v / c)) : 0));
   const stageOpacity = useTransform(progress, [0, 1], [1, 0.14]);
@@ -402,14 +405,13 @@ function NowPlayingScreen(props: NowPlayingProps) {
         </button>
         <button
           type="button"
-          className={`np-icon-btn ${sheetOpen ? "is-active" : ""}`}
-          onClick={() => setSheet(!sheetOpen)}
-          aria-expanded={sheetOpen}
-          aria-controls="np-card"
-          aria-label="Queue"
-          title={sheetOpen ? "Hide queue (Q)" : "Show queue (Q)"}
+          className={`np-icon-btn ${isFullscreen ? "is-active" : ""}`}
+          onClick={toggleFullscreen}
+          aria-pressed={isFullscreen}
+          aria-label="Full screen"
+          title={isFullscreen ? "Exit full screen" : "Full screen"}
         >
-          <ListMusic size={21} />
+          {isFullscreen ? <Shrink size={19} /> : <Expand size={19} />}
         </button>
       </header>
 
@@ -543,6 +545,8 @@ function NowPlayingScreen(props: NowPlayingProps) {
               onCycleRepeat={props.onCycleRepeat}
               onToggleAutoplay={props.onToggleAutoplay}
               onToggleShuffle={props.onToggleShuffle}
+              queueOpen={sheetOpen}
+              onToggleQueue={toggleSheet}
             />
             </motion.div>
           </div>

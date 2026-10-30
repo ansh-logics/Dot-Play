@@ -23,6 +23,10 @@ const RADIUS = 150; // px from disc centre to where a label starts
 const WHEEL_PX_PER_NOTCH = 48;
 const DRAG_PX_PER_NOTCH = 56;
 const IDLE_SNAP_MS = 140;
+/** A released drag keeps going for about this long at its release speed (a flick spins on). */
+const FLING_SECONDS = 0.22;
+/** Only the last bit of a drag decides the release speed. */
+const VELOCITY_WINDOW_MS = 90;
 const AUTO_HIDE_MS = 1200;
 /** Landing: soft, with a hint of follow-through but no visible bounce. */
 const SNAP_SPRING = { type: "spring", stiffness: 360, damping: 30 } as const;
@@ -115,7 +119,7 @@ export const SkinWheel = memo(function SkinWheel({ open, skin, onSelect, onClose
   const idleTimer = useRef<number | null>(null);
   const hideTimer = useRef<number | null>(null);
   const hovered = useRef(false);
-  const drag = useRef<{ y: number; start: number } | null>(null);
+  const drag = useRef<{ y: number; start: number; samples: { t: number; p: number }[] } | null>(null);
   /** Where queued wheel clicks / key presses are heading, so quick inputs add up. */
   const pendingTarget = useRef<number | null>(null);
   /** The running snap/step animation; new input must cancel it or the two fight over `pos`. */
@@ -147,9 +151,12 @@ export const SkinWheel = memo(function SkinWheel({ open, skin, onSelect, onClose
     }, AUTO_HIDE_MS);
   }, [onClose]);
 
-  /** Spring to a detent; teasers bounce to the nearest real style, the short way round. */
+  /**
+   * Spring to a detent; teasers bounce to the nearest real style, the short way round.
+   * `velocity` (notches/s) carries a released drag's speed into the spring.
+   */
   const snapTo = useCallback(
-    (target: number) => {
+    (target: number, velocity = 0) => {
       if (idleTimer.current) window.clearTimeout(idleTimer.current);
       pendingTarget.current = null;
       const landing = nearestSelectablePosition(target);
@@ -166,7 +173,7 @@ export const SkinWheel = memo(function SkinWheel({ open, skin, onSelect, onClose
         pos.set(landing);
         finish();
       } else {
-        snapAnim.current = animate(pos, landing, { ...SNAP_SPRING, onComplete: finish });
+        snapAnim.current = animate(pos, landing, { ...SNAP_SPRING, velocity, onComplete: finish });
       }
     },
     [onSelect, pos, reduceMotion, scheduleHide, skin],
@@ -235,13 +242,17 @@ export const SkinWheel = memo(function SkinWheel({ open, skin, onSelect, onClose
     if (e.button !== 0) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     stopSnap();
-    drag.current = { y: e.clientY, start: pos.get() };
+    drag.current = { y: e.clientY, start: pos.get(), samples: [{ t: e.timeStamp, p: pos.get() }] };
     pendingTarget.current = null;
     if (hideTimer.current) window.clearTimeout(hideTimer.current);
   };
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
-    if (!drag.current) return;
-    pos.set(drag.current.start + (drag.current.y - e.clientY) / DRAG_PX_PER_NOTCH);
+    const d = drag.current;
+    if (!d) return;
+    const p = d.start + (d.y - e.clientY) / DRAG_PX_PER_NOTCH;
+    pos.set(p);
+    d.samples.push({ t: e.timeStamp, p });
+    while (d.samples.length > 2 && e.timeStamp - d.samples[0].t > VELOCITY_WINDOW_MS) d.samples.shift();
   };
   const onPointerUp = (e: PointerEvent<HTMLDivElement>) => {
     const d = drag.current;
@@ -256,7 +267,15 @@ export const SkinWheel = memo(function SkinWheel({ open, skin, onSelect, onClose
         return;
       }
     }
-    snapTo(pos.get());
+    // Release speed over the last few moves, in notches/s: a flick spins on, a slow drag
+    // stops where it was let go.
+    const first = d.samples[0];
+    const last = d.samples[d.samples.length - 1];
+    const dt = (last.t - first.t) / 1000;
+    const stale = e.timeStamp - last.t > VELOCITY_WINDOW_MS; // held still before letting go
+    const velocity = dt > 0 && !stale ? (last.p - first.p) / dt : 0;
+    const reach = Math.max(-2 * N, Math.min(2 * N, velocity * FLING_SECONDS));
+    snapTo(Math.round(pos.get() + reach), velocity);
   };
 
   return (

@@ -65,7 +65,7 @@
 .playlist-badge {
   font-family: var(--font-body);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.06em;
   color: var(--accent-red);
 }
@@ -74,7 +74,7 @@
   margin: 0;
   font-family: var(--font-heading);
   font-size: 32px;
-  font-weight: 700;
+  font-weight: 600;
   color: #fff;
   letter-spacing: -0.02em;
   line-height: 1.15;

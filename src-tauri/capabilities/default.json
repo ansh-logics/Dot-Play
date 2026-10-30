@@ -9,6 +9,8 @@
   "permissions": [
     "core:default",
     "core:event:default",
+    "core:window:allow-is-fullscreen",
+    "core:window:allow-set-fullscreen",
     "allow-search-tracks",
     "allow-open-login-window",
     "allow-save-session",

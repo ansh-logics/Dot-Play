@@ -262,8 +262,11 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks }: P
   }, []);
 
   const toggleAutoplay = useCallback(() => {
-    setPlaybackModes((m) => ({ ...m, autoplay: !m.autoplay }));
-  }, []);
+    const turningOn = !playbackModesRef.current.autoplay;
+    setPlaybackModes((m) => ({ ...m, autoplay: turningOn }));
+    // The ∞ icon alone doesn't say what it does; the toast does.
+    showToast(turningOn ? "Autoplay on: similar songs keep playing after your queue." : "Autoplay off: playback stops when your queue ends.");
+  }, [showToast]);
 
   const toggleShuffle = useCallback(() => {
     const turningOn = !playbackModesRef.current.shuffle;

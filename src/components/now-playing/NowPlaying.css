@@ -147,17 +147,18 @@
   -webkit-backdrop-filter: blur(20px) saturate(150%);
 }
 
+/* Close sits top-left, opposite the top bar's buttons. */
 .np-minimize {
   position: absolute;
-  right: 18px;
-  bottom: 18px;
+  top: clamp(16px, 4.5vh, 44px);
+  left: calc(var(--np-gutter) - 10px);
   z-index: 4;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   display: grid;
   place-items: center;
   border: 0;
-  border-radius: 12px;
+  border-radius: 50%;
   background: transparent;
   color: rgba(255, 255, 255, 0.85);
   cursor: pointer;
@@ -243,7 +244,7 @@
 
 .np-title {
   margin: 0;
-  font-weight: 900;
+  font-weight: 600;
   font-size: clamp(26px, 3.6vw, 54px);
   line-height: 1.02;
   letter-spacing: -0.01em;
@@ -286,7 +287,7 @@
 
 .np-lyric {
   margin: 0 0 0.42em;
-  font-weight: 800;
+  font-weight: 600;
   font-size: clamp(19px, 2.5vw, 36px);
   line-height: 1.18;
   letter-spacing: -0.012em;
@@ -518,7 +519,7 @@
 .np-mini-art img { width: 100%; height: 100%; object-fit: cover; }
 
 .np-mini-text { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
-.np-mini-title { font-weight: 700; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np-mini-title { font-weight: 600; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .np-mini-artist { font-size: 13px; color: var(--np-text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---------- Controls ---------- */
@@ -673,7 +674,21 @@
 .np-spin { animation: np-spin 0.9s linear infinite; }
 @keyframes np-spin { to { transform: rotate(360deg); } }
 
-.np-volume { justify-self: end; gap: 6px; padding: 0 16px 0 6px; }
+.np-deck-end { justify-self: end; display: inline-flex; align-items: center; gap: 8px; }
+
+.np-queue-toggle {
+  position: relative;
+  width: 46px;
+  justify-content: center;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.15s ease;
+}
+.np-queue-toggle:hover { background: rgba(255, 255, 255, 0.14); }
+.np-queue-toggle:active { transform: scale(0.94); }
+.np-queue-toggle.is-on { background: rgba(255, 255, 255, 0.2); }
+
+.np-volume { gap: 6px; padding: 0 16px 0 6px; }
 
 .np-volume-btn {
   width: 36px;
@@ -922,7 +937,7 @@
   transform-origin: 0 50%;
   font-family: var(--font-body), system-ui, sans-serif;
   font-size: 40px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.2;
   letter-spacing: -0.01em;
   color: rgb(var(--np-wheel-ink)); /* label colour/blur are driven per frame in SkinWheel */
@@ -933,7 +948,7 @@
   text-shadow: none;
   font-family: var(--font-dot), monospace;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.14em;
   color: rgba(255, 255, 255, 0.7);
   padding: 2px 7px;
@@ -974,7 +989,7 @@
 
 .np-root[data-skin="nothing"] .np-title {
   font-family: var(--font-dot), monospace;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0.06em;
   text-shadow: none;
 }
@@ -1017,7 +1032,7 @@
 .np-root[data-skin="nothing"] .np-times {
   font-family: var(--font-dot), monospace;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.06em;
   color: rgba(255, 255, 255, 0.75);
 }
@@ -1086,7 +1101,7 @@
 }
 .np-root[data-skin="nothing"] .np-wheel-item {
   font-family: var(--font-dot), monospace;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0.04em;
 }
 
@@ -1118,8 +1133,8 @@
 .np-root[data-skin="vinyl"] .np-grain { opacity: 0.16; }
 
 .np-root[data-skin="vinyl"] .np-title {
-  font-family: ui-serif, "New York", Georgia, serif;
-  font-weight: 600;
+  font-family: var(--font-serif);
+  font-weight: 400;
   text-transform: none;
   letter-spacing: -0.005em;
   color: rgb(var(--np-cream));
@@ -1148,6 +1163,7 @@
 .np-root[data-skin="vinyl"] .np-mode.is-on,
 .np-root[data-skin="vinyl"] .np-skip,
 .np-root[data-skin="vinyl"] .np-volume-btn,
+.np-root[data-skin="vinyl"] .np-queue-toggle,
 .np-root[data-skin="vinyl"] .np-icon-btn { color: rgb(var(--np-cream)); }
 .np-root[data-skin="vinyl"] .np-mode.is-on::after { background: rgb(var(--np-cream)); }
 .np-root[data-skin="vinyl"] .np-play { background: rgb(var(--np-cream)); color: #2a1d12; border-color: transparent; }
@@ -1157,7 +1173,7 @@
 .np-root[data-skin="vinyl"] .np-interlude-dots i { background: rgb(var(--np-cream)); }
 
 .np-root[data-skin="vinyl"] .np-wheel { --np-wheel-ink: 239, 227, 203; }
-.np-root[data-skin="vinyl"] .np-wheel-item { font-family: ui-serif, "New York", Georgia, serif; font-weight: 600; }
+.np-root[data-skin="vinyl"] .np-wheel-item { font-family: var(--font-serif); font-weight: 400; }
 .np-root[data-skin="vinyl"] .np-wheel-disc {
   background:
     repeating-radial-gradient(
@@ -1201,16 +1217,6 @@
 
 @media (max-width: 1100px) {
   .np-root { --np-gutter: 40px; }
-  /* The card nearly spans the window here; park "close" top-left instead of over its corner. */
-  .np-minimize {
-    top: clamp(16px, 4.5vh, 44px);
-    left: calc(var(--np-gutter) - 10px);
-    right: auto;
-    bottom: auto;
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-  }
 }
 
 @media (max-width: 899px) {

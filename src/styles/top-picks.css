@@ -37,7 +37,7 @@
 .carousel-heading-label {
   font-family: var(--font-heading);
   font-size: 22px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.015em;
   color: #ffffff;
   text-transform: none;
@@ -82,7 +82,13 @@
   justify-content: center;
   position: relative;
   overflow: visible;
+  /* Horizontal drags spin the carousel; vertical ones still scroll the page. */
+  touch-action: pan-y;
 }
+
+/* While dragging, cards track the pointer directly; the transition is for settling after. */
+.top-picks-carousel-container.is-dragging .carousel-stage { cursor: grabbing; }
+.top-picks-carousel-container.is-dragging .carousel-card { transition: none; }
 
 .carousel-cards-track {
   position: relative;

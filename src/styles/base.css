@@ -32,6 +32,8 @@
   --font-dot: "Doto", monospace;
   --font-heading: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", "Segoe UI Variable Text", "Segoe UI", sans-serif;
   --font-body: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  /* Vinyl player titles; Young Serif has a single (regular) weight. */
+  --font-serif: "Young Serif", ui-serif, "New York", Georgia, serif;
   --font-wordmark: "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
 
   /* Dimensions */
@@ -59,4 +61,9 @@ body {
   -moz-osx-font-smoothing: grayscale;
   user-select: none;
   overflow: hidden;
+}
+
+/* Never heavier than semi-bold (the wordmark is the one exception). */
+h1, h2, h3, h4, h5, h6, b, strong, th {
+  font-weight: 600;
 }

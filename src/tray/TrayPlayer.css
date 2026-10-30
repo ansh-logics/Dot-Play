@@ -54,7 +54,7 @@ button {
 
 .tray-empty-mark {
   font-size: 34px;
-  font-weight: 700;
+  font-weight: 600;
   color: rgba(var(--tray-ink), 0.3);
 }
 
@@ -125,7 +125,7 @@ button {
 
 .tray-title {
   font-size: 17px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.015em;
 }
 
@@ -207,7 +207,7 @@ button {
 .tray-panel-heading {
   margin: 0 0 6px;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   color: rgba(var(--tray-ink), 0.55);
 }
 

@@ -74,6 +74,8 @@ pub fn run() {
                         .window(tray::POPOVER_LABEL)
                         .permission("core:default")
                         .permission("core:event:default")
+                        .permission("core:window:allow-set-fullscreen")
+                        .permission("core:window:allow-is-fullscreen")
                         .permission("allow-search-tracks")
                         .permission("allow-open-login-window")
                         .permission("allow-save-session")

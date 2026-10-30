@@ -4,6 +4,14 @@ import type { SearchResult } from "../lib/search";
 import { useArtwork } from "../lib/imagePipeline";
 import { cleanDisplayTitle } from "../lib/displayText";
 
+/** Horizontal distance between neighbouring cards, in px. */
+const CARD_SPACING = 220;
+/** Movement before a press becomes a drag (below it, it is a click). */
+const DRAG_THRESHOLD_PX = 6;
+/** A released drag keeps going for about this long at its release speed. */
+const FLING_SECONDS = 0.2;
+const VELOCITY_WINDOW_MS = 90;
+
 interface TopPicksCarouselProps {
   items: SearchResult[];
   onPlay: (item: SearchResult) => void;
@@ -50,7 +58,7 @@ const CarouselCardItem: React.FC<CarouselCardItemProps> = ({
 
   const handleCardClick = () => {
     if (!isCenter) {
-      setActiveIndex((prev) => (prev + offset + total) % total);
+      setActiveIndex((prev) => (prev + Math.round(offset) + total) % total);
     } else {
       if (item.itemType === "playlist" && item.playlistId && onOpenPlaylist) {
         onOpenPlaylist(item.playlistId);
@@ -93,6 +101,7 @@ const CarouselCardItem: React.FC<CarouselCardItemProps> = ({
         onLoad={onLoad}
         onError={onError}
         loading={absOffset <= 1 ? "eager" : "lazy"}
+        draggable={false}
       />
 
       {/* Play control sits on the artwork corner; the caption lives below the stage. */}
@@ -132,6 +141,16 @@ export const TopPicksCarousel: React.FC<TopPicksCarouselProps> = ({
   const [activeIndex, setActiveIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastScrollTimeRef = useRef(0);
+  /** Live drag distance in px; the cards follow it, then settle on the nearest card. */
+  const [dragPx, setDragPx] = useState(0);
+  const dragRef = useRef<{
+    x: number;
+    pointerId: number;
+    dragging: boolean;
+    samples: { t: number; x: number }[];
+  } | null>(null);
+  /** Set when a drag ends, so the click that follows the release doesn't also play a card. */
+  const suppressClickRef = useRef(false);
 
   const total = items.length;
 
@@ -184,11 +203,48 @@ export const TopPicksCarousel: React.FC<TopPicksCarouselProps> = ({
     }
   };
 
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 || total === 0) return;
+    dragRef.current = { x: e.clientX, pointerId: e.pointerId, dragging: false, samples: [{ t: e.timeStamp, x: e.clientX }] };
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = dragRef.current;
+    if (!d || d.pointerId !== e.pointerId) return;
+    const dx = e.clientX - d.x;
+    if (!d.dragging) {
+      if (Math.abs(dx) < DRAG_THRESHOLD_PX) return;
+      // Capture only once it is a drag, so a plain click still reaches the card.
+      d.dragging = true;
+      e.currentTarget.setPointerCapture(e.pointerId);
+    }
+    d.samples.push({ t: e.timeStamp, x: e.clientX });
+    while (d.samples.length > 2 && e.timeStamp - d.samples[0].t > VELOCITY_WINDOW_MS) d.samples.shift();
+    setDragPx(dx);
+  };
+
+  const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = dragRef.current;
+    dragRef.current = null;
+    if (!d || !d.dragging) return;
+    suppressClickRef.current = true;
+    // Release speed carries on: a flick travels several cards, a slow drag settles nearby.
+    const first = d.samples[0];
+    const last = d.samples[d.samples.length - 1];
+    const dt = (last.t - first.t) / 1000;
+    const stale = e.timeStamp - last.t > VELOCITY_WINDOW_MS;
+    const velocity = dt > 0 && !stale ? (last.x - first.x) / dt : 0;
+    const travelled = e.clientX - d.x + velocity * FLING_SECONDS;
+    const steps = Math.max(-(total - 1), Math.min(total - 1, Math.round(-travelled / CARD_SPACING)));
+    if (steps !== 0) setActiveIndex((prev) => (((prev + steps) % total) + total) % total);
+    setDragPx(0);
+  };
+
   if (!items || total === 0) return null;
 
   return (
     <div
-      className="top-picks-carousel-container"
+      className={`top-picks-carousel-container ${dragPx !== 0 ? "is-dragging" : ""}`}
       ref={containerRef}
       onWheel={handleWheel}
     >
@@ -219,19 +275,32 @@ export const TopPicksCarousel: React.FC<TopPicksCarouselProps> = ({
         </div>
       </div>
 
-      <div className="carousel-stage">
+      <div
+        className="carousel-stage"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onClickCapture={(e) => {
+          if (!suppressClickRef.current) return;
+          suppressClickRef.current = false;
+          e.stopPropagation();
+          e.preventDefault();
+        }}
+      >
         <div className="carousel-cards-track">
           {items.map((item, index) => {
             // Circular wrapped offset on ring (like circular linked list)
-            let offset = index - activeIndex;
+            // While dragging, positions are fractional: the cards follow the pointer.
+            let offset = index - activeIndex + dragPx / CARD_SPACING;
             while (offset > total / 2) offset -= total;
             while (offset < -total / 2) offset += total;
 
             const absOffset = Math.abs(offset);
-            const isVisible = absOffset <= 3;
+            const isVisible = absOffset <= 3.5;
             if (!isVisible) return null;
 
-            const isCenter = offset === 0;
+            const isCenter = Math.round(offset) === 0;
             const isItemPlaying = Boolean(
               isCenter &&
                 isPlaying &&
@@ -240,7 +309,7 @@ export const TopPicksCarousel: React.FC<TopPicksCarouselProps> = ({
             );
 
             // 3D positioning calculation
-            const translateX = offset * 220; // px spacing
+            const translateX = offset * CARD_SPACING;
             const translateZ = -absOffset * 90; // depth
             const scale = Math.max(1 - absOffset * 0.14, 0.65);
             const rotateY = offset * -12; // subtle inward tilt
