@@ -1,5 +1,5 @@
 import { Star } from "lucide-react";
-import { RELEASES_URL, REPO_URL, type RepoInfo } from "../lib/github";
+import { REPO_URL, VISITOR_PLATFORM, downloadFor, type RepoInfo } from "../lib/github";
 
 export function Logo() {
   return (
@@ -30,7 +30,7 @@ export function Nav({ info }: { info: RepoInfo }) {
       </nav>
       <div className="nav-actions">
         <StarButton stars={info.stars} className="hide-sm" />
-        <a className="btn btn-red btn-sm" href={info.dmgUrl ?? RELEASES_URL}>
+        <a className="btn btn-red btn-sm" href={downloadFor(info, VISITOR_PLATFORM).url}>
           Download
         </a>
       </div>

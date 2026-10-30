@@ -1,6 +1,6 @@
 import { motion, useReducedMotion } from "motion/react";
 import { Download } from "lucide-react";
-import { RELEASES_URL, type RepoInfo } from "../lib/github";
+import { VISITOR_PLATFORM, downloadFor, type RepoInfo } from "../lib/github";
 import { StarButton } from "./Nav";
 import { HeroShot } from "./Showcase";
 
@@ -34,12 +34,15 @@ function TypedHeadline() {
 }
 
 export function Hero({ info }: { info: RepoInfo }) {
+  // The visitor's own platform goes first; the other one is a plain link under it.
+  const main = downloadFor(info, VISITOR_PLATFORM);
+  const other = downloadFor(info, VISITOR_PLATFORM === "windows" ? "mac" : "windows");
   return (
     <section className="hero" id="top">
       <div className="dotgrid" aria-hidden="true" />
       <div className="hero-copy">
         <p className="kicker">
-          <span className="red-dot" /> A YouTube Music player made for the Mac
+          <span className="red-dot" /> A YouTube Music player for Mac and Windows
         </p>
         <TypedHeadline />
         <p className="hero-sub">
@@ -47,14 +50,18 @@ export function Hero({ info }: { info: RepoInfo }) {
           the menu bar. Free and open source.
         </p>
         <div className="hero-ctas">
-          <a className="btn btn-red btn-lg" href={info.dmgUrl ?? RELEASES_URL}>
+          <a className="btn btn-red btn-lg" href={main.url}>
             <Download size={18} />
-            Download for Mac
+            {main.label}
           </a>
           <StarButton stars={info.stars} className="btn-lg" />
         </div>
         <p className="hero-meta">
-          {info.version ?? "Latest release"} · macOS 13+ · Apple silicon · {info.dmgSizeMb ? `${info.dmgSizeMb} MB` : "~6 MB"}
+          {main.version ?? "Latest release"} · {main.meta}
+        </p>
+        <p className="hero-alt">
+          Also available: <a href={other.url}>{other.label.replace("Download for ", "")}</a>
+          {other.version ? ` (${other.version})` : ""}
         </p>
       </div>
 

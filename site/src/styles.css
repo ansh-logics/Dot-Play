@@ -297,6 +297,53 @@ svg {
   color: var(--faint);
 }
 
+.hero-alt {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--faint);
+}
+
+.hero-alt a {
+  color: var(--dim);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.hero-alt a:hover {
+  color: #fff;
+}
+
+/* Mac / Windows switch above the install steps. */
+.platform-switch {
+  display: inline-flex;
+  gap: 4px;
+  margin: 0 0 20px;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.platform-switch button {
+  padding: 8px 18px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dim);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.platform-switch button:hover {
+  color: #fff;
+}
+
+.platform-switch button.is-on {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
 /* ---------- Product shots ---------- */
 
 .screen {

@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { animate, motion, useInView, useReducedMotion } from "motion/react";
 import { Check, Copy, Download, FolderInput, ShieldCheck } from "lucide-react";
-import { ISSUES_URL, RELEASES_URL, REPO_URL, type RepoInfo } from "../lib/github";
+import { ISSUES_URL, RELEASES_URL, REPO_URL, VISITOR_PLATFORM, downloadFor, type Platform, type RepoInfo } from "../lib/github";
 import { Logo, StarButton } from "./Nav";
 
 function Counter({ to, decimals = 0, suffix = "" }: { to: number; decimals?: number; suffix?: string }) {
@@ -81,8 +81,8 @@ function CopyCommand() {
   );
 }
 
-export function Install({ info }: { info: RepoInfo }) {
-  const steps = [
+function macSteps(info: RepoInfo) {
+  return [
     {
       icon: <Download size={22} />,
       title: "Download",
@@ -106,6 +106,44 @@ export function Install({ info }: { info: RepoInfo }) {
       extra: <CopyCommand />,
     },
   ];
+}
+
+function windowsSteps(info: RepoInfo) {
+  const win = downloadFor(info, "windows");
+  return [
+    {
+      icon: <Download size={22} />,
+      title: "Download",
+      body: (
+        <>
+          Get the <a href={win.url}>Windows installer (.exe)</a>
+          {win.version ? ` (${win.version})` : ""}. Windows 10 or 11, 64-bit.
+        </>
+      ),
+    },
+    {
+      icon: <FolderInput size={22} />,
+      title: "Run the installer",
+      body: <>Open the downloaded file. It installs dot-music for you and adds it to the Start menu. Updates install themselves after that.</>,
+    },
+    {
+      icon: <ShieldCheck size={22} />,
+      title: "Allow it once",
+      body: (
+        <>
+          The installer isn't code-signed yet, so Windows SmartScreen may stop it. Click <b>More info</b>, then <b>Run anyway</b>.
+        </>
+      ),
+    },
+  ];
+}
+
+const PLATFORM_LABEL: Record<Platform, string> = { mac: "Mac", windows: "Windows" };
+
+export function Install({ info }: { info: RepoInfo }) {
+  const [platform, setPlatform] = useState<Platform>(VISITOR_PLATFORM);
+  const steps: Array<{ icon: ReactNode; title: string; body: ReactNode; extra?: ReactNode }> =
+    platform === "windows" ? windowsSteps(info) : macSteps(info);
   return (
     <section className="section" id="install" aria-labelledby="install-title">
       <p className="kicker">
@@ -114,7 +152,21 @@ export function Install({ info }: { info: RepoInfo }) {
       <h2 id="install-title" className="section-title">
         Up and running in a minute.
       </h2>
-      <ol className="steps">
+      <div className="platform-switch" role="tablist" aria-label="Your computer">
+        {(["mac", "windows"] as const).map((p) => (
+          <button
+            key={p}
+            type="button"
+            role="tab"
+            aria-selected={platform === p}
+            className={platform === p ? "is-on" : undefined}
+            onClick={() => setPlatform(p)}
+          >
+            {PLATFORM_LABEL[p]}
+          </button>
+        ))}
+      </div>
+      <ol className="steps" key={platform}>
         {steps.map((s, i) => (
           <motion.li
             key={s.title}
@@ -145,7 +197,14 @@ const FAQ = [
     q: "Why does macOS warn me when I open it?",
     a: "The app is signed, but not yet with a paid Apple Developer ID, so macOS can't verify the developer. Allow it once in Privacy & Security (see Install). A notarized build is planned.",
   },
-  { q: "Which Macs does it run on?", a: "Macs with Apple silicon (M1 and later) on macOS 13 Ventura or newer. Intel builds may come later." },
+  {
+    q: "Which computers does it run on?",
+    a: "Macs with Apple silicon (M1 and later) on macOS 13 Ventura or newer, and 64-bit Windows 10 or 11 PCs. Intel Mac builds may come later.",
+  },
+  {
+    q: "Why does Windows warn me when I install it?",
+    a: "The installer isn't code-signed yet, so SmartScreen doesn't recognise it. Click More info, then Run anyway. You only need to do this once; updates install themselves.",
+  },
   { q: "Found a bug or have an idea?", a: "Open an issue on GitHub. Feedback is very welcome." },
 ];
 
@@ -178,9 +237,9 @@ export function FinalCta({ info }: { info: RepoInfo }) {
         Put your music <span className="red">on</span>.
       </h2>
       <div className="hero-ctas">
-        <a className="btn btn-red btn-lg" href={info.dmgUrl ?? RELEASES_URL}>
+        <a className="btn btn-red btn-lg" href={downloadFor(info, VISITOR_PLATFORM).url}>
           <Download size={18} />
-          Download for Mac
+          {downloadFor(info, VISITOR_PLATFORM).label}
         </a>
         <StarButton stars={info.stars} className="btn-lg" />
       </div>

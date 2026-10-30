@@ -48,6 +48,7 @@ async function boot() {
         isOpen
         onClose={noop}
         session={session}
+        history={[]}
         isPlaying={PLAYING}
         isBuffering={false}
         isReady
