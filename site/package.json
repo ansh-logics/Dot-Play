@@ -11,6 +11,7 @@
     "og": "node scripts/og.mjs"
   },
   "dependencies": {
+    "@tauri-apps/api": "^2.12.4",
     "lucide-react": "^1.63.0",
     "motion": "^14.7.1",
     "react": "^19.3.1",
