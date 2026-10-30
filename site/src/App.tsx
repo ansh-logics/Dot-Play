@@ -1,3 +1,4 @@
+import { Analytics } from "@vercel/analytics/react";
 import { useRepoInfo } from "./lib/github";
 import { Hero } from "./sections/Hero";
 import { Nav } from "./sections/Nav";
@@ -18,6 +19,8 @@ export function App() {
         <FinalCta info={info} />
       </main>
       <Footer />
+      {/* Vercel Web Analytics: page views, no cookies. */}
+      <Analytics />
     </>
   );
 }
