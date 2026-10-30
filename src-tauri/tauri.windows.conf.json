@@ -1,6 +1,16 @@
 {
   "bundle": {
-    "createUpdaterArtifacts": false,
+    "createUpdaterArtifacts": true,
     "targets": ["nsis"]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/ansh-logics/Dot-Play/releases/download/windows-latest/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

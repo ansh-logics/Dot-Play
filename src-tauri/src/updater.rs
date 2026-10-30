@@ -44,10 +44,13 @@ impl From<&Update> for UpdateInfo {
 }
 
 /// Starts the background checks. Debug builds skip them: their version is the one being
-/// developed, and a dev run should never replace itself with a release. Windows builds skip
-/// them too for now: they are test builds, and `latest.json` only carries the Mac release.
+/// developed, and a dev run should never replace itself with a release.
+///
+/// Mac and Windows release separately: macOS reads `latest.json` on the latest GitHub release
+/// (`scripts/release.sh`), Windows reads it from the rolling `windows-latest` release
+/// (`.github/workflows/windows-release.yml`, endpoint set in `tauri.windows.conf.json`).
 pub fn init(app: &AppHandle) {
-    if cfg!(debug_assertions) || !cfg!(target_os = "macos") {
+    if cfg!(debug_assertions) {
         return;
     }
     let app = app.clone();

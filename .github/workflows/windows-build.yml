@@ -1,6 +1,6 @@
-# Test builds for Windows. Runs on the windows-port branch only and uploads the installer as a
-# workflow artifact. Nothing is published as a release, so the Mac app's updates
-# (releases/latest/download/latest.json) are untouched.
+# Test builds for Windows. Runs on the windows-port branch (or by hand) and uploads the
+# installer as a workflow artifact. Nothing is published and nothing is signed for updates;
+# releases come from windows-release.yml.
 name: Windows build
 
 on:
@@ -28,7 +28,8 @@ jobs:
       - run: npm ci
 
       - name: Build installer
-        run: npx tauri build
+        shell: bash
+        run: npx tauri build --config '{"bundle":{"createUpdaterArtifacts":false}}'
 
       - uses: actions/upload-artifact@v4
         with:

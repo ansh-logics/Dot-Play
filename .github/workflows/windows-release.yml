@@ -1,0 +1,94 @@
+# Publishes a Windows release that installed Windows apps update to automatically.
+#
+# Run it by hand (Actions → Windows release → Run workflow) after bumping "version" in
+# src-tauri/tauri.conf.json and src-tauri/Cargo.toml. It:
+#   1. builds the NSIS installer, signed for the updater with the TAURI_SIGNING_PRIVATE_KEY secret;
+#   2. publishes it as the pre-release windows-vX.Y.Z (never "latest", so the Mac app, its
+#      latest.json and the website download stay on the Mac release);
+#   3. replaces latest.json on the rolling windows-latest pre-release, which Windows apps check
+#      (endpoint in tauri.windows.conf.json).
+name: Windows release
+
+on:
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: Release notes (Markdown)
+        required: false
+        default: "Bug fixes and improvements."
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - name: Version
+        run: |
+          VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "TAG=windows-v$VERSION" >> "$GITHUB_ENV"
+          if gh release view "windows-v$VERSION" --repo "$REPO" >/dev/null 2>&1; then
+            echo "windows-v$VERSION already exists; bump the version first." >&2
+            exit 1
+          fi
+
+      - name: Build signed installer
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        run: npx tauri build
+
+      - name: Write latest.json
+        env:
+          NOTES: ${{ inputs.notes }}
+        run: |
+          SETUP="src-tauri/target/release/bundle/nsis/dot-music_${VERSION}_x64-setup.exe"
+          test -f "$SETUP" && test -f "$SETUP.sig"
+          echo "SETUP=$SETUP" >> "$GITHUB_ENV"
+          node -e '
+            const fs = require("fs");
+            const [version, sig, url] = process.argv.slice(1);
+            fs.writeFileSync("latest.json", JSON.stringify({
+              version,
+              notes: process.env.NOTES,
+              pub_date: new Date().toISOString(),
+              platforms: { "windows-x86_64": { signature: fs.readFileSync(sig, "utf8").trim(), url } },
+            }, null, 2) + "\n");
+          ' "$VERSION" "$SETUP.sig" \
+            "https://github.com/$REPO/releases/download/$TAG/$(basename "$SETUP")"
+
+      - name: Publish
+        env:
+          NOTES: ${{ inputs.notes }}
+        run: |
+          gh release create "$TAG" "$SETUP" "$SETUP.sig" --repo "$REPO" --target "$GITHUB_SHA" \
+            --prerelease --latest=false --title "dot(.)music for Windows $VERSION" --notes "$NOTES"
+          if ! gh release view windows-latest --repo "$REPO" >/dev/null 2>&1; then
+            gh release create windows-latest --repo "$REPO" --target "$GITHUB_SHA" --prerelease --latest=false \
+              --title "Windows update channel" \
+              --notes "Holds latest.json for the Windows app's automatic updates. Download installers from the windows-v* releases."
+          fi
+          gh release upload windows-latest latest.json --repo "$REPO" --clobber
