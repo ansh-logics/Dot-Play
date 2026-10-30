@@ -69,8 +69,15 @@ pub fn init(app: &AppHandle, app_url: Option<tauri::Url>) -> tauri::Result<()> {
     app.manage(TrayMenu { title, toggle });
     app.manage(PopoverUrl(app_url));
 
+    // macOS tints the black template glyph to the menu bar; elsewhere it would vanish on a
+    // dark taskbar, so use the app icon.
+    #[cfg(target_os = "macos")]
+    let icon = tauri::include_image!("icons/tray-template@2x.png");
+    #[cfg(not(target_os = "macos"))]
+    let icon = tauri::include_image!("icons/32x32.png");
+
     TrayIconBuilder::with_id("main")
-        .icon(tauri::include_image!("icons/tray-template@2x.png"))
+        .icon(icon)
         .icon_as_template(true)
         .tooltip("dot(.)music")
         .menu(&menu)
@@ -180,7 +187,8 @@ fn toggle_popover(app: &AppHandle, icon: Rect) {
     }
 }
 
-/// Centres the popover under the tray icon, kept inside the icon's screen.
+/// Centres the popover under the tray icon, kept inside the icon's screen. With the taskbar
+/// at the bottom (Windows) there is no room below, so it opens above the icon instead.
 fn position_under_icon<R: Runtime>(app: &AppHandle<R>, window: &WebviewWindow<R>, icon: Rect) {
     let monitor = app
         .monitor_from_point(
@@ -194,13 +202,18 @@ fn position_under_icon<R: Runtime>(app: &AppHandle<R>, window: &WebviewWindow<R>
     let icon_size = icon.size.to_physical::<f64>(scale);
 
     let width = POPOVER_WIDTH * scale;
+    let height = POPOVER_HEIGHT * scale;
     let mut x = icon_pos.x + icon_size.width / 2.0 - width / 2.0;
-    let y = icon_pos.y + icon_size.height + POPOVER_GAP * scale;
+    let mut y = icon_pos.y + icon_size.height + POPOVER_GAP * scale;
     if let Some(monitor) = monitor {
         let left = monitor.position().x as f64;
         let right = left + monitor.size().width as f64;
+        let bottom = monitor.position().y as f64 + monitor.size().height as f64;
         let margin = 8.0 * scale;
         x = x.clamp(left + margin, (right - width - margin).max(left + margin));
+        if y + height > bottom {
+            y = icon_pos.y - height - POPOVER_GAP * scale;
+        }
     }
     let _ = window.set_position(PhysicalPosition::new(x.round() as i32, y.round() as i32));
 }

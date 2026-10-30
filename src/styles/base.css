@@ -30,8 +30,8 @@
   /* Apple's system font (SF Pro) for all text; dot-matrix is kept for the Nothing
      player style, and Space Grotesk only for the wordmark. */
   --font-dot: "Doto", monospace;
-  --font-heading: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", sans-serif;
-  --font-body: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --font-heading: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI Variable Text", "Segoe UI", sans-serif;
   --font-wordmark: "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
 
   /* Dimensions */

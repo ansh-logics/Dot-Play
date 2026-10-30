@@ -1,9 +1,11 @@
 //! The signed-in YouTube session: cookie state and its persistence, the Google sign-in
-//! window (with native WKWebView cookie sync on macOS), logout, auth status and the
+//! window (WKWebView cookie sync on macOS, Tauri's cookie API elsewhere), logout, auth status and the
 //! account profile.
 
 use crate::ytmusic::parse::upscale_thumbnail_url;
-use crate::ytmusic::{attach_youtube_auth, web_remix_context, with_ytm_headers, HTTP_CLIENT, SAFARI_USER_AGENT};
+use crate::ytmusic::{attach_youtube_auth, web_remix_context, with_ytm_headers, HTTP_CLIENT};
+#[cfg(target_os = "macos")]
+use crate::ytmusic::SAFARI_USER_AGENT;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -62,6 +64,73 @@ pub(crate) fn restore_saved_state(app: &tauri::App) {
     }
 }
 
+/// Builds the API cookie header from the login window's cookies once YouTube has signed the
+/// user in: YouTube must have issued LOGIN_INFO plus a SAPISID (on youtube.com or google.com).
+/// Google cookies are included, with YouTube's taking priority on a name clash.
+fn authenticated_cookie_header<I>(cookies: I) -> Option<String>
+where
+    I: IntoIterator<Item = (String, String, String)>, // (domain, name, value)
+{
+    let mut yt_cookie_map = HashMap::new();
+    let mut google_cookie_map = HashMap::new();
+    let mut has_login_info = false;
+    let mut has_sapisid = false;
+
+    for (domain, name, val) in cookies {
+        let is_sapisid = name == "SAPISID" || name == "__Secure-3PAPISID" || name == "__Secure-1PAPISID";
+        if domain.contains("youtube.com") {
+            if name == "LOGIN_INFO" && !val.trim().is_empty() {
+                has_login_info = true;
+            }
+            has_sapisid |= is_sapisid;
+            yt_cookie_map.insert(name, val);
+        } else if domain.contains("google.com") {
+            has_sapisid |= is_sapisid;
+            google_cookie_map.insert(name, val);
+        }
+    }
+
+    if !(has_login_info && has_sapisid) {
+        return None;
+    }
+    let mut final_map = google_cookie_map;
+    final_map.extend(yt_cookie_map);
+    Some(
+        final_map
+            .into_iter()
+            .map(|(k, v)| format!("{}={}", k, v))
+            .collect::<Vec<_>>()
+            .join("; "),
+    )
+}
+
+/// Saves the verified session, tells the main window and closes the login window.
+fn complete_login(app: &AppHandle, cookie_header: String) {
+    // Cookie sync runs on every tick, navigation and page load; only the first
+    // authenticated pass finishes the sign-in.
+    if LOGIN_COMPLETING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    println!("[DOT Music] Verified YouTube sign-in (bytes={})", cookie_header.len());
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        // Update session state FIRST so any window close events see authenticated session
+        if let Some(state) = app.try_state::<SessionState>() {
+            *state.cookies.lock().unwrap() = Some(cookie_header.clone());
+        }
+        let _ = persist_session(&app, &cookie_header);
+
+        let _ = app.emit("login_success", ());
+        let _ = app.emit_to("main", "login_success", ());
+
+        // Only now close and destroy the login window
+        if let Some(win) = app.get_webview_window("yt_login") {
+            let _ = win.hide();
+            let _ = win.destroy();
+        }
+    });
+}
+
 #[cfg(target_os = "macos")]
 fn trigger_native_cookie_sync(app: &AppHandle) {
     if let Some(win) = app.get_webview_window("yt_login") {
@@ -83,85 +152,15 @@ fn trigger_native_cookie_sync(app: &AppHandle) {
                 let block = RcBlock::new(move |cookies_ptr: NonNull<AnyObject>| {
                     let cookies = cookies_ptr.as_ptr();
                     let count: usize = msg_send![cookies, count];
-                    let mut yt_cookie_map = std::collections::HashMap::new();
-                    let mut google_cookie_map = std::collections::HashMap::new();
-                    let mut has_login_info = false;
-                    let mut has_yt_sapisid = false;
-                    let mut has_google_sapisid = false;
-
-                    for i in 0..count {
+                    let all = (0..count).map(|i| {
                         let cookie: Retained<AnyObject> = msg_send![cookies, objectAtIndex: i];
-                        let name_ns: Retained<objc2_foundation::NSString> = msg_send![&cookie, name];
-                        let val_ns: Retained<objc2_foundation::NSString> = msg_send![&cookie, value];
-                        let domain_ns: Retained<objc2_foundation::NSString> = msg_send![&cookie, domain];
-
-                        let name = name_ns.to_string();
-                        let val = val_ns.to_string();
-                        let domain = domain_ns.to_string();
-
-                        if domain.contains("youtube.com") {
-                            if name == "LOGIN_INFO" && !val.trim().is_empty() {
-                                has_login_info = true;
-                            }
-                            if name == "SAPISID" || name == "__Secure-3PAPISID" || name == "__Secure-1PAPISID" {
-                                has_yt_sapisid = true;
-                            }
-                            yt_cookie_map.insert(name.clone(), val.clone());
-                        }
-
-                        if domain.contains("google.com") {
-                            if name == "SAPISID" || name == "__Secure-3PAPISID" || name == "__Secure-1PAPISID" {
-                                has_google_sapisid = true;
-                            }
-                            google_cookie_map.insert(name, val);
-                        }
-                    }
-
-                    // Strict YouTube authentication condition:
-                    // YouTube MUST have issued LOGIN_INFO, plus valid SAPISID
-                    let is_authenticated = has_login_info && (has_yt_sapisid || has_google_sapisid);
-
-                    if is_authenticated {
-                        // Merge cookies with YouTube cookies taking highest priority
-                        let mut final_map = google_cookie_map;
-                        for (k, v) in yt_cookie_map {
-                            final_map.insert(k, v);
-                        }
-
-                        let full_cookie_str = final_map
-                            .into_iter()
-                            .map(|(k, v)| format!("{}={}", k, v))
-                            .collect::<Vec<_>>()
-                            .join("; ");
-
-                        println!(
-                            "[DOT Music] Successfully verified YouTube authentication (has_login_info=true, cookies_count={}, bytes={})",
-                            count, full_cookie_str.len()
-                        );
-
-                        // Cookie sync runs on every tick, navigation and page load; only the
-                        // first authenticated pass finishes the sign-in.
-                        if LOGIN_COMPLETING.swap(true, std::sync::atomic::Ordering::SeqCst) {
-                            return;
-                        }
-                        let app = app_cb.clone();
-                        tauri::async_runtime::spawn(async move {
-                            // Update session state FIRST so any window close events see authenticated session
-                            if let Some(state) = app.try_state::<SessionState>() {
-                                *state.cookies.lock().unwrap() = Some(full_cookie_str.clone());
-                            }
-                            let _ = persist_session(&app, &full_cookie_str);
-
-                            // Emit success events immediately to all listeners
-                            let _ = app.emit("login_success", ());
-                            let _ = app.emit_to("main", "login_success", ());
-
-                            // Only now close and destroy the login window
-                            if let Some(win) = app.get_webview_window("yt_login") {
-                                let _ = win.hide();
-                                let _ = win.destroy();
-                            }
-                        });
+                        let name: Retained<objc2_foundation::NSString> = msg_send![&cookie, name];
+                        let value: Retained<objc2_foundation::NSString> = msg_send![&cookie, value];
+                        let domain: Retained<objc2_foundation::NSString> = msg_send![&cookie, domain];
+                        (domain.to_string(), name.to_string(), value.to_string())
+                    });
+                    if let Some(header) = authenticated_cookie_header(all) {
+                        complete_login(&app_cb, header);
                     }
                 });
 
@@ -171,8 +170,28 @@ fn trigger_native_cookie_sync(app: &AppHandle) {
     }
 }
 
+/// Other platforms read the login window's cookies through Tauri. On Windows that call
+/// deadlocks on the main thread (navigation and page-load handlers), so it runs on a task.
 #[cfg(not(target_os = "macos"))]
-fn trigger_native_cookie_sync(_app: &AppHandle) {}
+fn trigger_native_cookie_sync(app: &AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let Some(win) = app.get_webview_window("yt_login") else { return };
+        let cookies = match win.cookies() {
+            Ok(cookies) => cookies,
+            Err(error) => {
+                log::warn!("Reading login cookies failed: {error}");
+                return;
+            }
+        };
+        let all = cookies.iter().map(|c| {
+            (c.domain().unwrap_or("").to_string(), c.name().to_string(), c.value().to_string())
+        });
+        if let Some(header) = authenticated_cookie_header(all) {
+            complete_login(&app, header);
+        }
+    });
+}
 
 #[tauri::command]
 pub(crate) async fn open_login_window(app: AppHandle, _clean: Option<bool>) -> Result<(), String> {
@@ -207,13 +226,17 @@ pub(crate) async fn open_login_window(app: AppHandle, _clean: Option<bool>) -> R
 
     let app_nav_handle = app.clone();
     let app_page_handle = app.clone();
-    let login_window = WebviewWindowBuilder::new(&app, "yt_login", WebviewUrl::External(url))
+    let builder = WebviewWindowBuilder::new(&app, "yt_login", WebviewUrl::External(url))
         .title("Sign in to YouTube Music")
         .inner_size(520.0, 700.0)
         // Keep Google login cookies isolated from the app's persisted API session.
         // DOT Music stores only the verified cookies it needs in session.json.
-        .incognito(true)
-        .user_agent(SAFARI_USER_AGENT)
+        .incognito(true);
+    // WKWebView needs a Safari user agent for Google sign-in; WebView2 (Windows) is Edge and
+    // keeps its own, which Google accepts.
+    #[cfg(target_os = "macos")]
+    let builder = builder.user_agent(SAFARI_USER_AGENT);
+    let login_window = builder
         .initialization_script(init_script)
         .on_navigation(move |nav_url| {
             let host = nav_url.host_str().unwrap_or("");

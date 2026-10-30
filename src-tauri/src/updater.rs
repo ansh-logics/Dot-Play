@@ -44,9 +44,10 @@ impl From<&Update> for UpdateInfo {
 }
 
 /// Starts the background checks. Debug builds skip them: their version is the one being
-/// developed, and a dev run should never replace itself with a release.
+/// developed, and a dev run should never replace itself with a release. Windows builds skip
+/// them too for now: they are test builds, and `latest.json` only carries the Mac release.
 pub fn init(app: &AppHandle) {
-    if cfg!(debug_assertions) {
+    if cfg!(debug_assertions) || !cfg!(target_os = "macos") {
         return;
     }
     let app = app.clone();

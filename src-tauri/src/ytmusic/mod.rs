@@ -11,6 +11,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub(crate) const CHROME_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 /// Safari user agent used by the Google sign-in window.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) const SAFARI_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15";
 
 const YTM_ORIGIN: &str = "https://music.youtube.com";
