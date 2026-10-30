@@ -11,7 +11,7 @@ import {
   useTransform,
   type PanInfo,
 } from "motion/react";
-import { Disc3, Expand, MessageSquareQuote, Minimize2, Shrink } from "lucide-react";
+import { ChevronDown, Disc3, Expand, MessageSquareQuote, Shrink } from "lucide-react";
 import "./NowPlaying.css";
 import { ArtworkImage } from "../ArtworkImage";
 import { useArtwork } from "../../lib/imagePipeline";
@@ -89,7 +89,7 @@ function NowPlayingScreen(props: NowPlayingProps) {
   const { session, onClose } = props;
   const track = session.currentTrack!;
   const reduceMotion = useReducedMotion() ?? false;
-  const { isFullscreen, toggleFullscreen } = useWindowFullscreen();
+  const { isFullscreen, toggleFullscreen, exitFullscreen } = useWindowFullscreen();
   const compact = useMediaQuery("(max-width: 819px), (max-height: 599px)");
 
   const [lyricsOn, setLyricsOn] = useState(() => !window.matchMedia("(max-width: 819px), (max-height: 599px)").matches);
@@ -315,9 +315,10 @@ function NowPlayingScreen(props: NowPlayingProps) {
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
-        // Innermost first: style wheel, then queue sheet, then the player itself.
+        // Innermost first: style wheel, queue sheet, full screen, then the player itself.
         if (wheelOpen) setWheelOpen(false);
         else if (sheetOpen) setSheet(false);
+        else if (isFullscreen) void exitFullscreen();
         else onClose();
         return;
       }
@@ -336,7 +337,7 @@ function NowPlayingScreen(props: NowPlayingProps) {
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [sheetOpen, wheelOpen, setSheet, onClose]);
+  }, [sheetOpen, wheelOpen, isFullscreen, setSheet, exitFullscreen, onClose]);
 
   useEffect(() => {
     if (sheetOpen) listScrollRef.current?.querySelector<HTMLElement>("[role='tab'][aria-selected='true']")?.focus({ preventScroll: true });
@@ -405,11 +406,12 @@ function NowPlayingScreen(props: NowPlayingProps) {
         </button>
         <button
           type="button"
-          className={`np-icon-btn ${isFullscreen ? "is-active" : ""}`}
-          onClick={toggleFullscreen}
+          // No "active" glass: the icon already shows the state; only hover gets a background.
+          className="np-icon-btn"
+          onClick={() => void toggleFullscreen()}
           aria-pressed={isFullscreen}
           aria-label="Full screen"
-          title={isFullscreen ? "Exit full screen" : "Full screen"}
+          title={isFullscreen ? "Exit full screen (Esc)" : "Full screen"}
         >
           {isFullscreen ? <Shrink size={19} /> : <Expand size={19} />}
         </button>
@@ -568,8 +570,10 @@ function NowPlayingScreen(props: NowPlayingProps) {
         </motion.div>
       </div>
 
-      <button type="button" className="np-minimize" onClick={onClose} aria-label="Close now playing" title="Close (Esc)">
-        <Minimize2 size={20} />
+      {/* A down chevron, not inward arrows: those read as "exit full screen", which is the
+          top bar's button. Closing also leaves full screen if this view entered it. */}
+      <button type="button" className="np-minimize" onClick={onClose} aria-label="Close now playing" title="Close player">
+        <ChevronDown size={24} />
       </button>
     </motion.div>
   );

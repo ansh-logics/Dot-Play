@@ -336,6 +336,11 @@
   -webkit-background-clip: text;
   background-clip: text;
   transform: translateY(calc(var(--l, 0) * -1.5px));
+  /* The clipped gradient only paints inside this box, and Devanagari's head strokes and
+     vowel signs reach past the line box. Grow the painted box; the negative margin keeps
+     the layout exactly as before. */
+  padding: 0.3em 0.08em;
+  margin: -0.3em -0.08em;
 }
 
 .np-ch--whole.is-rtl { --np-sweep-dir: to left; }
