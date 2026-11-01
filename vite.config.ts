@@ -13,8 +13,8 @@ export default defineConfig({
   define: { __APP_VERSION__: JSON.stringify(tauriConf.version) },
   build: {
     rollupOptions: {
-      // The menu bar popover gets its own small bundle (never the full App).
-      input: { main: 'index.html', tray: 'tray.html' },
+      // The menu bar popover and immersive mode get their own small bundles (never the full App).
+      input: { main: 'index.html', tray: 'tray.html', immersive: 'immersive.html' },
     },
   },
   server: {

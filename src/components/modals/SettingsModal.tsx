@@ -1,10 +1,14 @@
 import { Settings } from "lucide-react";
 import { Modal } from "./Modal";
 import type { FeedbackPrefs } from "../../lib/feedback";
+import { IDLE_CHOICES, openImmersive, type IdleMinutes } from "../../lib/immersive";
+import { ImmersiveDisplays } from "./ImmersiveDisplays";
 
 interface SettingsModalProps {
   feedbackPrefs: FeedbackPrefs;
   onFeedbackChange: (patch: Partial<FeedbackPrefs>) => void;
+  immersiveIdle: IdleMinutes;
+  onImmersiveIdleChange: (minutes: IdleMinutes) => void;
   isLoggedIn: boolean;
   accountEmail: string | undefined;
   onSignOut: () => void;
@@ -47,6 +51,8 @@ function clearArtworkCache() {
 export function SettingsModal({
   feedbackPrefs,
   onFeedbackChange,
+  immersiveIdle,
+  onImmersiveIdleChange,
   isLoggedIn,
   accountEmail,
   onSignOut,
@@ -83,6 +89,47 @@ export function SettingsModal({
           checked={feedbackPrefs.haptics}
           onToggle={() => onFeedbackChange({ haptics: !feedbackPrefs.haptics })}
         />
+      </div>
+
+      <div className="settings-section">
+        <span className="settings-section-title">IMMERSIVE MODE</span>
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <span className="settings-label">Clock and song on your displays</span>
+            <span className="settings-desc">Press I anywhere in the app. Esc steps back to the player.</span>
+          </div>
+          <button
+            type="button"
+            className="settings-action-btn"
+            onClick={() => {
+              onClose();
+              openImmersive();
+            }}
+          >
+            Start
+          </button>
+        </div>
+        <ImmersiveDisplays />
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <span className="settings-label">Start when idle</span>
+            <span className="settings-desc">Like a screensaver, while music plays. Any key or mouse move ends it.</span>
+          </div>
+          <div className="settings-segmented" role="radiogroup" aria-label="Start when idle">
+            {IDLE_CHOICES.map((minutes) => (
+              <button
+                key={minutes}
+                type="button"
+                role="radio"
+                aria-checked={immersiveIdle === minutes}
+                className={immersiveIdle === minutes ? "is-on" : undefined}
+                onClick={() => onImmersiveIdleChange(minutes)}
+              >
+                {minutes === 0 ? "Off" : `${minutes}m`}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       <div className="settings-section">

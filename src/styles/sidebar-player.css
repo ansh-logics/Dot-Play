@@ -171,6 +171,10 @@
   background: rgba(0, 0, 0, 0.85);
 }
 
+.sidebar-expand-btn.immersive {
+  left: 32px;
+}
+
 .sidebar-player-header.queue-view .sidebar-expand-btn {
   display: none;
 }

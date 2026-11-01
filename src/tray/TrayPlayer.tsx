@@ -6,6 +6,7 @@ import {
   Heart,
   ListMusic,
   MessageSquareQuote,
+  MonitorPlay,
   Pause,
   Play,
   Repeat,
@@ -241,6 +242,14 @@ export function TrayPlayer() {
         </button>
         <button type="button" className="tray-link" onClick={openApp}>
           Open dot(.)music <ArrowUpRight size={13} />
+        </button>
+        <button
+          type="button"
+          aria-label="Immersive mode"
+          title="Immersive mode: clock and song on your displays"
+          onClick={() => void invoke("open_immersive").catch(() => {})}
+        >
+          <MonitorPlay size={17} />
         </button>
         <button
           type="button"

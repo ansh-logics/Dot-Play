@@ -1,12 +1,6 @@
 import { HelpCircle } from "lucide-react";
 import { Modal } from "./Modal";
-
-const SHORTCUTS: Array<{ keys: string[]; label: string }> = [
-  { keys: ["Space"], label: "Play / Pause" },
-  { keys: ["←", "→"], label: "Seek -5s / +5s" },
-  { keys: ["/"], label: "Focus Search" },
-  { keys: ["Esc"], label: "Dismiss Popups & Modals" },
-];
+import { SHORTCUT_GROUPS } from "../../lib/shortcuts";
 
 export function SupportModal({ onClose }: { onClose: () => void }) {
   return (
@@ -15,19 +9,21 @@ export function SupportModal({ onClose }: { onClose: () => void }) {
       icon={<HelpCircle size={18} strokeWidth={2} className="modal-title-icon" />}
       onClose={onClose}
     >
-      <div className="settings-section">
-        <span className="settings-section-title">KEYBOARD SHORTCUTS</span>
-        <div className="shortcuts-grid">
-          {SHORTCUTS.map(({ keys, label }) => (
-            <div key={label} className="shortcut-item">
-              {keys.map((key) => (
-                <kbd key={key}>{key}</kbd>
-              ))}
-              <span>{label}</span>
-            </div>
-          ))}
+      {SHORTCUT_GROUPS.map((group) => (
+        <div key={group.title} className="settings-section">
+          <span className="settings-section-title">{group.title}</span>
+          <div className="shortcuts-grid">
+            {group.items.map(({ keys, label }) => (
+              <div key={label} className="shortcut-item">
+                {keys.map((key) => (
+                  <kbd key={key}>{key}</kbd>
+                ))}
+                <span>{label}</span>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      ))}
 
       <div className="settings-section">
         <span className="settings-section-title">HELP & COMMUNITY</span>

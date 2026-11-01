@@ -4,13 +4,15 @@
   "description": "enables the default permissions",
   "windows": [
     "main",
-    "tray"
+    "tray",
+    "immersive-*"
   ],
   "permissions": [
     "core:default",
     "core:event:default",
     "core:window:allow-is-fullscreen",
     "core:window:allow-set-fullscreen",
+    "core:window:allow-minimize",
     "allow-search-tracks",
     "allow-open-login-window",
     "allow-save-session",
@@ -41,6 +43,13 @@
     "allow-show-main-window",
     "allow-hide-tray-popover",
     "allow-get-pending-update",
-    "allow-install-update"
+    "allow-install-update",
+    "allow-open-immersive",
+    "allow-close-immersive",
+    "allow-set-immersive-idle",
+    "allow-list-immersive-displays",
+    "allow-set-immersive-screens",
+    "allow-set-immersive-display",
+    "allow-leave-immersive-to-player"
   ]
 }

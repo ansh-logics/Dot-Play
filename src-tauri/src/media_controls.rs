@@ -12,7 +12,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 /// Event emitted to the frontend when the user presses a system media control.
 pub const MEDIA_CONTROL_EVENT: &str = "media-control";
-/// Event sent to the menu bar popover whenever the current track or its state changes.
+/// Event sent to the menu bar popover and the immersive windows whenever the current track
+/// or its state changes.
 pub const NOW_PLAYING_EVENT: &str = "now-playing";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -73,7 +74,9 @@ pub async fn set_now_playing(app: AppHandle, info: Option<NowPlayingInfo>) -> Re
         updated_at_ms: SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0),
     });
     *app.state::<LastNowPlaying>().0.lock().unwrap() = snapshot.clone();
-    let _ = app.emit_to("tray", NOW_PLAYING_EVENT, &snapshot);
+    // Broadcast: the popover and every immersive window listen (Tauri delivers to any window
+    // listening for the event anyway, so one emit avoids duplicates).
+    let _ = app.emit(NOW_PLAYING_EVENT, &snapshot);
     crate::tray::refresh_menu(&app, snapshot.as_ref().map(|s| &s.info));
 
     #[cfg(target_os = "macos")]

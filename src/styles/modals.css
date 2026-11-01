@@ -175,6 +175,127 @@
   border-color: rgba(255, 255, 255, 0.28);
 }
 
+/* A few choices side by side (immersive idle time). */
+.settings-segmented {
+  flex: none;
+  display: flex;
+  padding: 2px;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.settings-segmented button {
+  min-width: 38px;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-heading);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.settings-segmented button:hover {
+  color: var(--text-primary);
+}
+
+.settings-segmented button.is-on {
+  background: var(--accent-red);
+  color: #fff;
+}
+
+.settings-segmented button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Immersive mode's display picker: the displays as they're arranged. */
+.im-displays {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0 12px;
+}
+
+.im-displays-map {
+  position: relative;
+  width: 100%;
+  border-radius: var(--radius-md, 12px);
+  background:
+    radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1.2px) 0 0 / 12px 12px,
+    rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-subtle);
+}
+
+.im-display {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px;
+  overflow: hidden;
+  border-radius: 6px;
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  background: linear-gradient(160deg, #26262b, #141417);
+  color: var(--text-primary);
+  font-family: var(--font-heading);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+
+.im-display:hover {
+  border-color: rgba(255, 255, 255, 0.36);
+}
+
+.im-display.is-selected {
+  border-color: var(--accent-red);
+  box-shadow: 0 0 0 3px var(--accent-red-subtle);
+}
+
+.im-display.is-off {
+  background: transparent;
+  border-style: dashed;
+  opacity: 0.55;
+}
+
+.im-display-view {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.im-display-name {
+  max-width: 100%;
+  font-size: var(--fs-2xs);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.im-display-dot {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-red);
+  box-shadow: 0 0 6px var(--accent-red-glow);
+}
+
+.im-displays-detail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
 /* On/off switch (Nothing red when on). */
 .settings-switch {
   position: relative;

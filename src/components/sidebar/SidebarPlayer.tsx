@@ -2,6 +2,7 @@ import {
   ListMusic,
   Loader2,
   Maximize2,
+  MonitorPlay,
   Pause,
   Play,
   SkipBack,
@@ -18,6 +19,8 @@ import { formatTime } from "../../lib/formatTime";
 import { useArtwork } from "../../lib/imagePipeline";
 import type { SearchResult } from "../../lib/search";
 import { useArtworkPalette } from "../../lib/useArtworkPalette";
+import { openImmersive } from "../../lib/immersive";
+import { isTauriEnvironment } from "../../lib/search";
 import { usePlayerSkin } from "../../lib/usePlayerSkin";
 
 interface SidebarPlayerProps {
@@ -147,6 +150,20 @@ export function SidebarPlayer({
           >
             <Maximize2 size={12} />
           </button>
+          {isTauriEnvironment() && (
+            <button
+              type="button"
+              className="sidebar-expand-btn immersive"
+              onClick={(e) => {
+                e.stopPropagation();
+                openImmersive();
+              }}
+              title="Immersive mode (I)"
+              aria-label="Immersive mode"
+            >
+              <MonitorPlay size={12} />
+            </button>
+          )}
         </div>
         <div className="sidebar-player-meta">
           <div className="sidebar-player-text">

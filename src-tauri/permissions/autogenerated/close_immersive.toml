@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-close-immersive"
+description = "Enables the close_immersive command without any pre-configured scope."
+commands.allow = ["close_immersive"]
+
+[[permission]]
+identifier = "deny-close-immersive"
+description = "Denies the close_immersive command without any pre-configured scope."
+commands.deny = ["close_immersive"]

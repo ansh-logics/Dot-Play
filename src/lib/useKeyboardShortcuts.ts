@@ -8,6 +8,8 @@ interface KeyboardShortcutOptions {
   /** Returns false when nothing is playing, so the key is left alone. */
   onToggleNowPlaying: () => boolean;
   onFocusSearch: () => void;
+  onOpenImmersive: () => void;
+  onShowShortcuts: () => void;
 }
 
 const isTyping = (target: EventTarget | null) => {
@@ -22,8 +24,8 @@ const isTyping = (target: EventTarget | null) => {
 };
 
 /**
- * In-window shortcuts: Space play/pause, ←/→ seek 5 s, F Now Playing, / search,
- * Esc dismiss. Playback keys are ignored while typing.
+ * In-window shortcuts: Space play/pause, ←/→ seek 5 s, F Now Playing, I immersive mode,
+ * / search, ? the shortcut list, Esc back one step. The full list is in lib/shortcuts.ts. Playback keys are ignored while typing.
  */
 export function useKeyboardShortcuts(options: KeyboardShortcutOptions) {
   const handleKeyDown = useEffectEvent((e: KeyboardEvent) => {
@@ -45,6 +47,12 @@ export function useKeyboardShortcuts(options: KeyboardShortcutOptions) {
       options.onSeekRelative(5);
     } else if (e.key.toLowerCase() === "f" && !e.metaKey && !e.ctrlKey && !e.altKey) {
       if (options.onToggleNowPlaying()) e.preventDefault();
+    } else if (e.key.toLowerCase() === "i" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault();
+      options.onOpenImmersive();
+    } else if (e.key === "?") {
+      e.preventDefault();
+      options.onShowShortcuts();
     } else if (e.key === "/") {
       e.preventDefault();
       options.onFocusSearch();

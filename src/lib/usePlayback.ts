@@ -31,6 +31,7 @@ import {
 } from "./playbackModes";
 import { useSystemMediaControls } from "./useSystemMediaControls";
 import { useTrayBridge } from "./useTrayBridge";
+import { useImmersiveBridge } from "./useImmersiveBridge";
 import { usePlayerSkin } from "./usePlayerSkin";
 
 const PLAYER_ERROR_MESSAGES: Record<number, string> = {
@@ -708,6 +709,7 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
       if (currentTrack) onToggleLike(currentTrack);
     },
   });
+  useImmersiveBridge({ skin, upcoming: session.upcoming });
 
   /** Signing out drops the account's listening history from the local queue. */
   const clearSessionHistory = useCallback(

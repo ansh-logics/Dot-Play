@@ -51,6 +51,7 @@ pub fn init(app: &AppHandle, app_url: Option<tauri::Url>) -> tauri::Result<()> {
     let toggle = MenuItem::with_id(app, "toggle", "Play", true, None::<&str>)?;
     let next = MenuItem::with_id(app, "next", "Next", true, None::<&str>)?;
     let previous = MenuItem::with_id(app, "previous", "Previous", true, None::<&str>)?;
+    let immersive = MenuItem::with_id(app, "immersive", "Immersive Mode", true, None::<&str>)?;
     let show = MenuItem::with_id(app, "show", "Show dot(.)music", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit dot(.)music", true, Some("CmdOrCtrl+Q"))?;
     let menu = Menu::with_items(
@@ -62,6 +63,7 @@ pub fn init(app: &AppHandle, app_url: Option<tauri::Url>) -> tauri::Result<()> {
             &next,
             &previous,
             &PredefinedMenuItem::separator(app)?,
+            &immersive,
             &show,
             &quit,
         ],
@@ -86,6 +88,7 @@ pub fn init(app: &AppHandle, app_url: Option<tauri::Url>) -> tauri::Result<()> {
             "toggle" => emit_action(app, MediaControlAction::Toggle),
             "next" => emit_action(app, MediaControlAction::Next),
             "previous" => emit_action(app, MediaControlAction::Previous),
+            "immersive" => crate::immersive::open_manual(app),
             "show" => show_main(app),
             "quit" => app.exit(0),
             _ => {}

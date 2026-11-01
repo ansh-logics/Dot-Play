@@ -29,8 +29,23 @@ import { clearLikes, isLiked, setLiked } from "./lib/likes";
 import { SaveToPlaylistModal } from "./components/modals/SaveToPlaylistModal";
 import { NewPlaylistModal } from "./components/modals/NewPlaylistModal";
 import { useKeyboardShortcuts } from "./lib/useKeyboardShortcuts";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isTauriEnvironment } from "./lib/search";
+import { applyDisplayChoices, applyIdleMinutes, loadIdleMinutes, openImmersive, saveIdleMinutes, type IdleMinutes } from "./lib/immersive";
 import { usePlayback } from "./lib/usePlayback";
 import { useSearch } from "./lib/useSearch";
+
+/** The last step of Esc: the window goes to the Dock (F brings it back). A full-screen
+ *  window stays as it is: Esc there stops at Home. */
+async function minimiseUnlessFullScreen() {
+  const win = getCurrentWindow();
+  try {
+    if (!(await win.isFullscreen())) await win.minimize();
+  } catch {
+    // not permitted or not in the app
+  }
+}
 
 /** Start loading the next home shelves this close (px) to the bottom of the page. */
 const LOAD_MORE_THRESHOLD = 450;
@@ -57,6 +72,16 @@ function App() {
       saveFeedbackPrefs(next);
       return next;
     });
+  }, []);
+
+  const [immersiveIdle, setImmersiveIdle] = useState<IdleMinutes>(loadIdleMinutes);
+  useEffect(() => {
+    applyIdleMinutes(loadIdleMinutes());
+    applyDisplayChoices();
+  }, []);
+  const updateImmersiveIdle = useCallback((minutes: IdleMinutes) => {
+    setImmersiveIdle(minutes);
+    saveIdleMinutes(minutes);
   }, []);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -313,6 +338,26 @@ function App() {
   const openNowPlaying = useCallback(() => setShowNowPlaying(true), []);
   const closeNowPlaying = useCallback(() => setShowNowPlaying(false), []);
 
+  // Esc in immersive mode and F while minimised (both from Rust) bring the window back with
+  // the player open.
+  const hasTrackRef = useRef(false);
+  useEffect(() => {
+    hasTrackRef.current = Boolean(currentTrack);
+  }, [currentTrack]);
+  useEffect(() => {
+    if (!isTauriEnvironment()) return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void listen("open-now-playing", () => {
+      // Nothing playing: the window just comes back, on Home.
+      if (hasTrackRef.current) setShowNowPlaying(true);
+    }).then((fn) => (disposed ? fn() : (unlisten = fn)));
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
+
   // Infinite scroll on the home feed, checked at most every 150 ms.
   const { loadMoreShelves } = account;
   useEffect(() => {
@@ -348,6 +393,10 @@ function App() {
       else if (showQueue) setShowQueue(false);
       else if (selectedPlaylist) setSelectedPlaylist(null);
       else if (document.activeElement === searchInputRef.current) searchInputRef.current?.blur();
+      else if (isSearchActive) clearSearch();
+      // Nothing left to close: back to Home, then minimise (but never out of full screen).
+      else if (activeNav !== "home") handleNavigate("home");
+      else if (isTauriEnvironment()) void minimiseUnlessFullScreen();
       else return false;
       return true;
     },
@@ -359,6 +408,8 @@ function App() {
       return true;
     },
     onFocusSearch: focusSearch,
+    onOpenImmersive: openImmersive,
+    onShowShortcuts: () => setShowSupportModal(true),
   });
 
   const browse = {
@@ -576,6 +627,8 @@ function App() {
         <SettingsModal
           feedbackPrefs={feedbackPrefs}
           onFeedbackChange={updateFeedbackPrefs}
+          immersiveIdle={immersiveIdle}
+          onImmersiveIdleChange={updateImmersiveIdle}
           isLoggedIn={isLoggedIn}
           accountEmail={account.userProfile?.email}
           onSignOut={handleSignOut}

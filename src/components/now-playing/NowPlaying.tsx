@@ -11,7 +11,9 @@ import {
   useTransform,
   type PanInfo,
 } from "motion/react";
-import { ChevronDown, Disc3, Expand, MessageSquareQuote, Shrink } from "lucide-react";
+import { ChevronDown, Disc3, Expand, MessageSquareQuote, MonitorPlay, Shrink } from "lucide-react";
+import { openImmersive } from "../../lib/immersive";
+import { isTauriEnvironment } from "../../lib/search";
 import "./NowPlaying.css";
 import { cleanDisplayTitle } from "../../lib/displayText";
 import type { SearchResult } from "../../lib/search";
@@ -92,7 +94,7 @@ function NowPlayingScreen(props: NowPlayingProps) {
   const { session, onClose } = props;
   const track = session.currentTrack!;
   const reduceMotion = useReducedMotion() ?? false;
-  const { isFullscreen, toggleFullscreen, exitFullscreen } = useWindowFullscreen();
+  const { isFullscreen, toggleFullscreen } = useWindowFullscreen();
   const compact = useMediaQuery("(max-width: 819px), (max-height: 599px)");
 
   const [lyricsOn, setLyricsOn] = useState(() => !window.matchMedia("(max-width: 819px), (max-height: 599px)").matches);
@@ -314,10 +316,11 @@ function NowPlayingScreen(props: NowPlayingProps) {
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
-        // Innermost first: style wheel, queue sheet, full screen, then the player itself.
+        // Innermost first: style wheel, queue sheet, then the player itself (back to the
+        // page underneath; full screen this view turned on ends with it). The steps after
+        // this, Home and then minimise, are the app's.
         if (wheelOpen) setWheelOpen(false);
         else if (sheetOpen) setSheet(false);
-        else if (isFullscreen) void exitFullscreen();
         else onClose();
         return;
       }
@@ -336,7 +339,7 @@ function NowPlayingScreen(props: NowPlayingProps) {
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [sheetOpen, wheelOpen, isFullscreen, setSheet, exitFullscreen, onClose]);
+  }, [sheetOpen, wheelOpen, setSheet, onClose]);
 
   useEffect(() => {
     if (sheetOpen) listScrollRef.current?.querySelector<HTMLElement>("[role='tab'][aria-selected='true']")?.focus({ preventScroll: true });
@@ -414,6 +417,17 @@ function NowPlayingScreen(props: NowPlayingProps) {
         >
           {isFullscreen ? <Shrink size={19} /> : <Expand size={19} />}
         </button>
+        {isTauriEnvironment() && (
+          <button
+            type="button"
+            className="np-icon-btn"
+            onClick={openImmersive}
+            aria-label="Immersive mode"
+            title="Immersive mode: clock and song on every display (I)"
+          >
+            <MonitorPlay size={19} />
+          </button>
+        )}
       </header>
 
       <motion.main

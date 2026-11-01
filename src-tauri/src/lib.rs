@@ -1,6 +1,7 @@
 mod feed;
 mod fsutil;
 mod haptics;
+mod immersive;
 mod library;
 mod lyrics;
 mod media_controls;
@@ -12,6 +13,7 @@ mod queue_session;
 mod recommendations;
 mod search;
 mod session;
+mod shortcuts;
 mod thumbnails;
 mod tray;
 mod updater;
@@ -73,6 +75,7 @@ pub fn run() {
                         .local(false)
                         .window("main")
                         .window(tray::POPOVER_LABEL)
+                        .window("immersive-*")
                         .permission("core:default")
                         .permission("core:event:default")
                         .permission("core:window:allow-set-fullscreen")
@@ -107,7 +110,15 @@ pub fn run() {
                         .permission("allow-show-main-window")
                         .permission("allow-hide-tray-popover")
                         .permission("allow-get-pending-update")
-                        .permission("allow-install-update"),
+                        .permission("allow-install-update")
+                        .permission("allow-open-immersive")
+                        .permission("allow-close-immersive")
+                        .permission("allow-set-immersive-idle")
+                        .permission("allow-list-immersive-displays")
+                        .permission("allow-set-immersive-screens")
+                        .permission("allow-set-immersive-display")
+                        .permission("allow-leave-immersive-to-player")
+                        .permission("core:window:allow-minimize"),
                 )?;
                 tray_url = Some(app_url.clone());
 
@@ -116,7 +127,9 @@ pub fn run() {
                     .navigate(app_url)?;
             }
 
+            immersive::init(app.handle(), tray_url.clone());
             tray::init(app.handle(), tray_url)?;
+            shortcuts::init(app.handle());
             updater::init(app.handle());
 
             session::restore_saved_state(app);
@@ -153,7 +166,14 @@ pub fn run() {
             tray::show_main_window,
             tray::hide_tray_popover,
             updater::get_pending_update,
-            updater::install_update
+            updater::install_update,
+            immersive::open_immersive,
+            immersive::close_immersive,
+            immersive::set_immersive_idle,
+            immersive::list_immersive_displays,
+            immersive::set_immersive_screens,
+            immersive::set_immersive_display,
+            immersive::leave_immersive_to_player
         ])
         // Closing the main window keeps the music playing; the menu bar icon controls it.
         // Quit from the tray menu or with Cmd+Q.

@@ -1,0 +1,827 @@
+/* ---------- Immersive mode ----------
+   One full-screen display each. Sizes are in vmin so portrait and ultrawide displays
+   keep the same proportions. Everything moves slowly: these screens stay up for hours. */
+
+:root {
+  --im-a: #3a1418;
+  --im-b: #1c1c22;
+  --im-c: #2a2024;
+  --im-base: #050505;
+  --im-ink: 255, 255, 255;
+  --im-accent: #d71921;
+  --font-dot: "Doto", monospace;
+  --font-serif: "Young Serif", ui-serif, "New York", Georgia, serif;
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  /* The window is transparent; the page fades the screen to black itself. */
+  background: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.im-root {
+  position: fixed;
+  inset: 0;
+  color: rgb(var(--im-ink));
+  font-family: var(--font-ui);
+  background: #000;
+  animation: im-dim-in 1.4s ease-out both;
+  -webkit-font-smoothing: antialiased;
+}
+
+.im-root[data-skin="vinyl"] { --im-ink: 239, 227, 203; }
+
+.im-root.is-idle,
+.im-root.is-idle * {
+  cursor: none !important;
+}
+
+@keyframes im-dim-in {
+  from { background: rgba(0, 0, 0, 0); }
+  to { background: #000; }
+}
+
+/* ---------- Backdrop ---------- */
+
+.im-backdrop {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  animation: im-fade-in 2.4s 0.4s ease-out both;
+}
+
+.im-backdrop-art {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 150vmax;
+  height: 150vmax;
+  object-fit: cover;
+  translate: -50% -50%;
+  filter: blur(90px) saturate(1.5) brightness(0.62);
+  opacity: 0.85;
+  animation: im-slow-turn 180s linear infinite;
+  transition: opacity 1.2s;
+}
+
+.im-backdrop-tint {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(60% 70% at 18% 22%, color-mix(in srgb, var(--im-a) 55%, transparent), transparent 70%),
+    radial-gradient(55% 60% at 85% 80%, color-mix(in srgb, var(--im-b) 50%, transparent), transparent 70%),
+    radial-gradient(40% 50% at 70% 15%, color-mix(in srgb, var(--im-c) 35%, transparent), transparent 70%);
+  mix-blend-mode: screen;
+  opacity: 0.55;
+  transition: background 2s;
+}
+
+.im-backdrop-vignette {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(120% 90% at 50% 45%, transparent 35%, rgba(0, 0, 0, 0.72) 100%),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.25), transparent 30%, transparent 60%, rgba(0, 0, 0, 0.55));
+}
+
+/* Nothing: black with a dot grid and a faint red glow, no blurred artwork. */
+.im-root[data-skin="nothing"] .im-backdrop {
+  background:
+    radial-gradient(50% 45% at 50% 40%, rgba(215, 25, 33, 0.14), transparent 70%),
+    radial-gradient(rgba(255, 255, 255, 0.075) 0.09vmin, transparent 0.11vmin) 0 0 / 2.2vmin 2.2vmin,
+    #000;
+}
+.im-root[data-skin="nothing"] .im-backdrop-tint { display: none; }
+
+/* Vinyl: the album palette warmed, like the player. */
+.im-root[data-skin="vinyl"] .im-backdrop-art { filter: blur(90px) saturate(1.1) sepia(0.35) brightness(0.55); }
+.im-root[data-skin="vinyl"] .im-backdrop-tint { mix-blend-mode: soft-light; }
+
+@keyframes im-slow-turn {
+  from { rotate: 0deg; scale: 1; }
+  50% { scale: 1.12; }
+  to { rotate: 360deg; scale: 1; }
+}
+
+@keyframes im-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes im-rise-in {
+  from { opacity: 0; translate: 0 2vmin; filter: blur(10px); }
+  to { opacity: 1; translate: 0 0; filter: blur(0); }
+}
+
+/* ---------- Content ----------
+   The whole layout drifts a little over a few minutes so nothing sits still on the
+   panel for hours. */
+
+.im-content {
+  position: absolute;
+  inset: 0;
+  animation: im-drift 240s ease-in-out infinite alternate;
+}
+
+.im-content > section {
+  position: absolute;
+  inset: 0;
+  animation: im-rise-in 1.6s 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes im-drift {
+  0% { translate: -0.8vmin -0.6vmin; }
+  33% { translate: 0.9vmin 0.4vmin; }
+  66% { translate: -0.4vmin 0.9vmin; }
+  100% { translate: 0.7vmin -0.7vmin; }
+}
+
+/* ---------- Stage: the clock and the song ---------- */
+
+.im-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11vh 6vw 9vh;
+}
+
+.im-stage-top {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.im-date {
+  font-size: 2.6vmin;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: rgba(var(--im-ink), 0.82);
+}
+
+.im-clock {
+  display: flex;
+  align-items: baseline;
+  font-family: ui-rounded, var(--font-ui);
+  font-size: 26vmin;
+  font-weight: 700;
+  line-height: 0.95;
+  letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums;
+  color: rgba(var(--im-ink), 0.94);
+  text-shadow: 0 0.6vmin 4vmin rgba(0, 0, 0, 0.25);
+}
+
+.im-clock-colon {
+  margin: 0 0.02em;
+  translate: 0 -0.06em;
+}
+
+.im-root[data-skin="nothing"] .im-clock {
+  font-family: var(--font-dot);
+  font-weight: 800;
+  letter-spacing: 0;
+  font-size: 24vmin;
+  color: #fff;
+  text-shadow: none;
+}
+.im-root[data-skin="nothing"] .im-clock-colon {
+  color: var(--im-accent);
+  animation: im-blink 2s steps(1) infinite;
+}
+.im-root[data-skin="nothing"] .im-date {
+  font-family: var(--font-dot);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 2.2vmin;
+}
+
+.im-root[data-skin="vinyl"] .im-clock {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+.im-root[data-skin="vinyl"] .im-date {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 2.8vmin;
+}
+
+@keyframes im-blink {
+  0%, 60% { opacity: 1; }
+  61%, 100% { opacity: 0.25; }
+}
+
+.im-current-line {
+  margin-top: 4.5vmin;
+  max-width: 70vw;
+  text-align: center;
+  font-size: 3.6vmin;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: rgba(var(--im-ink), 0.88);
+  text-wrap: balance;
+  animation: im-line-in 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.im-root[data-skin="vinyl"] .im-current-line { font-family: var(--font-serif); font-weight: 400; }
+
+@keyframes im-line-in {
+  from { opacity: 0; translate: 0 1.2vmin; filter: blur(6px); }
+  to { opacity: 1; translate: 0 0; filter: blur(0); }
+}
+
+/* Now playing, along the bottom */
+
+.im-np {
+  display: flex;
+  align-items: center;
+  gap: 3.2vmin;
+  width: min(78vw, 110vmin);
+}
+
+.im-np-art {
+  position: relative;
+  flex: none;
+  width: 15vmin;
+  height: 15vmin;
+  border-radius: 1.6vmin;
+  overflow: hidden;
+  background: rgba(var(--im-ink), 0.08);
+  box-shadow: 0 2vmin 5vmin -1.5vmin rgba(0, 0, 0, 0.7);
+  transition: scale 0.8s cubic-bezier(0.2, 0.8, 0.2, 1), filter 0.8s;
+}
+.im-np-art.is-paused { scale: 0.92; filter: saturate(0.6) brightness(0.8); }
+
+/* A cover: the normal image at once, the sharp copy fading in over it (see Cover.tsx). */
+.im-cover {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+}
+.im-cover img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.im-cover-sharp {
+  animation: im-fade-in 0.9s ease-out both;
+}
+.im-np-art.is-vinyl,
+.im-hero-art.is-vinyl {
+  background: none;
+  box-shadow: none;
+  border-radius: 0;
+  overflow: visible;
+}
+
+.im-np-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.im-np-title {
+  font-size: 3.3vmin;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.im-np-artist {
+  margin-top: 0.5vmin;
+  font-size: 2.3vmin;
+  font-weight: 500;
+  color: rgba(var(--im-ink), 0.62);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.im-root[data-skin="vinyl"] .im-np-title { font-family: var(--font-serif); font-weight: 400; }
+.im-root[data-skin="nothing"] .im-np-title,
+.im-root[data-skin="nothing"] .im-np-artist,
+.im-root[data-skin="nothing"] .im-np-next,
+.im-root[data-skin="nothing"] .im-progress-times {
+  font-family: var(--font-dot);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.im-np-next {
+  margin-top: 1.6vmin;
+  font-size: 1.6vmin;
+  color: rgba(var(--im-ink), 0.45);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.im-np-next span {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 700;
+  margin-right: 0.6vmin;
+  color: rgba(var(--im-ink), 0.6);
+}
+
+.im-np-empty {
+  font-size: 2.4vmin;
+  color: rgba(var(--im-ink), 0.5);
+}
+
+/* Progress */
+
+.im-progress {
+  margin-top: 2vmin;
+}
+
+.im-progress-track {
+  height: 0.45vmin;
+  min-height: 3px;
+  border-radius: 99px;
+  background: rgba(var(--im-ink), 0.18);
+  overflow: hidden;
+}
+
+.im-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: rgba(var(--im-ink), 0.88);
+  transition: width 0.3s linear;
+}
+.im-root[data-skin="nothing"] .im-progress-fill { background: var(--im-accent); }
+
+.im-progress-times {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.9vmin;
+  font-size: 1.5vmin;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: rgba(var(--im-ink), 0.5);
+}
+
+/* ---------- Corner clock (lyrics and artwork displays) ---------- */
+
+.im-corner-clock {
+  position: absolute;
+  top: 6vh;
+  right: 5vw;
+  text-shadow: 0 0.3vmin 2vmin rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.4vmin;
+  z-index: 2;
+}
+
+.im-corner-time {
+  font-family: ui-rounded, var(--font-ui);
+  font-size: 5.5vmin;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: rgba(var(--im-ink), 0.9);
+}
+
+.im-corner-date {
+  font-size: 1.6vmin;
+  font-weight: 600;
+  color: rgba(var(--im-ink), 0.55);
+}
+
+.im-root[data-skin="nothing"] .im-corner-time { font-family: var(--font-dot); font-weight: 800; }
+.im-root[data-skin="nothing"] .im-corner-date { font-family: var(--font-dot); font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; }
+.im-root[data-skin="vinyl"] .im-corner-time,
+.im-root[data-skin="vinyl"] .im-corner-date { font-family: var(--font-serif); font-weight: 400; }
+
+/* ---------- Lyrics display ---------- */
+
+.im-lyrics {
+  position: absolute;
+  inset: 0;
+  padding: 0 12vw;
+  overflow: hidden;
+  /* Lines fade out towards the top and bottom edges. */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 4%, #000 26%, #000 70%, transparent 94%);
+  mask-image: linear-gradient(to bottom, transparent 4%, #000 26%, #000 70%, transparent 94%);
+}
+
+.im-lyrics-pad {
+  height: 50vh;
+}
+
+.im-lyric {
+  max-width: 76vw;
+  padding: 1.6vmin 0;
+  font-size: 6.4vmin;
+  font-weight: 800;
+  line-height: 1.14;
+  letter-spacing: -0.02em;
+  color: rgba(var(--im-ink), 0.2);
+  /* Colour only: blur or scale on each line makes WebKit give every line its own layer,
+     and those layers show thin coloured edges inside the faded list. */
+  transition: color 0.6s ease;
+  text-wrap: balance;
+}
+.im-lyric.is-past { color: rgba(var(--im-ink), 0.12); }
+.im-lyric.is-active { color: rgba(var(--im-ink), 0.97); }
+.im-lyric--dots { letter-spacing: 0.2em; }
+
+.im-root[data-skin="vinyl"] .im-lyric { font-family: var(--font-serif); font-weight: 400; }
+.im-root[data-skin="nothing"] .im-lyric {
+  font-family: var(--font-dot);
+  font-weight: 800;
+  letter-spacing: 0;
+}
+.im-root[data-skin="nothing"] .im-lyric.is-active { color: #fff; }
+
+.im-mini-np {
+  position: absolute;
+  left: 5vw;
+  bottom: 6vh;
+  display: flex;
+  align-items: center;
+  gap: 1.8vmin;
+  max-width: 44vw;
+  z-index: 2;
+}
+.im-mini-art {
+  position: relative;
+  flex: none;
+  width: 7vmin;
+  height: 7vmin;
+  border-radius: 1vmin;
+  overflow: hidden;
+  background: rgba(var(--im-ink), 0.08);
+  box-shadow: 0 1vmin 3vmin rgba(0, 0, 0, 0.5);
+}
+.im-mini-np > div { min-width: 0; }
+.im-mini-title {
+  font-size: 2vmin;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.im-root[data-skin="nothing"] .im-mini-title,
+.im-root[data-skin="nothing"] .im-mini-artist {
+  font-family: var(--font-dot);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.im-root[data-skin="vinyl"] .im-mini-title { font-family: var(--font-serif); font-weight: 400; }
+.im-mini-artist {
+  font-size: 1.6vmin;
+  color: rgba(var(--im-ink), 0.6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Artwork display ---------- */
+
+.im-art-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5vmin;
+}
+
+.im-hero-art {
+  position: relative;
+  width: 58vmin;
+  height: 58vmin;
+  border-radius: 3vmin;
+  overflow: hidden;
+  background: rgba(var(--im-ink), 0.08);
+  box-shadow:
+    0 6vmin 14vmin -4vmin rgba(0, 0, 0, 0.8),
+    0 0 18vmin -2vmin color-mix(in srgb, var(--im-a) 70%, transparent);
+  transition: scale 1s cubic-bezier(0.2, 0.8, 0.2, 1), filter 1s;
+}
+.im-hero-art.is-paused { scale: 0.94; filter: saturate(0.6) brightness(0.8); }
+.im-hero-art.is-vinyl { width: 66vmin; height: 66vmin; }
+
+/* Nothing: the artwork as a dot matrix. */
+.im-root[data-skin="nothing"] .im-hero-art:not(.is-vinyl) {
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+.im-root[data-skin="nothing"] .im-hero-art:not(.is-vinyl) .im-cover img {
+  -webkit-mask-image: radial-gradient(circle at center, #000 0.42vmin, transparent 0.5vmin);
+  -webkit-mask-size: 1.2vmin 1.2vmin;
+  mask-image: radial-gradient(circle at center, #000 0.42vmin, transparent 0.5vmin);
+  mask-size: 1.2vmin 1.2vmin;
+  filter: contrast(1.15) saturate(1.1);
+}
+
+.im-art-meta {
+  width: min(58vmin, 80vw);
+  text-align: center;
+}
+.im-art-meta .im-progress-times { justify-content: space-between; }
+
+/* ---------- Controls ---------- */
+
+/* Along the top edge: the bottom is where the song sits on every layout. */
+.im-controls {
+  position: absolute;
+  left: 50%;
+  top: 2.4vh;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 999px;
+  background: rgba(30, 30, 32, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  translate: -50% 0;
+  transition: opacity 0.4s, translate 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.im-root.is-idle .im-controls {
+  opacity: 0;
+  translate: -50% -12px;
+  pointer-events: none;
+}
+
+.im-controls button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 40px;
+  min-width: 40px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  font: 600 13px var(--font-ui);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+.im-controls button:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+.im-controls .im-play {
+  width: 48px;
+  height: 48px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #000;
+}
+.im-controls .im-play:hover { background: #fff; color: #000; }
+
+.im-controls-divider {
+  width: 1px;
+  height: 24px;
+  margin: 0 4px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.im-views {
+  display: flex;
+  gap: 2px;
+}
+
+/* Display chips: lit = showing there, dim = off; the dot marks this display. */
+.im-displays-chips {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 4px;
+}
+
+.im-displays-icon {
+  margin-right: 4px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.im-controls .im-display-chip {
+  position: relative;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1.5px dashed rgba(255, 255, 255, 0.28);
+  border-radius: 9px;
+  color: rgba(255, 255, 255, 0.5);
+  font: 700 14px var(--font-ui);
+  font-variant-numeric: tabular-nums;
+}
+
+.im-controls .im-display-chip.is-on {
+  border: 1.5px solid transparent;
+  background: rgba(255, 255, 255, 0.9);
+  color: #000;
+}
+
+.im-controls .im-display-chip.is-on:hover {
+  background: #fff;
+  color: #000;
+}
+
+.im-controls .im-display-chip:disabled {
+  cursor: default;
+}
+
+.im-display-chip.is-here::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -7px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--im-accent);
+  translate: -50% 0;
+}
+.im-views button span { display: none; }
+.im-views button.is-on {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  padding: 0 14px;
+}
+.im-views button.is-on span { display: inline; }
+
+/* ---------- Portrait displays ----------
+   Tall screens stack everything: the clock on top, the cover as the centrepiece, the song
+   underneath, like a phone's lock screen. vmin is the display's width here. */
+
+@media (orientation: portrait) {
+  .im-stage {
+    justify-content: flex-start;
+    padding: 9vh 7vw 7vh;
+  }
+  .im-clock { font-size: 30vmin; }
+  .im-root[data-skin="nothing"] .im-clock { font-size: 27vmin; }
+  .im-date { font-size: 3.6vmin; }
+  .im-current-line {
+    max-width: 86vw;
+    font-size: 5vmin;
+  }
+
+  .im-np {
+    flex-direction: column;
+    align-items: center;
+    gap: 5vh;
+    width: 86vw;
+    margin-top: auto;
+    text-align: center;
+  }
+  .im-np-art {
+    width: 74vw;
+    height: 74vw;
+    border-radius: 3.4vw;
+  }
+  .im-np-art.is-vinyl {
+    width: 82vw;
+    height: 82vw;
+  }
+  .im-np-text { width: 100%; }
+  .im-np-title {
+    font-size: 5.6vmin;
+    white-space: normal;
+    text-wrap: balance;
+  }
+  .im-np-artist { font-size: 3.6vmin; }
+  .im-progress-times,
+  .im-np-next { font-size: 2.4vmin; }
+
+  /* The artwork display becomes a poster: the cover full width at the top, fading into
+     the backdrop, and the title set large underneath. */
+  .im-art-screen {
+    justify-content: flex-end;
+    align-items: stretch;
+    gap: 4vh;
+    padding: 0 7vw 8vh;
+  }
+  .im-hero-art:not(.is-vinyl) {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vw;
+    border-radius: 0;
+    box-shadow: none;
+    -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 62%, transparent 100%);
+  }
+  .im-hero-art.is-vinyl {
+    width: 88vw;
+    height: 88vw;
+    align-self: center;
+    margin: 14vh 0 auto;
+  }
+  .im-art-meta {
+    position: relative;
+    width: 100%;
+    text-align: left;
+  }
+  .im-art-meta .im-np-title {
+    font-size: 8vmin;
+    line-height: 1.05;
+    white-space: normal;
+    text-wrap: balance;
+  }
+  .im-art-meta .im-np-artist { font-size: 4vmin; }
+
+  .im-lyrics { padding: 0 8vw; }
+  .im-lyric {
+    max-width: 84vw;
+    font-size: 7.4vmin;
+  }
+  .im-mini-np {
+    left: 7vw;
+    bottom: 5vh;
+    max-width: 86vw;
+  }
+  .im-mini-art { width: 11vmin; height: 11vmin; }
+  .im-mini-title { font-size: 3vmin; }
+  .im-mini-artist { font-size: 2.4vmin; }
+  .im-corner-time { font-size: 8vmin; }
+  .im-corner-date { font-size: 2.4vmin; }
+}
+
+/* ---------- Ultrawide displays ----------
+   Wide screens go side by side: the clock on the left, the song on the right. vmin is the
+   display's height here. */
+
+@media (min-aspect-ratio: 2/1) {
+  .im-stage {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 9vw;
+    padding: 0 8vw;
+  }
+  .im-stage-top { align-items: flex-start; }
+  .im-clock { font-size: 34vmin; }
+  .im-current-line {
+    max-width: 40vw;
+    text-align: left;
+  }
+  .im-np {
+    width: 40vw;
+    gap: 4vmin;
+  }
+  .im-np-art {
+    width: 26vmin;
+    height: 26vmin;
+  }
+  .im-np-title {
+    white-space: normal;
+    text-wrap: balance;
+  }
+
+  .im-art-screen {
+    flex-direction: row;
+    gap: 6vw;
+  }
+  .im-hero-art { width: 70vmin; height: 70vmin; }
+  .im-hero-art.is-vinyl { width: 76vmin; height: 76vmin; }
+  .im-art-meta {
+    width: 30vw;
+    text-align: left;
+  }
+  .im-art-meta .im-np-title {
+    font-size: 5.6vmin;
+    white-space: normal;
+    text-wrap: balance;
+  }
+
+  .im-lyrics { padding: 0 22vw; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .im-backdrop-art,
+  .im-content,
+  .im-clock-colon {
+    animation: none !important;
+  }
+}

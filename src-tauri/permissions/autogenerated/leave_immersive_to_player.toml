@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-leave-immersive-to-player"
+description = "Enables the leave_immersive_to_player command without any pre-configured scope."
+commands.allow = ["leave_immersive_to_player"]
+
+[[permission]]
+identifier = "deny-leave-immersive-to-player"
+description = "Denies the leave_immersive_to_player command without any pre-configured scope."
+commands.deny = ["leave_immersive_to_player"]

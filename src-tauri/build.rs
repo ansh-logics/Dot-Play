@@ -33,6 +33,13 @@ fn main() {
         "hide_tray_popover",
         "get_pending_update",
         "install_update",
+        "open_immersive",
+        "close_immersive",
+        "set_immersive_idle",
+        "list_immersive_displays",
+        "set_immersive_screens",
+        "set_immersive_display",
+        "leave_immersive_to_player",
       ]),
     ),
   )

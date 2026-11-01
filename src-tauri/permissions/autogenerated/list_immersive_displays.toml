@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-list-immersive-displays"
+description = "Enables the list_immersive_displays command without any pre-configured scope."
+commands.allow = ["list_immersive_displays"]
+
+[[permission]]
+identifier = "deny-list-immersive-displays"
+description = "Denies the list_immersive_displays command without any pre-configured scope."
+commands.deny = ["list_immersive_displays"]
