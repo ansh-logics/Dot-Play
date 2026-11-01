@@ -13,6 +13,8 @@
   --np-pill-border: rgba(255, 255, 255, 0.14);
   --np-text-dim: rgba(255, 255, 255, 0.55);
   --np-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* The top controls' line: the artwork's top edge, set from NowPlaying; this when there's no artwork. */
+  --np-topbar-top: clamp(16px, 4.5vh, 44px);
 
   position: fixed;
   inset: 0;
@@ -119,7 +121,7 @@
   justify-content: flex-end;
   align-items: center;
   gap: 10px;
-  padding-top: clamp(16px, 4.5vh, 44px);
+  padding-top: var(--np-topbar-top);
 }
 
 .np-icon-btn {
@@ -147,10 +149,10 @@
   -webkit-backdrop-filter: blur(20px) saturate(150%);
 }
 
-/* Close sits top-left, opposite the top bar's buttons. */
+/* Close sits top-left, on the same line as the top bar's buttons. */
 .np-minimize {
   position: absolute;
-  top: clamp(16px, 4.5vh, 44px);
+  top: var(--np-topbar-top);
   left: calc(var(--np-gutter) - 10px);
   z-index: 4;
   width: 44px;

@@ -36,7 +36,7 @@
 
 .carousel-heading-label {
   font-family: var(--font-heading);
-  font-size: 22px;
+  font-size: var(--fs-2xl);
   font-weight: 600;
   letter-spacing: -0.015em;
   color: #ffffff;
@@ -56,12 +56,12 @@
   background: #101014;
   border: 1px solid var(--border-subtle);
   color: var(--text-secondary);
-  font-size: 18px;
+  font-size: var(--fs-xl);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease;
   line-height: 1;
 }
 
@@ -105,7 +105,7 @@
   position: absolute;
   width: 300px;
   height: 300px;
-  border-radius: 20px;
+  border-radius: var(--radius-xl);
   overflow: hidden;
   cursor: pointer;
   border: none; /* User requirement: no white outline */
@@ -129,7 +129,7 @@
 .carousel-shimmer-skeleton {
   position: absolute;
   inset: 0;
-  border-radius: 20px;
+  border-radius: var(--radius-xl);
   background: linear-gradient(90deg, #0e0e12 0%, #1e1e26 50%, #0e0e12 100%);
   background-size: 200% 100%;
   animation: carousel-shimmer 1.6s infinite linear;
@@ -181,7 +181,7 @@
 .carousel-caption-title {
   margin: 0;
   font-family: var(--font-body);
-  font-size: 17px;
+  font-size: var(--fs-xl);
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
@@ -192,7 +192,7 @@
 .carousel-caption-artist {
   margin: 3px 0 0;
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: var(--fs-md);
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -223,7 +223,7 @@
   justify-content: center;
   cursor: pointer;
   color: #fff;
-  transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: background 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
 
@@ -256,12 +256,12 @@
   border: none;
   cursor: pointer;
   padding: 0;
-  transition: all 0.25s ease;
+  transition: background 0.25s ease, box-shadow 0.25s ease, width 0.25s ease, border-radius 0.25s ease;
 }
 
 .carousel-dot-btn.active {
   background: var(--accent-red);
   width: 18px;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   box-shadow: 0 0 6px var(--accent-red-glow);
 }

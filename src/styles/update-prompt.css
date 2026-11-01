@@ -17,7 +17,7 @@
   padding: 14px 14px 12px;
   background: rgba(18, 18, 18, 0.94);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65);
   cursor: default;
 }
@@ -47,14 +47,14 @@
 
 .update-prompt-title {
   font-family: var(--font-heading);
-  font-size: 13px;
+  font-size: var(--fs-md);
   font-weight: 600;
   color: #ffffff;
 }
 
 .update-prompt-sub {
   font-family: var(--font-body);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: rgba(255, 255, 255, 0.55);
 }
 
@@ -71,9 +71,9 @@
   gap: 6px;
   height: 28px;
   padding: 0 12px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   font-family: var(--font-heading);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
@@ -103,7 +103,7 @@
 .update-prompt-bar {
   height: 3px;
   margin-top: 12px;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   background: rgba(255, 255, 255, 0.1);
   overflow: hidden;
 }

@@ -26,7 +26,7 @@
 .brand-dot-logo {
   width: 28px;
   height: 28px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: #141416;
   border: 1px solid var(--border-glass);
   display: flex;
@@ -50,7 +50,7 @@
 
 .brand-title {
   font-family: var(--font-wordmark);
-  font-size: 18px;
+  font-size: var(--fs-xl);
   font-weight: 700;
   letter-spacing: 0.02em;
   color: var(--text-primary);
@@ -75,12 +75,12 @@
 
 .sidebar-nav::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
 }
 
 .nav-group-label {
   font-family: var(--font-body);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   font-weight: 600;
   letter-spacing: 0.01em;
   color: var(--text-secondary);
@@ -94,15 +94,15 @@
   gap: 12px;
   width: 100%;
   padding: 10px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: transparent;
   border: none;
   color: var(--text-secondary);
   font-family: var(--font-heading);
-  font-size: 15px;
+  font-size: var(--fs-lg);
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
   position: relative;
   text-align: left;
 }
@@ -123,7 +123,7 @@
   height: 4px;
   border-radius: 50%;
   background: transparent;
-  transition: all 0.18s ease;
+  transition: background 0.18s ease, box-shadow 0.18s ease;
   flex-shrink: 0;
 }
 
@@ -163,7 +163,7 @@
   backdrop-filter: blur(30px) saturate(190%);
   -webkit-backdrop-filter: blur(30px) saturate(190%);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   padding: 14px;
   box-shadow:
     0 20px 48px rgba(0, 0, 0, 0.75),
@@ -213,7 +213,7 @@
 
 .popover-user-name {
   font-family: var(--font-heading);
-  font-size: 13.5px;
+  font-size: var(--fs-md);
   font-weight: 600;
   color: #ffffff;
   white-space: nowrap;
@@ -224,7 +224,7 @@
 
 .popover-user-email {
   font-family: var(--font-body);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -242,11 +242,11 @@
   align-items: center;
   gap: 6px;
   padding: 3px 8px;
-  border-radius: 20px;
+  border-radius: var(--radius-xl);
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.08);
   font-family: var(--font-body);
-  font-size: 10px;
+  font-size: var(--fs-2xs);
   font-weight: 600;
   letter-spacing: 0.02em;
   color: var(--text-secondary);
@@ -271,15 +271,15 @@
   gap: 8px;
   width: 100%;
   padding: 8px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.16);
   color: var(--text-primary);
   font-family: var(--font-heading);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
 }
 
 .popover-switch-btn:hover {
@@ -295,15 +295,15 @@
   gap: 8px;
   width: 100%;
   padding: 8px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: rgba(255, 69, 58, 0.1);
   border: 1px solid rgba(255, 69, 58, 0.2);
   color: #ff453a;
   font-family: var(--font-heading);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
 }
 
 .popover-signout-btn:hover {

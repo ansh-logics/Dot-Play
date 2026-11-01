@@ -182,6 +182,8 @@ function NowPlayingScreen(props: NowPlayingProps) {
   const peekRef = useRef<HTMLDivElement>(null);
   const miniRef = useRef<HTMLDivElement>(null);
   const listScrollRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLElement>(null);
+  const artRef = useRef<HTMLDivElement>(null);
   const [geom, setGeom] = useState({ height: 0, closedY: 0, mini: 0 });
   const y = useMotionValue(10_000);
   const closedYMV = useMotionValue(1);
@@ -217,6 +219,24 @@ function NowPlayingScreen(props: NowPlayingProps) {
       window.removeEventListener("resize", measure);
     };
   }, [measure]);
+
+  // The top controls (close and the top bar) sit on the artwork's top edge. offsetTop ignores the stage's
+  // scale and the layout animations, so this only changes on real resizes.
+  useLayoutEffect(() => {
+    const stage = stageRef.current;
+    const root = rootRef.current;
+    if (!stage || !root) return;
+    const align = () => {
+      const art = artRef.current;
+      const top = art && art.offsetHeight > 0 ? art.offsetTop : 0;
+      if (top > 0) root.style.setProperty("--np-topbar-top", `${top}px`);
+      else root.style.removeProperty("--np-topbar-top");
+    };
+    align();
+    const ro = new ResizeObserver(align);
+    ro.observe(stage);
+    return () => ro.disconnect();
+  }, [layoutKey]);
 
   // Keep the card parked correctly when geometry changes; slide it in on first measure.
   const firstPlacement = useRef(true);
@@ -418,6 +438,7 @@ function NowPlayingScreen(props: NowPlayingProps) {
       </header>
 
       <motion.main
+        ref={stageRef}
         className={`np-stage ${showLyrics ? "has-lyrics" : "art-only"} ${compact && showLyrics ? "lyrics-only" : ""}`}
         style={{ opacity: stageOpacity, scale: stageScale, y: stageY }}
         initial={reduceMotion ? false : { scale: 0.97 }}
@@ -432,6 +453,7 @@ function NowPlayingScreen(props: NowPlayingProps) {
               // measured on every render (10×/s from the time updates) and "corrected" for the
               // stage's own scale while the sheet moved, which jittered.
               layoutDependency={layoutKey}
+              ref={artRef}
               className="np-art-wrap"
               transition={{ type: "spring", stiffness: 300, damping: 34 }}
             >

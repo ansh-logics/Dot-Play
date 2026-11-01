@@ -13,11 +13,11 @@
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   background: #0b0b0d;
   border: 1px solid rgba(255, 255, 255, 0.08);
   cursor: pointer;
-  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: background 0.18s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
   width: 100%;
   text-align: left;
@@ -50,7 +50,7 @@
 .account-avatar-img {
   width: 36px;
   height: 36px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   object-fit: cover;
   background: #18181c;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -60,7 +60,7 @@
 .account-avatar-fallback {
   width: 36px;
   height: 36px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: #16161a;
   border: 1px solid rgba(255, 255, 255, 0.1);
   display: flex;
@@ -99,7 +99,7 @@
 
 .account-display-name {
   font-family: var(--font-heading);
-  font-size: 13px;
+  font-size: var(--fs-md);
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
@@ -109,7 +109,7 @@
 }
 
 .account-sub-label {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -123,12 +123,12 @@
   border: none;
   color: var(--text-tertiary);
   padding: 6px 4px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s ease;
+  transition: color 0.15s ease, background 0.15s ease;
   flex-shrink: 0;
 }
 

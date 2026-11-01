@@ -19,7 +19,8 @@
   /* Typography Colors */
   --text-primary: #ffffff;
   --text-secondary: #8e8e93;
-  --text-tertiary: #525258;
+  /* ~4:1 on black: the quietest text that is still readable (#525258 was 2.7:1). */
+  --text-tertiary: #6e6e73;
 
   /* Borders & Dividers */
   --border-subtle: rgba(255, 255, 255, 0.06);
@@ -44,7 +45,26 @@
   /* Rhythm: one section gap and one heading gap everywhere on browse screens */
   --space-section: 48px;
   --space-heading: 16px;
-  --radius-art: 10px;
+
+  /* Type scale: every size in the app is one of these. */
+  --fs-2xs: 10px;   /* tiny uppercase badges */
+  --fs-xs: 11px;    /* labels, timestamps */
+  --fs-sm: 12px;    /* secondary text */
+  --fs-md: 13px;    /* default UI text */
+  --fs-base: 14px;  /* inputs, list titles */
+  --fs-lg: 15px;
+  --fs-xl: 17px;    /* card and section titles */
+  --fs-2xl: 22px;   /* shelf headings */
+  --fs-title: 28px; /* page titles */
+
+  /* Corner radii */
+  --radius-xs: 4px;   /* bars, small badges */
+  --radius-sm: 8px;   /* buttons, rows */
+  --radius-md: 12px;  /* artwork, cards */
+  --radius-lg: 16px;  /* panels */
+  --radius-xl: 20px;  /* modals, large cards */
+  --radius-full: 999px;
+  --radius-art: var(--radius-md);
 }
 
 * {
@@ -66,4 +86,30 @@ body {
 /* Never heavier than semi-bold (the wordmark is the one exception). */
 h1, h2, h3, h4, h5, h6, b, strong, th {
   font-weight: 600;
+}
+
+/* Keyboard focus is always visible; clicks don't show it. Zero-specificity, so a component's
+   own focus style (or a deliberate outline: none) still wins. */
+:where(button, a, [role="button"], [role="tab"], [role="option"], [role="menuitem"]):focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.7);
+  outline-offset: 2px;
+}
+
+/* Reduce motion: panels, menus and toasts appear without sliding or scaling, and loading
+   skeletons stop pulsing. Spinners and hover colours stay; Motion components follow the
+   same setting through MotionConfig in main.tsx. */
+@media (prefers-reduced-motion: reduce) {
+  .music-context-menu,
+  .library-view-container,
+  .history-view-container,
+  .search-landing-container,
+  .nothing-modal-backdrop,
+  .nothing-modal-card,
+  .apple-profile-popover,
+  .nothing-toast-container,
+  .update-prompt,
+  .skeleton-line,
+  .carousel-shimmer-skeleton {
+    animation: none !important;
+  }
 }

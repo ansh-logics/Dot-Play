@@ -44,7 +44,7 @@
   padding: 24px;
   color: var(--text-tertiary);
   font-family: var(--font-body);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   letter-spacing: 0;
 }
 
@@ -53,7 +53,7 @@
   padding: 48px;
   color: var(--text-tertiary);
   font-family: var(--font-heading);
-  font-size: 14px;
+  font-size: var(--fs-base);
 }
 
 /* Hidden YouTube Player container & iframe */
