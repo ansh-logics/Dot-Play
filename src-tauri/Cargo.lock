@@ -717,7 +717,7 @@ dependencies = [
 
 [[package]]
 name = "dot-music"
-version = "1.0.4"
+version = "1.0.5"
 dependencies = [
  "block2",
  "log",
