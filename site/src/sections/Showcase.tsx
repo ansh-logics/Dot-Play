@@ -11,6 +11,12 @@ const SHOTS = {
   queue: "/shots/app-queue.jpg",
   lyrics: "/shots/app-lyrics.jpg",
   menubar: "/shots/menubar-player.jpg",
+  // Immersive mode, from `npm run capture`.
+  immersiveApple: "/shots/immersive-apple.jpg",
+  immersiveNothing: "/shots/immersive-nothing.jpg",
+  immersiveVinyl: "/shots/immersive-vinyl.jpg",
+  immersiveLyrics: "/shots/immersive-lyrics.jpg",
+  immersivePortrait: "/shots/immersive-portrait.jpg",
 };
 const SHOT_SIZE = { width: 2000, height: 1256 };
 const ease = [0.22, 1, 0.36, 1] as const;
@@ -141,6 +147,115 @@ function Lyrics() {
   );
 }
 
+const CLOCKS = [
+  { id: "apple", label: "Apple", src: SHOTS.immersiveApple },
+  { id: "nothing", label: "Nothing", src: SHOTS.immersiveNothing },
+  { id: "vinyl", label: "Vinyl", src: SHOTS.immersiveVinyl },
+] as const;
+
+const IMMERSIVE_POINTS = [
+  {
+    title: "Every display, its own view",
+    text: "The clock on one, big synced lyrics on another, the artwork on a third. Pick them in Settings or live with keys 1–9.",
+  },
+  {
+    title: "A screensaver that plays along",
+    text: "Leave the Mac for a few minutes while music plays and it fades in on its own. Touch anything and you're back.",
+  },
+  {
+    title: "Made for every screen",
+    text: "Portrait displays get a poster, ultrawides go side by side, and covers load at your display's full resolution.",
+  },
+  {
+    title: "Press I",
+    text: "Or the button in Now Playing, the sidebar or the menu bar. Esc steps back to the player.",
+  },
+];
+
+/** Immersive mode on a desk of three displays; the middle one cycles the three styles. */
+function Immersive() {
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { amount: 0.35 });
+  const reduce = useReducedMotion();
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    if (!inView || reduce) return;
+    const id = window.setInterval(() => setI((n) => (n + 1) % CLOCKS.length), 3400);
+    return () => window.clearInterval(id);
+  }, [inView, reduce]);
+
+  const monitor = (delay: number) => ({
+    initial: { opacity: 0, y: 40 },
+    whileInView: { opacity: 1, y: 0 },
+    viewport: { once: true, amount: 0.3 },
+    transition: { duration: 1, delay, ease },
+  });
+
+  return (
+    <section className="showcase immersive-show" id="immersive">
+      <Reveal>
+        <p className="kicker">
+          <span className="red-dot" /> Immersive mode · New in 1.1
+        </p>
+        <h2 className="showcase-title centered-title">Your desk becomes the stage.</h2>
+        <p className="showcase-text centered">
+          A big clock with the song that's playing, full screen across your displays, in your player style. Like a lock
+          screen for your music.
+        </p>
+      </Reveal>
+
+      <div ref={ref} className="monitors">
+        <motion.figure className="monitor monitor--side" {...monitor(0.15)}>
+          <div className="screen">
+            <img src={SHOTS.immersiveLyrics} alt="Immersive mode: big synced lyrics on a second display" {...SHOT_SIZE} loading="lazy" />
+          </div>
+          <span className="monitor-stand" aria-hidden="true" />
+        </motion.figure>
+        <motion.figure className="monitor monitor--main" {...monitor(0)}>
+          <div className="screen">
+            <AnimatePresence initial={false}>
+              <motion.img
+                key={CLOCKS[i].id}
+                src={CLOCKS[i].src}
+                alt={`Immersive mode: the clock and song in the ${CLOCKS[i].label} style`}
+                {...SHOT_SIZE}
+                loading="lazy"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.9, ease }}
+              />
+            </AnimatePresence>
+          </div>
+          <span className="monitor-stand" aria-hidden="true" />
+        </motion.figure>
+        <motion.figure className="monitor monitor--portrait" {...monitor(0.3)}>
+          <div className="screen">
+            <img src={SHOTS.immersivePortrait} alt="Immersive mode on a portrait display: the artwork as a poster" width={1100} height={1956} loading="lazy" />
+          </div>
+          <span className="monitor-stand" aria-hidden="true" />
+        </motion.figure>
+      </div>
+      <div className="mood-labels" aria-hidden="true">
+        {CLOCKS.map((c, n) => (
+          <span key={c.id} className={n === i ? "is-on" : undefined}>
+            {c.label}
+          </span>
+        ))}
+      </div>
+
+      <div className="immersive-points">
+        {IMMERSIVE_POINTS.map((point, n) => (
+          <Reveal key={point.title} delay={0.08 * n} className="immersive-point">
+            <h3>{point.title}</h3>
+            <p>{point.text}</p>
+          </Reveal>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function Vinyl() {
   return (
     <section className="showcase is-flipped">
@@ -216,6 +331,7 @@ export function Showcase() {
     <>
       <Moods />
       <Lyrics />
+      <Immersive />
       <Vinyl />
       <MenuBar />
       <Queue />

@@ -205,6 +205,14 @@ const FAQ = [
     q: "Why does Windows warn me when I install it?",
     a: "The installer isn't code-signed yet, so SmartScreen doesn't recognise it. Click More info, then Run anyway. You only need to do this once; updates install themselves.",
   },
+  {
+    q: "What is immersive mode?",
+    a: "A full-screen clock with the song that's playing, on as many displays as you like. Each display shows the clock, big synced lyrics or the artwork, in your player style. Press I in the app to start it; Esc takes you back to the player.",
+  },
+  {
+    q: "Can it run as a screensaver?",
+    a: "Yes, on Mac. In Settings → Immersive Mode, choose to start it after 2, 5 or 10 idle minutes while music plays. Any key or mouse move ends it, and it needs no extra permissions. Your Mac's display sleep still applies.",
+  },
   { q: "Found a bug or have an idea?", a: "Open an issue on GitHub. Feedback is very welcome." },
 ];
 
