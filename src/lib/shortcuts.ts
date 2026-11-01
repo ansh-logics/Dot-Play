@@ -1,3 +1,5 @@
+import { IS_MAC } from "./immersive";
+
 /** Every keyboard shortcut, grouped by where it works. Support (and the ? key) shows these. */
 export const SHORTCUT_GROUPS: Array<{ title: string; items: Array<{ keys: string[]; label: string }> }> = [
   {
@@ -31,8 +33,8 @@ export const SHORTCUT_GROUPS: Array<{ title: string; items: Array<{ keys: string
       { keys: ["Esc"], label: "Back to the app, with the player open" },
     ],
   },
-  {
-    title: "WHILE MINIMISED",
-    items: [{ keys: ["F"], label: "Bring the window back with the player open" }],
-  },
+  // F while minimised uses a macOS key monitor (src-tauri/src/shortcuts.rs).
+  ...(IS_MAC
+    ? [{ title: "WHILE MINIMISED", items: [{ keys: ["F"], label: "Bring the window back with the player open" }] }]
+    : []),
 ];

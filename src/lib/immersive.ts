@@ -69,6 +69,9 @@ export function listDisplays(): Promise<ImmersiveDisplay[]> {
   return invoke<ImmersiveDisplay[]>("list_immersive_displays").catch(() => [])
 }
 
+/** The idle start and F-while-minimised use macOS APIs; elsewhere they're not offered. */
+export const IS_MAC = typeof navigator !== "undefined" && navigator.userAgent.includes("Mac")
+
 export const IDLE_CHOICES = [0, 2, 5, 10] as const
 export type IdleMinutes = (typeof IDLE_CHOICES)[number]
 
