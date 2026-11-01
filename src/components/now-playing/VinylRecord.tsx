@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { motion, useAnimationFrame, useMotionValue } from "motion/react";
-import { ArtworkImage } from "../ArtworkImage";
+import { SettledArt } from "./SettledArt";
+import type { SettledArtwork } from "./useSettledArtwork";
 import type { SearchResult } from "../../lib/search";
 import { useLyricClock } from "./useLyricClock";
 import { TonearmParts } from "../vinyl/TonearmParts";
@@ -26,6 +27,8 @@ const ARM_EASE_MS = 320;
 
 interface VinylRecordProps {
   track: SearchResult;
+  /** The cover, already loaded and measured (see useSettledArtwork). */
+  art: SettledArtwork | null;
   isPlaying: boolean;
   /** Playback position; moves the tonearm inward through the song like a real record. */
   currentTime: number;
@@ -33,7 +36,7 @@ interface VinylRecordProps {
   reduceMotion: boolean;
 }
 
-export function VinylRecord({ track, isPlaying, currentTime, duration, reduceMotion }: VinylRecordProps) {
+export function VinylRecord({ track, art, isPlaying, currentTime, duration, reduceMotion }: VinylRecordProps) {
   const angle = useMotionValue(0);
   const speed = useRef(0);
   const arm = useMotionValue(ARM_REST);
@@ -65,15 +68,7 @@ export function VinylRecord({ track, isPlaying, currentTime, duration, reduceMot
     <div className={`vinyl ${isPlaying ? "is-playing" : ""}`}>
       <motion.div className="vinyl-disc" style={{ rotate: angle }}>
         <div className="vinyl-label">
-          <ArtworkImage
-            key={track.videoId}
-            src={track.thumbnailUrl}
-            videoId={track.videoId}
-            alt={`${track.title} artwork`}
-            className="np-art"
-            variant="hero"
-            priority
-          />
+          <SettledArt art={art} alt={`${track.title} artwork`} />
         </div>
         <div className="vinyl-spindle" />
       </motion.div>

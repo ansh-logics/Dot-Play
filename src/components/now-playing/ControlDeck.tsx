@@ -2,6 +2,7 @@ import { useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import {
   Infinity as InfinityIcon,
   ListMusic,
+  ListPlus,
   Loader2,
   Pause,
   Play,
@@ -16,6 +17,7 @@ import {
   VolumeX,
 } from "lucide-react";
 import type { PlaybackModes } from "../../lib/playbackModes";
+import { LikeButton } from "../LikeButton";
 import { formatTime } from "../../lib/formatTime";
 
 interface SliderProps {
@@ -121,6 +123,8 @@ export interface ControlDeckProps {
   onToggleShuffle: () => void;
   queueOpen: boolean;
   onToggleQueue: () => void;
+  /** The current song's heart; absent where liking isn't possible. */
+  like?: { videoId: string; enabled: boolean; onToggle: () => void; onSave?: () => void };
 }
 
 export function ControlDeck(props: ControlDeckProps) {
@@ -212,6 +216,28 @@ export function ControlDeck(props: ControlDeckProps) {
         </div>
 
         <div className="np-deck-end">
+        {props.like && (
+          <div className="np-pill np-song-actions" role="group" aria-label="Song">
+            <LikeButton
+              className="np-song-action"
+              size={18}
+              videoId={props.like.videoId}
+              enabled={props.like.enabled}
+              onToggle={props.like.onToggle}
+            />
+            {props.like.onSave && (
+              <button
+                type="button"
+                className="np-song-action"
+                onClick={props.like.onSave}
+                aria-label="Save to playlist"
+                title="Save to playlist"
+              >
+                <ListPlus size={19} />
+              </button>
+            )}
+          </div>
+        )}
         <div className="np-pill np-volume">
           <button
             type="button"
@@ -235,7 +261,7 @@ export function ControlDeck(props: ControlDeckProps) {
         </div>
         <button
           type="button"
-          className={`np-pill np-queue-toggle ${props.queueOpen ? "is-on" : ""}`}
+          className={`np-pill np-round-btn np-queue-toggle ${props.queueOpen ? "is-on" : ""}`}
           onClick={props.onToggleQueue}
           aria-expanded={props.queueOpen}
           aria-controls="np-card"

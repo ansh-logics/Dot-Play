@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-rate-song"
+description = "Enables the rate_song command without any pre-configured scope."
+commands.allow = ["rate_song"]
+
+[[permission]]
+identifier = "deny-rate-song"
+description = "Denies the rate_song command without any pre-configured scope."
+commands.deny = ["rate_song"]

@@ -10,6 +10,7 @@ import {
   VolumeX,
 } from "lucide-react";
 import { ArtworkImage } from "../ArtworkImage";
+import { LikeButton } from "../LikeButton";
 import { MiniVinyl } from "../vinyl/MiniVinyl";
 import type { YouTubePlaybackState } from "../HiddenYouTubePlayer";
 import { cleanDisplayTitle } from "../../lib/displayText";
@@ -37,6 +38,10 @@ interface SidebarPlayerProps {
   onPrevious: () => void;
   onPlayPause: () => void;
   onNext: () => void;
+  canLike: boolean;
+  onToggleLike: () => void;
+  /** Right-click on the artwork or title: the song menu (like, save to playlist, …). */
+  onContextMenu: (e: React.MouseEvent) => void;
   /** The queue list, rendered inside the card. */
   children: React.ReactNode;
 }
@@ -68,6 +73,9 @@ export function SidebarPlayer({
   onPrevious,
   onPlayPause,
   onNext,
+  canLike,
+  onToggleLike,
+  onContextMenu,
   children,
 }: SidebarPlayerProps) {
   // Same URL the artwork below resolves to, so the tint matches the pixels on screen.
@@ -88,7 +96,10 @@ export function SidebarPlayer({
       style={palette ? ({ "--tint": palette.colors[0] } as React.CSSProperties) : undefined}
       aria-label="Audio Player"
     >
-      <div className={`sidebar-player-header ${isQueueOpen ? "queue-view" : "hero-view"}`}>
+      <div
+        className={`sidebar-player-header ${isQueueOpen ? "queue-view" : "hero-view"}`}
+        onContextMenu={onContextMenu}
+      >
         <div
           className={`sidebar-artwork-container${isVinyl ? " is-vinyl" : ""}`}
           onClick={(e) => {
@@ -138,15 +149,24 @@ export function SidebarPlayer({
           </button>
         </div>
         <div className="sidebar-player-meta">
-          <span className="sidebar-player-title" title={track.title}>
-            {cleanDisplayTitle(track.title)}
-          </span>
-          <span
-            className={`sidebar-player-artist ${playbackError ? "error" : ""}`}
-            title={playbackError || track.artist}
-          >
-            {playbackError || track.artist}
-          </span>
+          <div className="sidebar-player-text">
+            <span className="sidebar-player-title" title={track.title}>
+              {cleanDisplayTitle(track.title)}
+            </span>
+            <span
+              className={`sidebar-player-artist ${playbackError ? "error" : ""}`}
+              title={playbackError || track.artist}
+            >
+              {playbackError || track.artist}
+            </span>
+          </div>
+          <LikeButton
+            className="sidebar-like-btn"
+            size={15}
+            videoId={track.videoId}
+            enabled={canLike}
+            onToggle={onToggleLike}
+          />
         </div>
       </div>
 

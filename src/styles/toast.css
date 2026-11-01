@@ -34,9 +34,26 @@
   user-select: none;
 }
 
-.nothing-toast-icon {
-  color: var(--accent-red);
+/* The glass surface wraps children in its own centred layer; space them there. */
+.nothing-toast-card .liquid-glass-content-layer {
+  gap: 10px;
+  white-space: nowrap;
+}
+
+.nothing-toast-card .dot-red-accent {
   flex-shrink: 0;
+  margin: 0;
+}
+
+/* Over the full-screen player the bottom right belongs to its controls: show toasts at the
+   top centre, between the close arrow and the top buttons. */
+body:has(.np-root) .nothing-toast-container {
+  top: clamp(16px, 4.5vh, 44px);
+  bottom: auto;
+  left: 0;
+  right: 0;
+  width: fit-content;
+  margin: 0 auto;
 }
 
 .nothing-toast-text {
@@ -44,5 +61,6 @@
   font-size: var(--fs-sm);
   font-weight: 500;
   color: #ffffff;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
+  line-height: 1.3;
 }

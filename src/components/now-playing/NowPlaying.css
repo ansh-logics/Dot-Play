@@ -13,8 +13,6 @@
   --np-pill-border: rgba(255, 255, 255, 0.14);
   --np-text-dim: rgba(255, 255, 255, 0.55);
   --np-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  /* The top controls' line: the artwork's top edge, set from NowPlaying; this when there's no artwork. */
-  --np-topbar-top: clamp(16px, 4.5vh, 44px);
 
   position: fixed;
   inset: 0;
@@ -121,7 +119,7 @@
   justify-content: flex-end;
   align-items: center;
   gap: 10px;
-  padding-top: var(--np-topbar-top);
+  padding-top: clamp(16px, 4.5vh, 44px);
 }
 
 .np-icon-btn {
@@ -149,10 +147,10 @@
   -webkit-backdrop-filter: blur(20px) saturate(150%);
 }
 
-/* Close sits top-left, on the same line as the top bar's buttons. */
+/* Close sits top-left, opposite the top bar's buttons. */
 .np-minimize {
   position: absolute;
-  top: var(--np-topbar-top);
+  top: clamp(16px, 4.5vh, 44px);
   left: calc(var(--np-gutter) - 10px);
   z-index: 4;
   width: 44px;
@@ -219,12 +217,15 @@
 }
 
 /* Hide letterbox bars baked into video thumbnails (zoom is detected from the pixels
-   in useArtworkPalette; 1 for square album art). */
-.np-art img,
-.np-mini-art img {
+   in useArtworkPalette; 1 for square album art). The player's cover carries its own zoom
+   (SettledArt), so it is never animated from another image's crop. */
+.np-art img {
   transform: scale(var(--np-art-zoom, 1));
-  transition: transform 0.4s var(--np-ease), opacity 0.3s ease;
 }
+
+/* Old and new covers stack while they crossfade. */
+.np-art { position: relative; overflow: hidden; }
+.np-art .np-art-img { position: absolute; inset: 0; }
 
 .np-stage.lyrics-only .np-art-wrap { display: none; }
 
@@ -683,7 +684,27 @@
 
 .np-deck-end { justify-self: end; display: inline-flex; align-items: center; gap: 8px; }
 
-.np-queue-toggle {
+/* Like and Save to playlist, in one pill like the playback modes. */
+.np-song-actions { padding: 0 4px; gap: 2px; }
+
+.np-song-action {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.15s ease;
+}
+
+.np-song-action:hover { background: rgba(255, 255, 255, 0.1); }
+.np-song-action:active { transform: scale(0.92); }
+
+/* Round pill button beside the volume: the queue. */
+.np-round-btn {
   position: relative;
   width: 46px;
   justify-content: center;
@@ -691,11 +712,21 @@
   cursor: pointer;
   transition: background 0.2s ease, transform 0.15s ease;
 }
-.np-queue-toggle:hover { background: rgba(255, 255, 255, 0.14); }
-.np-queue-toggle:active { transform: scale(0.94); }
+.np-round-btn:hover { background: rgba(255, 255, 255, 0.14); }
+.np-round-btn:active { transform: scale(0.94); }
 .np-queue-toggle.is-on { background: rgba(255, 255, 255, 0.2); }
 
-.np-volume { gap: 6px; padding: 0 16px 0 6px; }
+/* Just the speaker until hovered; then the slider slides out (also on keyboard focus and
+   while dragging, so it never collapses under the pointer). */
+.np-volume {
+  gap: 0;
+  padding: 0 4px;
+  transition: gap 0.3s var(--np-ease), padding 0.3s var(--np-ease);
+}
+
+.np-volume:hover,
+.np-volume:focus-within,
+.np-volume:has(.is-dragging) { gap: 6px; padding: 0 16px 0 4px; }
 
 .np-volume-btn {
   width: 36px;
@@ -709,7 +740,20 @@
 }
 
 .np-volume-btn:hover { background: rgba(255, 255, 255, 0.08); }
-.np-volume-slider { width: clamp(64px, 8vw, 104px); }
+.np-volume-slider {
+  width: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: width 0.3s var(--np-ease), opacity 0.2s ease;
+}
+
+.np-volume:hover .np-volume-slider,
+.np-volume:focus-within .np-volume-slider,
+.np-volume:has(.is-dragging) .np-volume-slider {
+  width: clamp(64px, 8vw, 104px);
+  opacity: 1;
+  pointer-events: auto;
+}
 .np-volume-slider .np-slider-knob { width: 12px; height: 12px; margin: -6px 0 0 -6px; }
 
 .np-card button:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.6); outline-offset: 2px; }
@@ -1051,6 +1095,7 @@
 }
 
 .np-root[data-skin="nothing"] .np-mode.is-on::after { background: var(--accent-red, #d71921); }
+.np-root[data-skin="nothing"] .like-btn.is-liked { color: var(--accent-red, #d71921); }
 
 .np-root[data-skin="nothing"] .np-play {
   background: #fff;
@@ -1170,7 +1215,8 @@
 .np-root[data-skin="vinyl"] .np-mode.is-on,
 .np-root[data-skin="vinyl"] .np-skip,
 .np-root[data-skin="vinyl"] .np-volume-btn,
-.np-root[data-skin="vinyl"] .np-queue-toggle,
+.np-root[data-skin="vinyl"] .np-round-btn,
+.np-root[data-skin="vinyl"] .np-song-action,
 .np-root[data-skin="vinyl"] .np-icon-btn { color: rgb(var(--np-cream)); }
 .np-root[data-skin="vinyl"] .np-mode.is-on::after { background: rgb(var(--np-cream)); }
 .np-root[data-skin="vinyl"] .np-play { background: rgb(var(--np-cream)); color: #2a1d12; border-color: transparent; }
@@ -1229,13 +1275,16 @@
 @media (max-width: 899px) {
   .np-root { --np-gutter: 24px; --np-card-radius: 32px; }
   .np-lyric { font-size: clamp(18px, 2.9vw, 28px); }
-  .np-volume-slider { width: 64px; }
+  .np-volume:hover .np-volume-slider,
+  .np-volume:focus-within .np-volume-slider,
+  .np-volume:has(.is-dragging) .np-volume-slider { width: 64px; }
 }
 
 @media (max-width: 719px) {
   .np-modes .np-mode { width: 36px; }
   .np-volume-slider { display: none; }
-  .np-volume { padding-right: 6px; }
+  .np-song-action { width: 34px; }
+  .np-volume:hover, .np-volume:focus-within { padding-right: 4px; gap: 0; }
 }
 
 /* ---------- Reduced motion ---------- */

@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import {
   ArrowUpRight,
+  Heart,
   ListMusic,
   MessageSquareQuote,
   Pause,
@@ -123,9 +124,12 @@ export function TrayPlayer() {
           ) : (
             <div className={`tray-cover${np.isPlaying ? "" : " is-paused"}`}>{art}</div>
           )}
-          <div className="tray-meta">
-            <p className="tray-title" title={np.title}>{np.title}</p>
-            <p className="tray-artist" title={np.artist}>{np.artist}</p>
+          <div className="tray-meta-row">
+            <div className="tray-meta">
+              <p className="tray-title" title={np.title}>{np.title}</p>
+              <p className="tray-artist" title={np.artist}>{np.artist}</p>
+            </div>
+            <LikeHeart liked={state?.liked ?? null} />
           </div>
         </section>
       ) : (
@@ -144,6 +148,7 @@ export function TrayPlayer() {
               <p className="tray-title" title={np.title}>{np.title}</p>
               <p className="tray-artist" title={np.artist}>{np.artist}</p>
             </div>
+            <LikeHeart liked={state?.liked ?? null} />
           </section>
           <section className="tray-panel-wrap">
             {panel === "queue" ? (
@@ -248,6 +253,24 @@ export function TrayPlayer() {
         </button>
       </nav>
     </main>
+  );
+}
+
+/** The song's heart; hidden while signed out or before the like state is known. */
+function LikeHeart({ liked }: { liked: boolean | null }) {
+  if (liked === null) return null;
+  const label = liked ? "Remove from Liked Music" : "Add to Liked Music";
+  return (
+    <button
+      type="button"
+      className={`tray-like${liked ? " is-liked" : ""}`}
+      aria-label={label}
+      aria-pressed={liked}
+      title={label}
+      onClick={() => command({ type: "toggleLike" })}
+    >
+      <Heart size={18} fill={liked ? "currentColor" : "none"} />
+    </button>
   );
 }
 

@@ -4,12 +4,7 @@
 .playlist-detail-view {
   display: flex;
   flex-direction: column;
-  gap: 28px;
-}
-
-.playlist-nav-bar {
-  display: flex;
-  align-items: center;
+  gap: 8px;
 }
 
 .back-nav-btn {
@@ -33,128 +28,287 @@
   color: #fff;
 }
 
-.playlist-header {
+/* ---------- Immersive banner ---------- */
+
+/* Runs edge to edge: cancels the content area's padding (28px 36px) and sits under the top bar. */
+.album-hero {
+  --hero-progress: 0;
+  position: relative;
+  isolation: isolate;
+  margin: -28px -36px 0;
+  min-height: clamp(320px, 46vh, 460px);
+  padding: 72px 36px 32px;
   display: flex;
   align-items: flex-end;
-  gap: 28px;
-}
-
-.playlist-cover-wrap {
-  width: 190px;
-  height: 190px;
-  min-width: 190px;
-  border-radius: var(--radius-lg);
   overflow: hidden;
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.7);
-  background: #111;
 }
 
-.playlist-cover {
+.album-hero-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--hero-base, #0c0c0e);
+}
+
+/* The cover, blown up and blurred; drifts at a third of the scroll speed. */
+.album-hero-blur {
+  position: absolute;
+  inset: -15%;
+  width: 130%;
+  height: 130%;
+  object-fit: cover;
+  filter: blur(60px) saturate(1.5) brightness(0.75);
+  opacity: 0.9;
+  transform: translate3d(0, calc(var(--hero-progress) * 140px), 0) scale(1.1);
+  will-change: transform;
+}
+
+/* The cover's own colours as soft light, so even a dark cover gives a coloured banner. */
+.album-hero-tint {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(70% 110% at 12% 18%, var(--hero-c1, transparent) 0%, transparent 62%),
+    radial-gradient(60% 90% at 88% 8%, var(--hero-c2, transparent) 0%, transparent 60%),
+    radial-gradient(50% 80% at 60% 100%, var(--hero-c3, transparent) 0%, transparent 70%);
+  opacity: 0.55;
+  mix-blend-mode: screen;
+  transition: opacity 0.6s ease;
+}
+
+/* Melts into the black page below: no edge where the banner ends. */
+.album-hero-fade {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.2) 0%, rgba(0, 0, 0, 0.1) 35%, rgba(0, 0, 0, 0.55) 72%, var(--bg-oled) 100%),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.35) 0%, transparent 55%);
+}
+
+.album-hero-content {
+  display: flex;
+  align-items: flex-end;
+  gap: clamp(20px, 3vw, 36px);
+  width: 100%;
+  min-width: 0;
+  opacity: calc(1 - var(--hero-progress) * 0.9);
+}
+
+.album-cover {
+  flex: none;
+  width: clamp(168px, 18vw, 232px);
+  aspect-ratio: 1;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  transform: scale(calc(1 - var(--hero-progress) * 0.12));
+  transform-origin: 0 100%;
+}
+
+.album-cover-img,
+.album-cover-img img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
 }
 
-.playlist-info {
+.album-info {
   display: flex;
   flex-direction: column;
-  gap: 8px;
   min-width: 0;
+  padding-bottom: 2px;
 }
 
-.playlist-badge {
-  font-family: var(--font-body);
+.album-kind {
   font-size: var(--fs-xs);
   font-weight: 600;
-  letter-spacing: 0.06em;
-  color: var(--accent-red);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.75);
 }
 
-.playlist-title {
-  margin: 0;
-  font-family: var(--font-heading);
-  font-size: var(--fs-title);
-  font-weight: 600;
-  color: #fff;
-  letter-spacing: -0.02em;
-  line-height: 1.15;
-}
-
-.playlist-meta {
-  margin: 0;
-  font-size: var(--fs-md);
-  color: var(--text-secondary);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.meta-separator {
-  color: var(--text-tertiary);
-}
-
-.playlist-description {
+.album-title {
   margin: 6px 0 0;
-  font-size: var(--fs-md);
-  color: var(--text-tertiary);
-  max-width: 680px;
-  line-height: 1.5;
+  font-family: var(--font-heading);
+  font-size: clamp(30px, 4.6vw, 64px);
+  font-weight: 600;
+  line-height: 1.04;
+  letter-spacing: -0.025em;
+  color: #fff;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.25);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
-.playlist-actions {
-  margin-top: 12px;
+.album-meta {
+  margin: 10px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: var(--fs-md);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.album-meta span + span::before {
+  content: "•";
+  margin: 0 7px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.album-meta-lead { color: #fff; font-weight: 600; }
+
+.album-description-wrap {
+  margin-top: 10px;
+  max-width: 640px;
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.album-description {
+  margin: 0;
+  font-size: var(--fs-md);
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.62);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-line;
+}
+
+.album-description.is-open { display: block; max-height: 30vh; overflow-y: auto; }
+
+.album-more-btn {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #fff;
+  font: inherit;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.album-actions {
+  margin-top: 20px;
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.playlist-play-all-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 22px;
-  border-radius: var(--radius-sm);
-  background: var(--accent-red);
+.album-play-btn {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  padding: 0 0 0 3px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  color: #000;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.album-play-btn:hover:not(:disabled) { transform: scale(1.05); background: #f2f2f4; }
+.album-play-btn:active:not(:disabled) { transform: scale(0.95); }
+.album-play-btn.is-small { width: 32px; height: 32px; padding-left: 2px; box-shadow: none; }
+
+.album-glass-btn {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
   color: #fff;
-  border: none;
-  font-family: var(--font-body);
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.album-glass-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.18); }
+.album-glass-btn:active:not(:disabled) { transform: scale(0.94); }
+.album-glass-btn.is-small { width: 32px; height: 32px; }
+
+.album-play-btn:disabled,
+.album-glass-btn:disabled { opacity: 0.4; cursor: default; }
+
+.album-back {
+  position: absolute;
+  top: 20px;
+  left: 28px;
+  width: 36px;
+  height: 36px;
+  z-index: 1;
+}
+
+/* ---------- Slim bar once the banner has scrolled away ---------- */
+
+/* Fixed over the scroll area's top edge; PlaylistView measures where that is. */
+.album-sticky-bar {
+  position: fixed;
+  top: var(--bar-top, 0);
+  left: var(--bar-left, 0);
+  width: var(--bar-width, 100%);
+  z-index: 30;
+  height: 56px;
+  padding: 0 28px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: color-mix(in srgb, var(--hero-base, #0c0c0e) 72%, transparent);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  opacity: 0;
+  transform: translateY(-8px);
+  pointer-events: none;
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+
+.album-sticky-bar.is-shown { opacity: 1; transform: none; pointer-events: auto; }
+
+.album-sticky-art {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.album-sticky-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.album-sticky-title {
+  flex: 1;
+  min-width: 0;
   font-size: var(--fs-base);
   font-weight: 600;
-  letter-spacing: 0;
-  cursor: pointer;
-  transition: background 0.18s ease, transform 0.18s ease;
-  box-shadow: 0 4px 14px var(--accent-red-glow);
-  text-transform: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.playlist-play-all-btn:hover {
-  background: var(--accent-red-hover);
-  transform: translateY(-1px);
+@media (max-width: 760px) {
+  .album-hero-content { flex-direction: column; align-items: flex-start; }
+  .album-cover { width: 150px; }
 }
 
-.playlist-queue-all-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 18px;
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.06);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  font-family: var(--font-body);
-  font-size: var(--fs-base);
-  font-weight: 600;
-  letter-spacing: 0;
-  cursor: pointer;
-  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
-  text-transform: none;
-}
-
-.playlist-queue-all-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.25);
-  transform: translateY(-1px);
+@media (prefers-reduced-motion: reduce) {
+  .album-hero-blur { transform: scale(1.1); }
+  .album-cover { transform: none; }
+  .album-hero-content { opacity: 1; }
 }
 
 /* Playlist Tracks Table */
@@ -197,12 +351,12 @@
 }
 
 .tracklist-row.active {
-  background: rgba(215, 25, 33, 0.12);
+  background: color-mix(in srgb, var(--hero-c1, var(--accent-red)) 22%, transparent);
   color: #fff;
 }
 
 .tracklist-row.active .col-title-wrap {
-  color: var(--accent-red);
+  color: #fff;
 }
 
 .col-num {

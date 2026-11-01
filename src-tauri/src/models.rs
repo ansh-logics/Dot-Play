@@ -37,6 +37,14 @@ pub struct PlaylistDetails {
     pub title: String,
     pub description: String,
     pub author: String,
+    /// "Album", "Single", "EP", "Playlist"… when the header says.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    /// The album's artist or the playlist's owner.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artist: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub year: Option<String>,
     #[serde(rename = "thumbnailUrl")]
     pub thumbnail_url: String,
     #[serde(rename = "trackCount")]

@@ -52,6 +52,9 @@ interface PlaybackOptions {
   onPlaybackRecorded: (track: SearchResult) => void;
   /** Tracks of the open playlist; Next falls back to them when the queue is empty. */
   playlistTracks: SearchResult[] | undefined;
+  /** Liking from the menu bar popover goes through the app's own like action. */
+  canLike: boolean;
+  onToggleLike: (track: SearchResult) => void;
 }
 
 /**
@@ -59,7 +62,7 @@ interface PlaybackOptions {
  * React state is the source of truth; the refs mirror it for callbacks that must not
  * be recreated on every progress tick.
  */
-export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks }: PlaybackOptions) {
+export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, canLike, onToggleLike }: PlaybackOptions) {
   const [session, setSession] = useState<QueueSession>(DEFAULT_QUEUE_SESSION);
   const sessionRef = useRef<QueueSession>(DEFAULT_QUEUE_SESSION);
   useEffect(() => {
@@ -699,6 +702,11 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks }: P
     onCycleRepeat: cycleRepeatMode,
     onChangeVolume: changeVolume,
     onToggleMute: toggleMute,
+    currentVideoId: currentTrack?.videoId,
+    canLike,
+    onToggleLike: () => {
+      if (currentTrack) onToggleLike(currentTrack);
+    },
   });
 
   /** Signing out drops the account's listening history from the local queue. */

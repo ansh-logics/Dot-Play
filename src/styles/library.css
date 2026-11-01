@@ -7,3 +7,5 @@
   gap: 24px;
   animation: fadeIn 0.25s ease-out;
 }
+
+.library-header-actions { display: flex; align-items: center; gap: 8px; }

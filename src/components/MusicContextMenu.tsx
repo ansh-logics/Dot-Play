@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState, useLayoutEffect } from "react";
-import { Play, CornerDownRight, ListPlus, Trash2, FolderOpen } from "lucide-react";
+import { Play, CornerDownRight, ListEnd, ListPlus, Trash2, FolderOpen, Heart } from "lucide-react";
 import type { SearchResult } from "../lib/search";
 import { ArtworkImage } from "./ArtworkImage";
 import { LiquidGlassSurface } from "./ui/LiquidGlassSurface";
+import { useLikeStatus } from "../lib/likes";
 
 export type MusicContextTarget = {
   track: SearchResult;
@@ -21,6 +22,10 @@ export interface MusicContextMenuProps {
   onAddToQueue: (track: SearchResult) => void;
   onRemoveFromQueue?: (index: number) => void;
   onOpenPlaylist?: (playlistId: string) => void;
+  /** Signed in: the menu offers Like / Remove from Liked Music and Save to Playlist. */
+  canLike: boolean;
+  onToggleLike: (track: SearchResult) => void;
+  onSaveToPlaylist: (track: SearchResult) => void;
 }
 
 export const MusicContextMenu: React.FC<MusicContextMenuProps> = ({
@@ -31,6 +36,9 @@ export const MusicContextMenu: React.FC<MusicContextMenuProps> = ({
   onAddToQueue,
   onRemoveFromQueue,
   onOpenPlaylist,
+  canLike,
+  onToggleLike,
+  onSaveToPlaylist,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -84,6 +92,9 @@ export const MusicContextMenu: React.FC<MusicContextMenuProps> = ({
       window.removeEventListener("resize", handleScroll);
     };
   }, [target, onClose]);
+
+  const likeVideoId = target?.track.itemType === "playlist" ? undefined : target?.track.videoId;
+  const liked = useLikeStatus(likeVideoId, canLike) === "LIKE";
 
   if (!target) return null;
 
@@ -194,9 +205,39 @@ export const MusicContextMenu: React.FC<MusicContextMenuProps> = ({
               onAddToQueue(track);
             }}
           >
-            <ListPlus size={14} className="music-context-icon" />
+            <ListEnd size={14} className="music-context-icon" />
             <span>Add to Queue</span>
           </button>
+        )}
+
+        {hasPlayableTrack && canLike && likeVideoId && (
+          <>
+            <div className="music-context-divider" />
+            <button
+              type="button"
+              className="music-context-item"
+              role="menuitem"
+              onClick={() => {
+                onClose();
+                onToggleLike(track);
+              }}
+            >
+              <Heart size={14} fill={liked ? "currentColor" : "none"} className="music-context-icon" />
+              <span>{liked ? "Remove from Liked Music" : "Like"}</span>
+            </button>
+            <button
+              type="button"
+              className="music-context-item"
+              role="menuitem"
+              onClick={() => {
+                onClose();
+                onSaveToPlaylist(track);
+              }}
+            >
+              <ListPlus size={14} className="music-context-icon" />
+              <span>Save to Playlist…</span>
+            </button>
+          </>
         )}
 
         {/* Remove from Upcoming Queue (only for upcoming tracks) */}

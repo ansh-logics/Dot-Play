@@ -28,6 +28,11 @@ export interface PlaylistDetails {
   title: string
   description: string
   author: string
+  /** "Album", "Single", "EP", "Playlist"… when YouTube Music says. */
+  kind?: string
+  /** The album's artist or the playlist's owner. */
+  artist?: string
+  year?: string
   thumbnailUrl: string
   trackCount: string
   tracks: PlaylistTrack[]

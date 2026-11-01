@@ -25,6 +25,9 @@ import { cacheTracks } from "./lib/trackCache";
 import { loadFeedbackPrefs, saveFeedbackPrefs, type FeedbackPrefs } from "./lib/feedback";
 import { HISTORY_REFRESH_MS } from "./lib/listeningHistory";
 import { useAccountData } from "./lib/useAccountData";
+import { clearLikes, isLiked, setLiked } from "./lib/likes";
+import { SaveToPlaylistModal } from "./components/modals/SaveToPlaylistModal";
+import { NewPlaylistModal } from "./components/modals/NewPlaylistModal";
 import { useKeyboardShortcuts } from "./lib/useKeyboardShortcuts";
 import { usePlayback } from "./lib/usePlayback";
 import { useSearch } from "./lib/useSearch";
@@ -77,15 +80,48 @@ function App() {
       setSelectedPlaylist(null);
       setActiveNav((current) => (current === "library" || current === "history" ? "home" : current));
       playback.clearSessionHistory();
+      clearLikes();
+      setSaveTarget(null);
+      setShowNewPlaylist(false);
     },
   });
+
+  const { isLoggedIn } = account;
+  const [saveTarget, setSaveTarget] = useState<SearchResult | null>(null);
+  const [showNewPlaylist, setShowNewPlaylist] = useState(false);
+  const openSaveToPlaylist = useCallback(
+    (track: SearchResult) => {
+      if (isLoggedIn) setSaveTarget(track);
+      else showToast("Sign in to save songs to playlists.");
+    },
+    [isLoggedIn, showToast],
+  );
+  const toggleLike = useCallback(
+    async (track: SearchResult) => {
+      if (!isLoggedIn) {
+        showToast("Sign in to like songs.");
+        return;
+      }
+      const liked = !isLiked(track.videoId);
+      try {
+        await setLiked(track.videoId, liked);
+        showToast(liked ? "Added to Liked Music" : "Removed from Liked Music");
+      } catch {
+        showToast("Couldn't update Liked Music. Try again.");
+      }
+    },
+    [isLoggedIn, showToast],
+  );
 
   const playback = usePlayback({
     showToast,
     onPlaybackRecorded: account.addToHistory,
     playlistTracks: selectedPlaylist?.tracks,
+    canLike: isLoggedIn,
+    onToggleLike: toggleLike,
   });
   const { currentTrack, selectTrack } = playback;
+
   const currentVideoId = currentTrack?.videoId;
   const currentPlaylistId = currentTrack?.playlistId;
 
@@ -197,7 +233,7 @@ function App() {
   );
 
   // Navigation
-  const { isLoggedIn, fetchHistory, refreshHistoryIfStale, fetchLibrary, librarySections } = account;
+  const { fetchHistory, refreshHistoryIfStale, fetchLibrary, librarySections } = account;
   const focusSearch = useCallback(() => {
     searchInputRef.current?.focus();
     setActiveNav("search");
@@ -304,7 +340,9 @@ function App() {
 
   useKeyboardShortcuts({
     onEscape: () => {
-      if (showSettingsModal) setShowSettingsModal(false);
+      if (saveTarget) setSaveTarget(null);
+      else if (showNewPlaylist) setShowNewPlaylist(false);
+      else if (showSettingsModal) setShowSettingsModal(false);
       else if (showSupportModal) setShowSupportModal(false);
       else if (showProfileMenu) setShowProfileMenu(false);
       else if (showQueue) setShowQueue(false);
@@ -401,6 +439,7 @@ function App() {
           featuredPlaylists={featuredPlaylists}
           onRefresh={fetchLibrary}
           onSignIn={handleSignInFresh}
+          onNewPlaylist={() => setShowNewPlaylist(true)}
           {...browse}
         />
       );
@@ -474,6 +513,9 @@ function App() {
               onPrevious={playback.handlePreviousTrack}
               onPlayPause={playback.togglePlayPause}
               onNext={playback.handleNextTrack}
+              canLike={isLoggedIn}
+              onToggleLike={() => void toggleLike(currentTrack)}
+              onContextMenu={(e) => handleContextMenu(e, currentTrack, "card")}
             >
               <SidebarQueue
                 isOpen={showQueue}
@@ -573,6 +615,9 @@ function App() {
         onPlayNext={playback.handlePlayNext}
         onAddToQueue={playback.handleAddToQueue}
         onContextMenu={handleContextMenu}
+        canLike={isLoggedIn}
+        onToggleLike={(track) => void toggleLike(track)}
+        onSaveToPlaylist={openSaveToPlaylist}
       />
 
       <MusicContextMenu
@@ -583,7 +628,31 @@ function App() {
         onAddToQueue={playback.handleAddToQueue}
         onRemoveFromQueue={handleContextRemove}
         onOpenPlaylist={openPlaylist}
+        canLike={isLoggedIn}
+        onToggleLike={(track) => void toggleLike(track)}
+        onSaveToPlaylist={openSaveToPlaylist}
       />
+
+      {saveTarget && (
+        <SaveToPlaylistModal
+          track={saveTarget}
+          onClose={() => setSaveTarget(null)}
+          showToast={showToast}
+          onPlaylistCreated={() => void fetchLibrary()}
+        />
+      )}
+
+      {showNewPlaylist && (
+        <NewPlaylistModal
+          onClose={() => setShowNewPlaylist(false)}
+          onCreated={(playlistId, title) => {
+            setShowNewPlaylist(false);
+            showToast(`Created ${title}`);
+            void fetchLibrary();
+            void openPlaylist(playlistId);
+          }}
+        />
+      )}
 
       <Toast message={toastMessage} onDismiss={dismissToast} />
 

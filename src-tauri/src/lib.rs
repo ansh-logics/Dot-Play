@@ -1,6 +1,7 @@
 mod feed;
 mod fsutil;
 mod haptics;
+mod library;
 mod lyrics;
 mod media_controls;
 mod models;
@@ -98,6 +99,11 @@ pub fn run() {
                         .permission("allow-set-now-playing")
                         .permission("allow-get-now-playing")
                         .permission("allow-tray-media-control")
+                        .permission("allow-get-like-status")
+                        .permission("allow-rate-song")
+                        .permission("allow-get-playlists-for-song")
+                        .permission("allow-set-song-in-playlist")
+                        .permission("allow-create-playlist")
                         .permission("allow-show-main-window")
                         .permission("allow-hide-tray-popover")
                         .permission("allow-get-pending-update")
@@ -139,6 +145,11 @@ pub fn run() {
             media_controls::set_now_playing,
             media_controls::get_now_playing,
             media_controls::tray_media_control,
+            library::get_like_status,
+            library::rate_song,
+            library::get_playlists_for_song,
+            library::set_song_in_playlist,
+            library::create_playlist,
             tray::show_main_window,
             tray::hide_tray_popover,
             updater::get_pending_update,

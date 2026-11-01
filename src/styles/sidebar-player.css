@@ -181,8 +181,8 @@
   left: 0;
   width: 100%;
   display: flex;
-  flex-direction: column;
-  justify-content: center;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
   overflow: hidden;
   transition: top 0.42s cubic-bezier(0.32, 0.72, 0, 1),
@@ -195,6 +195,32 @@
   left: 54px;
   width: calc(100% - 54px);
 }
+
+.sidebar-player-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.sidebar-like-btn {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.sidebar-like-btn:hover { color: #fff; background: rgba(255, 255, 255, 0.08); }
+.sidebar-like-btn:active { transform: scale(0.9); }
+.sidebar-like-btn.is-liked { color: #fff; }
 
 .sidebar-player-title {
   font-family: var(--font-heading);

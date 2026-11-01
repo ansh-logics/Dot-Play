@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { Library, RefreshCw, UserPlus } from "lucide-react";
+import { Library, Plus, RefreshCw, UserPlus } from "lucide-react";
 import { CardGrid } from "../components/TrackCard";
 import { SectionHeader } from "../components/SectionHeader";
 import type { HomeSection, SearchResult } from "../lib/search";
@@ -13,6 +13,7 @@ interface LibraryViewProps extends BrowseProps {
   featuredPlaylists: SearchResult[];
   onRefresh: () => void;
   onSignIn: () => void;
+  onNewPlaylist: () => void;
 }
 
 /** Saved playlists from the account, then playlists featured on the home feed. */
@@ -24,6 +25,7 @@ export const LibraryView = memo(function LibraryView({
   featuredPlaylists,
   onRefresh,
   onSignIn,
+  onNewPlaylist,
   ...browse
 }: LibraryViewProps) {
   return (
@@ -42,16 +44,22 @@ export const LibraryView = memo(function LibraryView({
         </div>
 
         {isLoggedIn && (
-          <button
-            type="button"
-            className="history-refresh-btn"
-            onClick={onRefresh}
-            disabled={isLoading}
-            title="Refresh library playlists"
-          >
-            <RefreshCw size={13} className={isLoading ? "history-spin" : ""} />
-            <span>Refresh</span>
-          </button>
+          <div className="library-header-actions">
+            <button type="button" className="history-refresh-btn" onClick={onNewPlaylist}>
+              <Plus size={13} />
+              <span>New Playlist</span>
+            </button>
+            <button
+              type="button"
+              className="history-refresh-btn"
+              onClick={onRefresh}
+              disabled={isLoading}
+              title="Refresh library playlists"
+            >
+              <RefreshCw size={13} className={isLoading ? "history-spin" : ""} />
+              <span>Refresh</span>
+            </button>
+          </div>
         )}
       </div>
 

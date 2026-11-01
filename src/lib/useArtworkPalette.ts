@@ -158,15 +158,18 @@ function extract(img: HTMLImageElement): ArtworkPalette | null {
   }
 }
 
-/** Palette (and letterbox zoom) for the artwork URL actually on screen. */
-export function useArtworkPalette(url: string | undefined): ArtworkPalette | null {
-  // Keep showing the previous palette until the new one is ready, so the backdrop crossfades
-  // from old colours to new instead of flashing to the fallback.
-  const [result, setResult] = useState<{ url: string; palette: ArtworkPalette | null } | null>(null)
+const inFlight = new Map<string, Promise<ArtworkPalette | null>>()
 
-  useEffect(() => {
-    if (!url || cache.has(url)) return
-    let cancelled = false
+/**
+ * Loads an artwork URL and measures it (colours and letterbox zoom). Resolves once the image
+ * is fully loaded, so the browser has it cached and an <img> with the same URL paints at once.
+ * Null when the image can't be read (CORS) or fails to load.
+ */
+export function loadArtworkPalette(url: string): Promise<ArtworkPalette | null> {
+  if (cache.has(url)) return Promise.resolve(cache.get(url) ?? null)
+  const pending = inFlight.get(url)
+  if (pending) return pending
+  const promise = new Promise<ArtworkPalette | null>((resolve) => {
     const img = new Image()
     img.crossOrigin = "anonymous"
     img.decoding = "async"
@@ -177,17 +180,33 @@ export function useArtworkPalette(url: string | undefined): ArtworkPalette | nul
       } catch (err) {
         // Tainted canvas or decode failure → the backdrop falls back to blurred artwork.
         console.warn("[DOT Music] Artwork palette extraction failed:", url, err)
-        palette = null
       }
       cache.set(url, palette)
-      if (!cancelled) setResult({ url, palette })
+      resolve(palette)
     }
     img.onerror = () => {
       console.warn("[DOT Music] Artwork palette image failed to load (CORS?):", url)
       cache.set(url, null)
-      if (!cancelled) setResult({ url, palette: null })
+      resolve(null)
     }
     img.src = url
+  }).finally(() => inFlight.delete(url))
+  inFlight.set(url, promise)
+  return promise
+}
+
+/** Palette (and letterbox zoom) for the artwork URL actually on screen. */
+export function useArtworkPalette(url: string | undefined): ArtworkPalette | null {
+  // Keep showing the previous palette until the new one is ready, so the backdrop crossfades
+  // from old colours to new instead of flashing to the fallback.
+  const [result, setResult] = useState<{ url: string; palette: ArtworkPalette | null } | null>(null)
+
+  useEffect(() => {
+    if (!url || cache.has(url)) return
+    let cancelled = false
+    void loadArtworkPalette(url).then((palette) => {
+      if (!cancelled) setResult({ url, palette })
+    })
     return () => {
       cancelled = true
     }

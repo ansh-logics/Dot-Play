@@ -4,6 +4,7 @@ import { cleanDisplayTitle } from "./displayText"
 import { optimizeThumbnailUrl } from "./imagePipeline"
 import type { PlaybackModes } from "./playbackModes"
 import type { PlayerSkinId } from "./playerSkins"
+import { useLikeStatus } from "./likes"
 import { isTauriEnvironment, type SearchResult } from "./search"
 
 /** One Up Next row, as the menu bar popover renders it. Mirrors src/tray/types.ts. */
@@ -23,12 +24,14 @@ export interface TrayState {
   muted: boolean
   /** The Vinyl style shows the artwork as a turning record in the popover too. */
   skin: PlayerSkinId
+  /** Whether the current song is liked; null while signed out or not known yet (no heart). */
+  liked: boolean | null
 }
 
 export type TrayCommand =
   | { type: "playQueueItem"; videoId: string }
   | { type: "removeQueueItem"; index: number; videoId: string }
-  | { type: "toggleShuffle" | "cycleRepeat" | "toggleMute" }
+  | { type: "toggleShuffle" | "cycleRepeat" | "toggleMute" | "toggleLike" }
   | { type: "setVolume"; volume: number }
 
 /** The popover only shows the start of a long queue; this keeps each message small. */
@@ -46,6 +49,9 @@ interface TrayBridgeOptions {
   onCycleRepeat: () => void
   onChangeVolume: (volume: number) => void
   onToggleMute: () => void
+  currentVideoId: string | undefined
+  canLike: boolean
+  onToggleLike: () => void
 }
 
 /**
@@ -66,11 +72,16 @@ export function useTrayBridge({
   onCycleRepeat,
   onChangeVolume,
   onToggleMute,
+  currentVideoId,
+  canLike,
+  onToggleLike,
 }: TrayBridgeOptions) {
   const enabled = isTauriEnvironment()
   const [open, setOpen] = useState(false)
   // Bumped when a freshly created popover has loaded and is listening.
   const [readyCount, setReadyCount] = useState(0)
+  const likeStatus = useLikeStatus(currentVideoId, canLike)
+  const liked = likeStatus === undefined ? null : likeStatus === "LIKE"
   const upcomingRef = useRef(upcoming)
   useEffect(() => {
     upcomingRef.current = upcoming
@@ -101,6 +112,9 @@ export function useTrayBridge({
         break
       case "toggleMute":
         onToggleMute()
+        break
+      case "toggleLike":
+        onToggleLike()
         break
       case "setVolume":
         onChangeVolume(command.volume)
@@ -143,7 +157,8 @@ export function useTrayBridge({
       volume,
       muted: isMuted,
       skin,
+      liked,
     }
     void emitTo("tray", "tray-state", state).catch(() => {})
-  }, [enabled, open, readyCount, upcoming, playbackModes, skin, volume, isMuted])
+  }, [enabled, open, readyCount, upcoming, playbackModes, skin, volume, isMuted, liked])
 }

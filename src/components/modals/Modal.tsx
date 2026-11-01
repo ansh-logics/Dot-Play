@@ -5,13 +5,21 @@ interface ModalProps {
   icon: React.ReactNode;
   onClose: () => void;
   children: React.ReactNode;
+  /** Extra class on the card, for dialogs that need their own width or layout. */
+  className?: string;
 }
 
 /** Nothing-style dialog shell; clicking the backdrop closes it. */
-export function Modal({ title, icon, onClose, children }: ModalProps) {
+export function Modal({ title, icon, onClose, children, className = "" }: ModalProps) {
   return (
     <div className="nothing-modal-backdrop" onClick={onClose}>
-      <div className="nothing-modal-card" onClick={(e) => e.stopPropagation()}>
+      <div
+        className={`nothing-modal-card ${className}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="nothing-modal-header">
           <div className="nothing-modal-title-row">
             {icon}

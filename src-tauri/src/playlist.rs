@@ -84,10 +84,15 @@ pub(crate) async fn get_playlist_details(
     };
 
     let description = header_opt
-        .and_then(|h| h.pointer("/description/runs/0/text"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
+        .and_then(|h| {
+            h.pointer("/description/runs")
+                .or_else(|| h.pointer("/description/musicDescriptionShelfRenderer/description/runs"))
+        })
+        .and_then(|v| v.as_array())
+        .map(|runs| runs.iter().filter_map(|r| r.get("text").and_then(|t| t.as_str())).collect::<String>())
+        .unwrap_or_default();
+
+    let HeaderFacts { kind, artist, year } = header_facts(header_opt);
 
     let thumb = header_opt
         .and_then(|h| {
@@ -174,8 +179,55 @@ pub(crate) async fn get_playlist_details(
         title: title.to_string(),
         description,
         author,
+        kind,
+        artist,
+        year,
         thumbnail_url: upscale_thumbnail_url(thumb),
         track_count,
         tracks,
     })
+}
+
+/// The header's subtitle split into its parts. YouTube Music sends one line such as
+/// "Album • Artist • 2023" (older header) or "Album • 2023" plus the artist on its own
+/// strapline (newer header).
+struct HeaderFacts {
+    /// "Album", "Single", "EP", "Playlist"…
+    kind: Option<String>,
+    artist: Option<String>,
+    year: Option<String>,
+}
+
+const HEADER_KINDS: &[&str] = &["Album", "Single", "EP", "Playlist", "Podcast", "Audiobook"];
+
+fn runs_text(runs: Option<&serde_json::Value>) -> Option<String> {
+    let text: String = runs?
+        .as_array()?
+        .iter()
+        .filter_map(|r| r.get("text").and_then(|t| t.as_str()))
+        .collect();
+    let text = text.trim().to_string();
+    (!text.is_empty()).then_some(text)
+}
+
+fn header_facts(header: Option<&serde_json::Value>) -> HeaderFacts {
+    let Some(header) = header else {
+        return HeaderFacts { kind: None, artist: None, year: None };
+    };
+    let subtitle = runs_text(header.pointer("/subtitle/runs")).unwrap_or_default();
+    let mut kind = None;
+    let mut year = None;
+    let mut rest = Vec::new();
+    for part in subtitle.split('•').map(str::trim).filter(|p| !p.is_empty()) {
+        if kind.is_none() && HEADER_KINDS.contains(&part) {
+            kind = Some(part.to_string());
+        } else if year.is_none() && part.len() == 4 && part.chars().all(|c| c.is_ascii_digit()) {
+            year = Some(part.to_string());
+        } else {
+            rest.push(part);
+        }
+    }
+    let artist = runs_text(header.pointer("/straplineTextOne/runs"))
+        .or_else(|| (!rest.is_empty()).then(|| rest.join(" • ")));
+    HeaderFacts { kind, artist, year }
 }

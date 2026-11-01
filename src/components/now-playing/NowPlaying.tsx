@@ -13,9 +13,6 @@ import {
 } from "motion/react";
 import { ChevronDown, Disc3, Expand, MessageSquareQuote, Shrink } from "lucide-react";
 import "./NowPlaying.css";
-import { ArtworkImage } from "../ArtworkImage";
-import { useArtwork } from "../../lib/imagePipeline";
-import { useArtworkPalette } from "../../lib/useArtworkPalette";
 import { cleanDisplayTitle } from "../../lib/displayText";
 import type { SearchResult } from "../../lib/search";
 import type { QueueSession } from "../../lib/queueManager";
@@ -28,6 +25,8 @@ import { useLyrics } from "./useLyrics";
 import { SkinWheel } from "./SkinWheel";
 import { VinylRecord } from "./VinylRecord";
 import { useWindowFullscreen } from "../../lib/useWindowFullscreen";
+import { useSettledArtwork } from "./useSettledArtwork";
+import { SettledArt } from "./SettledArt";
 import { loadSkin, saveSkin, type PlayerSkinId } from "../../lib/playerSkins";
 
 export interface NowPlayingProps {
@@ -61,6 +60,10 @@ export interface NowPlayingProps {
   onPlayNext: (track: SearchResult) => void;
   onAddToQueue: (track: SearchResult) => void;
   onContextMenu?: QueueContextMenuHandler;
+  /** Signed in: the heart shows and changes the song's like. Left out (the website), no heart. */
+  canLike?: boolean;
+  onToggleLike?: (track: SearchResult) => void;
+  onSaveToPlaylist?: (track: SearchResult) => void;
 }
 
 const SHEET_SPRING = { type: "spring", stiffness: 380, damping: 38, mass: 0.9 } as const;
@@ -168,22 +171,15 @@ function NowPlayingScreen(props: NowPlayingProps) {
   const showLyrics = lyricsOn && hasLyrics;
   const layoutKey = `${showLyrics}-${compact}`;
 
-  // Same resolution ArtworkImage uses, so colours and letterbox zoom match the pixels on screen.
-  const { currentUrl: artworkUrl } = useArtwork({
-    sourceUrl: track.thumbnailUrl,
-    videoId: track.videoId,
-    variant: "hero",
-    priority: true,
-  });
-  const palette = useArtworkPalette(artworkUrl);
+  // The cover, its colours and its letterbox zoom, handed over together once fully loaded.
+  const art = useSettledArtwork(track);
+  const palette = art?.palette ?? null;
 
   // ---- Sheet geometry -------------------------------------------------------
   const rootRef = useRef<HTMLDivElement>(null);
   const peekRef = useRef<HTMLDivElement>(null);
   const miniRef = useRef<HTMLDivElement>(null);
   const listScrollRef = useRef<HTMLDivElement>(null);
-  const stageRef = useRef<HTMLElement>(null);
-  const artRef = useRef<HTMLDivElement>(null);
   const [geom, setGeom] = useState({ height: 0, closedY: 0, mini: 0 });
   const y = useMotionValue(10_000);
   const closedYMV = useMotionValue(1);
@@ -219,24 +215,6 @@ function NowPlayingScreen(props: NowPlayingProps) {
       window.removeEventListener("resize", measure);
     };
   }, [measure]);
-
-  // The top controls (close and the top bar) sit on the artwork's top edge. offsetTop ignores the stage's
-  // scale and the layout animations, so this only changes on real resizes.
-  useLayoutEffect(() => {
-    const stage = stageRef.current;
-    const root = rootRef.current;
-    if (!stage || !root) return;
-    const align = () => {
-      const art = artRef.current;
-      const top = art && art.offsetHeight > 0 ? art.offsetTop : 0;
-      if (top > 0) root.style.setProperty("--np-topbar-top", `${top}px`);
-      else root.style.removeProperty("--np-topbar-top");
-    };
-    align();
-    const ro = new ResizeObserver(align);
-    ro.observe(stage);
-    return () => ro.disconnect();
-  }, [layoutKey]);
 
   // Keep the card parked correctly when geometry changes; slide it in on first measure.
   const firstPlacement = useRef(true);
@@ -331,7 +309,8 @@ function NowPlayingScreen(props: NowPlayingProps) {
   useEffect(() => {
     // Capture phase so Esc is handled here before the app's global handler.
     const onKey = (e: KeyboardEvent) => {
-      if (document.querySelector(".music-context-menu")) return; // let open menus close first
+      // Let open menus and dialogs close first.
+      if (document.querySelector(".music-context-menu, .nothing-modal-backdrop")) return;
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
@@ -381,7 +360,7 @@ function NowPlayingScreen(props: NowPlayingProps) {
         ["--np-art-zoom" as string]: palette?.zoom ?? 1,
       }}
     >
-      <NowPlayingBackdrop palette={palette} artworkUrl={artworkUrl} />
+      <NowPlayingBackdrop palette={palette} artworkUrl={art?.url} />
 
       {/* Hover the left edge to summon the style wheel. */}
       <div
@@ -438,7 +417,6 @@ function NowPlayingScreen(props: NowPlayingProps) {
       </header>
 
       <motion.main
-        ref={stageRef}
         className={`np-stage ${showLyrics ? "has-lyrics" : "art-only"} ${compact && showLyrics ? "lyrics-only" : ""}`}
         style={{ opacity: stageOpacity, scale: stageScale, y: stageY }}
         initial={reduceMotion ? false : { scale: 0.97 }}
@@ -453,28 +431,20 @@ function NowPlayingScreen(props: NowPlayingProps) {
               // measured on every render (10×/s from the time updates) and "corrected" for the
               // stage's own scale while the sheet moved, which jittered.
               layoutDependency={layoutKey}
-              ref={artRef}
               className="np-art-wrap"
               transition={{ type: "spring", stiffness: 300, damping: 34 }}
             >
               {skin === "vinyl" ? (
                 <VinylRecord
                   track={track}
+                  art={art}
                   isPlaying={props.isPlaying}
                   currentTime={props.currentTime}
                   duration={props.duration}
                   reduceMotion={reduceMotion}
                 />
               ) : (
-                <ArtworkImage
-                  key={track.videoId}
-                  src={track.thumbnailUrl}
-                  videoId={track.videoId}
-                  alt={`${track.title} artwork`}
-                  className="np-art"
-                  variant="hero"
-                  priority
-                />
+                <SettledArt art={art} alt={`${track.title} artwork`} />
               )}
             </motion.div>
             <AnimatePresence mode="popLayout">
@@ -544,7 +514,9 @@ function NowPlayingScreen(props: NowPlayingProps) {
               <span />
             </div>
             <motion.div ref={miniRef} className="np-mini" style={{ opacity: miniOpacity }} aria-hidden={!sheetOpen}>
-              <ArtworkImage src={track.thumbnailUrl} videoId={track.videoId} alt="" className="np-mini-art" variant="hero" />
+              <div className="np-mini-art">
+                <SettledArt art={art} alt="" />
+              </div>
               <div className="np-mini-text">
                 <span className="np-mini-title">{cleanDisplayTitle(track.title)}</span>
                 <span className="np-mini-artist">{track.artist}</span>
@@ -571,6 +543,16 @@ function NowPlayingScreen(props: NowPlayingProps) {
               onToggleShuffle={props.onToggleShuffle}
               queueOpen={sheetOpen}
               onToggleQueue={toggleSheet}
+              like={
+                props.onToggleLike
+                  ? {
+                      videoId: track.videoId,
+                      enabled: props.canLike ?? false,
+                      onToggle: () => props.onToggleLike!(track),
+                      onSave: props.onSaveToPlaylist ? () => props.onSaveToPlaylist!(track) : undefined,
+                    }
+                  : undefined
+              }
             />
             </motion.div>
           </div>
