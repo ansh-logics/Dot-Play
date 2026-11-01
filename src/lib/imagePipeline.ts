@@ -530,24 +530,39 @@ export function useArtwork({
     }
   }, []);
 
-  // Stalled watchdog (dismiss stuck shimmer if browser hangs)
+  // Stalled watchdog (dismiss stuck shimmer if browser hangs). Several callers only use
+  // `currentUrl` and never render an <img> with onLoad (Now Playing's settled cover, the
+  // system Now Playing feed, the sidebar card), so a quiet image is checked before it is
+  // given up on: swapping a sharp cover that loaded fine for a small fallback frame made
+  // the artwork go blurry a few seconds after every song started.
   useEffect(() => {
     clearWatchdog();
+    let cancelled = false;
     if (!isLoaded && !hasError && currentUrl) {
       watchdogRef.current = setTimeout(() => {
-        if (effectiveId && retryCountRef.current < 2) {
-          retryCountRef.current += 1;
-          setCurrentUrl((prev) => {
-            failedUrlsRef.current.add(prev);
-            const fallback = getFallbackArtwork(effectiveId, prev);
-            return fallback || prev;
-          });
-          return;
-        }
-        setIsLoaded(true);
+        void verifyImageUrl(currentUrl, 6000).then((ok) => {
+          if (cancelled) return;
+          if (ok) {
+            setIsLoaded(true);
+            return;
+          }
+          if (effectiveId && retryCountRef.current < 2) {
+            retryCountRef.current += 1;
+            setCurrentUrl((prev) => {
+              failedUrlsRef.current.add(prev);
+              const fallback = getFallbackArtwork(effectiveId, prev);
+              return fallback || prev;
+            });
+            return;
+          }
+          setIsLoaded(true);
+        });
       }, 3000);
     }
-    return () => clearWatchdog();
+    return () => {
+      cancelled = true;
+      clearWatchdog();
+    };
   }, [isLoaded, hasError, currentUrl, effectiveId, clearWatchdog]);
 
   // Background HD image pipeline subscription
