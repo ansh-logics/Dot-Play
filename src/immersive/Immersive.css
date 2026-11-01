@@ -713,8 +713,9 @@ body,
   .im-progress-times,
   .im-np-next { font-size: 2.4vmin; }
 
-  /* The artwork display becomes a poster: the cover full width at the top, fading into
-     the backdrop, and the title set large underneath. */
+  /* The artwork display becomes a poster: the cover full width and a little taller than
+     square at the top (cropped at the sides), fading into the backdrop, with the title set
+     large just under it. */
   .im-art-screen {
     justify-content: flex-end;
     align-items: stretch;
@@ -723,14 +724,15 @@ body,
   }
   .im-hero-art:not(.is-vinyl) {
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vw;
+    /* A little wider than the display, so the slow drift never shows an edge. */
+    top: -2vmin;
+    left: -2vmin;
+    width: calc(100vw + 4vmin);
+    height: min(118vw, 72vh);
     border-radius: 0;
     box-shadow: none;
-    -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent 100%);
-    mask-image: linear-gradient(to bottom, #000 62%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 70%, transparent 100%);
   }
   .im-hero-art.is-vinyl {
     width: 88vw;
