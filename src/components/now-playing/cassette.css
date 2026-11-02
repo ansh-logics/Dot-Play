@@ -277,7 +277,7 @@
    rack-mount ears, the deck's controls in a 16:9 module (drawn in cqw, 100 × 56.25), and a
    crate of up-next tapes rising from the bottom edge.
    Module layout: door well 3–43 across, 7.5–41.5 down; phosphor screen 46–97 across,
-   7.5–31.5 down; meters and counter under it; piano keys along the bottom from 44. */
+   7.5–31.5 down; volume fader and counter under it; piano keys along the bottom from 44. */
 
 .deck {
   --crate-tape: clamp(220px, 22vw, 400px);
@@ -561,7 +561,7 @@
   box-shadow: inset 0 0 0 0.8cqw #1b1b1f, inset 0 0 0 0.95cqw #4a4a50;
 }
 
-/* ---- Meters and counter, under the screen ---- */
+/* ---- Volume and counter, under the screen ---- */
 
 .deck-side {
   position: absolute;
@@ -574,67 +574,122 @@
   gap: 1cqw;
 }
 
-/* Backlit VU meter: warm paper behind glass, brighter while playing. */
-.deck-vu {
+/* Volume fader: a ridged metal cap riding in a recessed slot, with a Mute key. */
+.deck-volume {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.8cqw;
+  padding: 0 3cqw 0 0.4cqw;
+}
+.deck-volume-label {
+  font-size: 0.95cqw;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(40, 40, 46, 0.7);
+}
+.deck-volume-row {
+  display: flex;
+  align-items: center;
+  gap: 1cqw;
+}
+
+.deck-mute {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5cqw;
+  padding: 0.5cqw 0.8cqw;
+  border: 0;
+  border-radius: 0.4cqw;
+  cursor: pointer;
+  font: 700 0.85cqw/1 "Helvetica Neue", Arial, sans-serif;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #2a2a2f;
+  background: linear-gradient(180deg, #ececee, #c9cacd);
+  box-shadow: inset 0 0.1cqw 0 rgba(255, 255, 255, 0.9), 0 0.3cqw 0 #77787d, 0 0.4cqw 0.4cqw rgba(0, 0, 0, 0.35);
+  transform: translateY(-0.2cqw);
+  transition: transform 70ms ease-out, box-shadow 70ms ease-out;
+}
+.deck-mute:active,
+.deck-mute.is-on {
+  transform: translateY(0.05cqw);
+  box-shadow: inset 0 0.1cqw 0 rgba(255, 255, 255, 0.6), 0 0.08cqw 0 #77787d, 0 0.12cqw 0.2cqw rgba(0, 0, 0, 0.35);
+}
+.deck-mute i {
+  width: 0.6cqw;
+  height: 0.6cqw;
+  border-radius: 50%;
+  background: #6e6f74;
+}
+.deck-mute.is-on i {
+  background: #ff7a2c;
+  box-shadow: 0 0 0.7cqw rgba(255, 122, 44, 0.8);
+}
+.deck-mute:focus-visible { outline: 0.2cqw solid #ff7a2c; outline-offset: 0.2cqw; }
+
+.deck-fader {
   position: relative;
-  height: 100%;
-  aspect-ratio: 100 / 72;
-  border-radius: 0.6cqw;
+  flex: 1;
+  min-width: 6cqw;
+  height: 3.4cqw;
+  cursor: pointer;
+  touch-action: none;
+  outline: none;
+}
+.deck-fader:focus-visible .deck-fader-cap { box-shadow: 0 0 0 0.2cqw #ff7a2c, 0 0.25cqw 0.4cqw rgba(0, 0, 0, 0.45); }
+
+/* Scale marks every 10%. */
+.deck-fader-ticks {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 0.6cqw;
+  background:
+    linear-gradient(90deg, rgba(40, 40, 46, 0.55) 0 0.12cqw, transparent 0.12cqw) 0 0 / 10% 100% repeat-x,
+    linear-gradient(90deg, transparent calc(100% - 0.12cqw), rgba(40, 40, 46, 0.55) 0);
+}
+.deck-fader-slot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 0.55cqw;
+  margin-top: -0.1cqw;
+  border-radius: 0.3cqw;
   overflow: hidden;
-  background: radial-gradient(120% 100% at 50% 100%, #f2deb0, #dcc089);
-  box-shadow:
-    inset 0 0 0 0.28cqw #2a2a2f,
-    inset 0 0.5cqw 0.8cqw rgba(0, 0, 0, 0.35),
-    0 0.12cqw 0 rgba(255, 255, 255, 0.6);
-  transition: filter 0.4s;
-  filter: brightness(0.82);
+  background: #17171a;
+  box-shadow: inset 0 0.15cqw 0.3cqw rgba(0, 0, 0, 0.8), 0 0.08cqw 0 rgba(255, 255, 255, 0.6);
 }
-.deck.is-playing .deck-vu { filter: brightness(1.05) drop-shadow(0 0 0.6cqw rgba(255, 190, 90, 0.25)); }
-
-.deck-vu-scale {
+.deck-fader-fill {
   position: absolute;
-  inset: 4% 4% 10%;
-  width: 92%;
-  height: 86%;
+  inset: 0 auto 0 0;
+  width: var(--v);
+  background: linear-gradient(90deg, rgba(255, 122, 44, 0.35), #ff7a2c);
 }
-.deck-vu-arc { fill: none; stroke: #2b2622; stroke-width: 1.2; }
-.deck-vu-arc.is-red { stroke: #c8321e; stroke-width: 2.4; }
-.deck-vu-tick { stroke: #2b2622; stroke-width: 1.2; }
-.deck-vu-tick.is-red { stroke: #c8321e; }
-.deck-vu-text { font: 700 7px "Helvetica Neue", Arial, sans-serif; fill: #2b2622; }
-.deck-vu-text.is-red { fill: #c8321e; }
-.deck-vu-text.is-big { font-size: 10px; letter-spacing: 0.08em; opacity: 0.8; }
-
-.deck-vu-needle {
+/* The cap: brushed metal with grip ridges and an orange index line. */
+.deck-fader-cap {
   position: absolute;
-  left: 50%;
-  bottom: 9%;
-  width: 0.22cqw;
-  height: 72%;
-  margin-left: -0.11cqw;
-  transform-origin: 50% 100%;
-  border-radius: 0.2cqw;
-  background: linear-gradient(180deg, #b01e10, #1c1a18 35%);
-  box-shadow: 0.2cqw 0.3cqw 0.35cqw rgba(0, 0, 0, 0.25);
+  left: var(--v);
+  top: 50%;
+  width: 2cqw;
+  height: 2.8cqw;
+  margin-top: 0.175cqw;
+  transform: translate(-50%, -50%);
+  border-radius: 0.3cqw;
+  background:
+    linear-gradient(90deg, transparent calc(50% - 0.08cqw), #ff7a2c calc(50% - 0.08cqw) calc(50% + 0.08cqw), transparent 0),
+    repeating-linear-gradient(180deg, rgba(0, 0, 0, 0.16) 0 0.12cqw, transparent 0.12cqw 0.36cqw),
+    linear-gradient(90deg, #a9aaaf, #eeeef0 45%, #b6b7bb);
+  box-shadow: inset 0 0.08cqw 0 rgba(255, 255, 255, 0.9), 0 0.25cqw 0.4cqw rgba(0, 0, 0, 0.45);
+  transition: scale 0.12s;
 }
-.deck-vu-pivot {
-  position: absolute;
-  left: 50%;
-  bottom: 4%;
-  width: 2.6cqw;
-  height: 1.2cqw;
-  margin-left: -1.3cqw;
-  border-radius: 1.3cqw 1.3cqw 0 0;
-  background: #2a2a2f;
-}
-.deck-vu-channel {
-  position: absolute;
-  right: 0.7cqw;
-  bottom: 0.5cqw;
-  font-size: 1cqw;
-  font-weight: 800;
-  color: #2b2622;
-}
+.deck-fader.is-dragging .deck-fader-cap { scale: 1.06; }
 
 /* Mechanical counter: white digits on black wheels behind a small window. */
 .deck-counter {
@@ -953,6 +1008,9 @@
   pointer-events: none;
   filter: drop-shadow(0 26px 30px rgba(0, 0, 0, 0.45)) drop-shadow(0 6px 8px rgba(0, 0, 0, 0.3));
 }
+
+/* An ejected tape can be clicked to push it back in. */
+.deck-well.is-ejected { cursor: pointer; }
 
 /* The door glows faintly while a tape is held over it: let go to put it in. */
 .deck-well.is-target {

@@ -28,15 +28,6 @@ const DOOR_SPRING = { type: "spring", stiffness: 420, damping: 30 } as const;
 /** The old tape waits for the door before it lifts out. */
 const EJECT_DELAY_S = 0.2;
 
-/*
- * VU needles: a damped spring chasing a level that wanders like music does. There is no
- * audio signal to measure (playback is a YouTube embed), so the level is a smoothed random
- * walk with the odd peak; paused, the needles fall back to rest.
- */
-const VU_REST_DEG = -46;
-const VU_PEAK_DEG = 44;
-const VU_STIFFNESS = 70;
-const VU_DAMPING = 12;
 /** The tape lifts up and out toward you, and the new one drops in and seats. */
 const TAPE_OUT = { y: "-58%", scale: 1.06, rotateX: 22, opacity: 0 };
 const TAPE_IN = { y: "0%", scale: 1, rotateX: 0, opacity: 1, transition: { type: "spring", stiffness: 260, damping: 24 } } as const;
@@ -53,8 +44,15 @@ const TAPE_VARIANTS = {
   out: (hand: boolean) => (hand ? { y: `${-HAND_LIFT * 100}%`, scale: HAND_SCALE, rotateX: 0, opacity: 1 } : TAPE_OUT),
   in: TAPE_IN,
   gone: (hand: boolean) => (hand ? { y: "6%", scale: 0.94, opacity: 0, transition: { duration: 0.22 } } : TAPE_EJECT),
+  /** Eject: the tape pops up out of the holder and stays there, tilted toward you. */
+  ejected: { y: "-30%", scale: 1.04, rotateX: 16, opacity: 1, transition: { type: "spring", stiffness: 340, damping: 17 } } as const,
 };
-const FADE_VARIANTS = { out: { opacity: 0 }, in: { opacity: 1, transition: FADE }, gone: { opacity: 0, transition: FADE } };
+const FADE_VARIANTS = {
+  out: { opacity: 0 },
+  in: { opacity: 1, transition: FADE },
+  gone: { opacity: 0, transition: FADE },
+  ejected: { opacity: 0.6, transition: FADE },
+};
 /** How far (px) a press must move before it becomes a drag rather than a click. */
 const DRAG_START_PX = 6;
 /** A cassette is 100 × 64. */
@@ -78,8 +76,11 @@ interface CassetteDeckProps {
   onNext: () => void;
   onPrevious: () => void;
   onSeek: (seconds: number) => void;
-  /** Eject brings up the full player card (queue, volume, like…), hidden in this style. */
-  onEject: () => void;
+  /** 0–100. */
+  volume: number;
+  isMuted: boolean;
+  onVolumeChange: (volume: number) => void;
+  onToggleMute: () => void;
   /** The queue's next songs, standing as tapes in a crate along the bottom. */
   upcoming: SearchResult[];
   onPlayTrack: (track: SearchResult) => void;
@@ -90,8 +91,9 @@ interface CassetteDeckProps {
 /**
  * The Cassette player style: a hi-fi tape deck in place of the artwork. The current song is
  * a tape behind the door; changing songs opens the door, lifts the old tape out and drops the
- * new one in. Lyrics glow on an amber phosphor screen; VU meters, a rolling tape counter and
- * latching piano keys complete the deck.
+ * new one in. Eject pops the tape out and brings up the crate to choose another; Play (or a
+ * click on the tape) loads it back. Lyrics glow on an amber phosphor screen; a volume
+ * fader, a rolling tape counter and latching piano keys complete the deck.
  */
 export function CassetteDeck(props: CassetteDeckProps) {
   const { track, isPlaying, reduceMotion } = props;
@@ -116,12 +118,17 @@ export function CassetteDeck(props: CassetteDeckProps) {
   /** The crate stays out of sight until you reach for it (the pull tab or the bottom edge). */
   const [crateOpen, setCrateOpen] = useState(false);
   const crateTimer = useRef<number | null>(null);
+  /** Eject pressed: the tape sits popped up in the open door until it's loaded again. */
+  const [ejected, setEjected] = useState(false);
+  /** The ejected tape is being loaded back: clunk and play once it has seated. */
+  const reseat = useRef(false);
 
   // A new song: open the door. AnimatePresence then takes the old tape out and puts the new
   // one in; the door shuts once it has seated.
   useEffect(() => {
     if (track.videoId === lastId.current) return;
     lastId.current = track.videoId;
+    setEjected(false);
     if (reduceMotion) return;
     swapping.current = true;
     setDoorOpen(true);
@@ -133,7 +140,7 @@ export function CassetteDeck(props: CassetteDeckProps) {
   }, []);
 
   // ---- Sound: the tape runs (motor + hiss) only while playing with the door shut ----
-  const open = doorOpen || hoverOpen;
+  const open = doorOpen || hoverOpen || ejected;
   const running = isPlaying && !open;
   const wasRunning = useRef(running);
   useEffect(() => {
@@ -189,6 +196,20 @@ export function CassetteDeck(props: CassetteDeckProps) {
     if (hoverRef.current === open) return;
     hoverRef.current = open;
     setHoverOpen(open);
+  };
+
+  /** Eject: stop, pop the tape up, and bring up the crate to choose another. Again: load it back. */
+  const eject = () => {
+    if (ejected) return reload();
+    setEjected(true);
+    tapeClatter();
+    if (isPlaying) props.onPlayPause();
+    openCrate();
+  };
+  const reload = () => {
+    reseat.current = true;
+    setEjected(false);
+    setCrateOpen(false);
   };
 
   const seated = () => {
@@ -349,7 +370,13 @@ export function CassetteDeck(props: CassetteDeckProps) {
           </span>
         </div>
 
-        <div ref={wellRef} className={`deck-well ${hoverOpen ? "is-target" : ""}`}>
+        <div
+          ref={wellRef}
+          className={`deck-well ${hoverOpen ? "is-target" : ""} ${ejected ? "is-ejected" : ""}`}
+          // The popped-up tape can be pushed straight back in.
+          onClick={() => ejected && !ghost && reload()}
+          title={ejected ? "Click to load the tape back in" : undefined}
+        >
           <AnimatePresence mode="wait" initial={false} custom={hand}>
             <motion.div
               key={track.videoId}
@@ -357,7 +384,7 @@ export function CassetteDeck(props: CassetteDeckProps) {
               custom={hand}
               variants={reduceMotion ? FADE_VARIANTS : TAPE_VARIANTS}
               initial="out"
-              animate="in"
+              animate={ejected ? "ejected" : "in"}
               exit="gone"
               onAnimationStart={(def) => {
                 // The deck's own copy has taken over from the one in your hand.
@@ -368,7 +395,13 @@ export function CassetteDeck(props: CassetteDeckProps) {
                 }
               }}
               onAnimationComplete={(def) => {
-                if (def === "in") seated();
+                if (def !== "in") return;
+                if (reseat.current) {
+                  reseat.current = false;
+                  clunk();
+                  if (!props.isPlaying) props.onPlayPause();
+                }
+                seated();
               }}
             >
               <CassetteTape
@@ -414,8 +447,7 @@ export function CassetteDeck(props: CassetteDeckProps) {
         </div>
 
         <div className="deck-side">
-          <VuMeter channel="L" playing={isPlaying} reduceMotion={reduceMotion} seed={0.37} />
-          <VuMeter channel="R" playing={isPlaying} reduceMotion={reduceMotion} seed={0.81} />
+          <DeckVolume volume={props.volume} isMuted={props.isMuted} onChange={props.onVolumeChange} onToggleMute={props.onToggleMute} />
           <TapeCounter currentTime={props.currentTime} isPlaying={isPlaying} reduceMotion={reduceMotion} />
         </div>
 
@@ -424,9 +456,9 @@ export function CassetteDeck(props: CassetteDeckProps) {
           <DeckKey
             label="Play"
             glyph="▶"
-            aria="Play"
-            latched={isPlaying}
-            onPress={() => !isPlaying && props.onPlayPause()}
+            aria={ejected ? "Load the tape and play" : "Play"}
+            latched={isPlaying && !ejected}
+            onPress={() => (ejected ? reload() : !isPlaying && props.onPlayPause())}
             disabled={!props.isReady}
           />
           <DeckKey
@@ -438,7 +470,13 @@ export function CassetteDeck(props: CassetteDeckProps) {
             disabled={!props.isReady}
           />
           <DeckKey label="FF" glyph="▶▶" aria="Next" onPress={props.onNext} disabled={!props.isReady} />
-          <DeckKey label="Eject" glyph="⏏" aria="Eject: open the queue and player controls" onPress={props.onEject} />
+          <DeckKey
+            label={ejected ? "Load" : "Eject"}
+            glyph="⏏"
+            aria={ejected ? "Load the tape back in" : "Eject the tape and choose another"}
+            latched={ejected}
+            onPress={eject}
+          />
         </div>
       </div>
 
@@ -489,58 +527,6 @@ function DeckKey({
       <span className="deck-key-glyph">{glyph}</span>
       <span className="deck-key-label">{label}</span>
     </button>
-  );
-}
-
-function VuMeter({ channel, playing, reduceMotion, seed }: { channel: string; playing: boolean; reduceMotion: boolean; seed: number }) {
-  const angle = useMotionValue(VU_REST_DEG);
-  const vel = useRef(0);
-  const level = useRef(0);
-  const target = useRef(0);
-  const nextPick = useRef(0);
-  const clock = useRef(seed * 1000);
-
-  useAnimationFrame((_, dt) => {
-    if (reduceMotion) {
-      angle.set(playing ? VU_REST_DEG + (VU_PEAK_DEG - VU_REST_DEG) * 0.6 : VU_REST_DEG);
-      return;
-    }
-    clock.current += dt;
-    if (clock.current >= nextPick.current) {
-      // A new loudness every 70–160ms, mostly mid-scale, now and then into the red.
-      const r = Math.random();
-      target.current = playing ? (r > 0.9 ? 0.92 + Math.random() * 0.08 : 0.42 + Math.random() * 0.4) : 0;
-      nextPick.current = clock.current + 70 + Math.random() * 90;
-    }
-    // The music's level glides; the needle is a damped spring on top (a real VU's ballistics).
-    level.current += (target.current - level.current) * Math.min(1, dt / 60);
-    const goal = VU_REST_DEG + (VU_PEAK_DEG - VU_REST_DEG) * level.current;
-    const s = Math.min(dt, 40) / 1000;
-    vel.current += (VU_STIFFNESS * (goal - angle.get()) - VU_DAMPING * vel.current) * s;
-    angle.set(Math.max(VU_REST_DEG - 2, Math.min(VU_PEAK_DEG + 3, angle.get() + vel.current * s)));
-  });
-
-  return (
-    <div className="deck-vu" aria-hidden="true">
-      <svg className="deck-vu-scale" viewBox="0 0 100 64">
-        <path className="deck-vu-arc" d="M14 40 A44 44 0 0 1 70 21" />
-        <path className="deck-vu-arc is-red" d="M70 21 A44 44 0 0 1 86 40" />
-        {[-20, -10, -7, -5, -3, -1, 0, 1, 3].map((db, i) => {
-          const a = ((-46 + (i / 8) * 90) * Math.PI) / 180;
-          const x1 = 50 + Math.sin(a) * 44;
-          const y1 = 62 - Math.cos(a) * 44;
-          const x2 = 50 + Math.sin(a) * 49;
-          const y2 = 62 - Math.cos(a) * 49;
-          return <line key={db} className={db >= 0 ? "deck-vu-tick is-red" : "deck-vu-tick"} x1={x1} y1={y1} x2={x2} y2={y2} />;
-        })}
-        <text x="10" y="58" className="deck-vu-text">-20</text>
-        <text x="80" y="58" className="deck-vu-text is-red">+3</text>
-        <text x="50" y="50" className="deck-vu-text is-big" textAnchor="middle">VU</text>
-      </svg>
-      <motion.span className="deck-vu-needle" style={{ rotate: angle }} />
-      <span className="deck-vu-pivot" />
-      <span className="deck-vu-channel">{channel}</span>
-    </div>
   );
 }
 
@@ -599,6 +585,104 @@ function CounterWheel({ value, wheel }: { value: MotionValue<number>; wheel: "m1
         ))}
       </motion.span>
     </span>
+  );
+}
+
+/**
+ * The deck's volume fader: a ridged cap in a recessed slot, with a Mute key beside it. Drag
+ * it, click along the slot, scroll over it, or use the arrow keys; it ticks every 10%.
+ */
+function DeckVolume({
+  volume,
+  isMuted,
+  onChange,
+  onToggleMute,
+}: {
+  volume: number;
+  isMuted: boolean;
+  onChange: (volume: number) => void;
+  onToggleMute: () => void;
+}) {
+  const effective = isMuted ? 0 : volume;
+  const [drag, setDrag] = useState<number | null>(null);
+  const shown = drag ?? effective;
+  const lastStep = useRef(Math.round(effective / 10));
+
+  const set = (v: number) => {
+    const next = Math.round(Math.min(100, Math.max(0, v)));
+    const step = Math.round(next / 10);
+    if (step !== lastStep.current) {
+      lastStep.current = step;
+      tapeFlick();
+    }
+    onChange(next);
+  };
+  const at = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return ((e.clientX - r.left) / r.width) * 100;
+  };
+
+  return (
+    <div className="deck-volume">
+      <span className="deck-volume-label">Volume</span>
+      <div className="deck-volume-row">
+        <button
+          type="button"
+          className={`deck-mute ${isMuted ? "is-on" : ""}`}
+          onPointerDown={() => keyPress()}
+          onClick={onToggleMute}
+          aria-pressed={isMuted}
+          aria-label={isMuted ? "Unmute" : "Mute"}
+        >
+          <i aria-hidden="true" />
+          Mute
+        </button>
+        <div
+          className={`deck-fader ${drag !== null ? "is-dragging" : ""}`}
+          role="slider"
+          tabIndex={0}
+          aria-label="Volume"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(shown)}
+          aria-valuetext={`${Math.round(shown)}%`}
+          style={{ ["--v" as string]: `${shown}%` }}
+          onPointerDown={(e) => {
+            if (e.button !== 0) return;
+            e.preventDefault();
+            e.currentTarget.setPointerCapture(e.pointerId);
+            const v = Math.min(100, Math.max(0, at(e)));
+            setDrag(v);
+            set(v);
+          }}
+          onPointerMove={(e) => {
+            if (drag === null) return;
+            const v = Math.min(100, Math.max(0, at(e)));
+            setDrag(v);
+            set(v);
+          }}
+          onPointerUp={() => setDrag(null)}
+          onPointerCancel={() => setDrag(null)}
+          onWheel={(e) => {
+            e.stopPropagation();
+            set(effective - e.deltaY / 12);
+          }}
+          onKeyDown={(e) => {
+            const d = e.key === "ArrowRight" || e.key === "ArrowUp" ? 5 : e.key === "ArrowLeft" || e.key === "ArrowDown" ? -5 : 0;
+            if (!d) return;
+            e.preventDefault();
+            e.stopPropagation(); // not the app's ±5s seek
+            set(effective + d);
+          }}
+        >
+          <span className="deck-fader-ticks" aria-hidden="true" />
+          <span className="deck-fader-slot" aria-hidden="true">
+            <span className="deck-fader-fill" />
+          </span>
+          <span className="deck-fader-cap" aria-hidden="true" />
+        </div>
+      </div>
+    </div>
   );
 }
 

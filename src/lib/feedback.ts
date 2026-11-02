@@ -62,8 +62,30 @@ function audio(): AudioContext | null {
     const data = noise.getChannelData(0)
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1
   }
-  if (ctx.state === "suspended") void ctx.resume()
+  if (ctx.state === "suspended") {
+    void ctx.resume()
+    armUnlock()
+  }
   return ctx
+}
+
+let unlockArmed = false
+
+/**
+ * WebKit keeps audio paused until a click or key press, so sound started any other way (the
+ * tape hiss, which starts when the deck opens) would stay silent. Resume on the next one.
+ */
+function armUnlock() {
+  if (unlockArmed) return
+  unlockArmed = true
+  const unlock = () => {
+    unlockArmed = false
+    window.removeEventListener("pointerdown", unlock, true)
+    window.removeEventListener("keydown", unlock, true)
+    void ctx?.resume()
+  }
+  window.addEventListener("pointerdown", unlock, true)
+  window.addEventListener("keydown", unlock, true)
 }
 
 /** A short mechanical click: band-passed noise transient plus a tiny pitched body. */
@@ -157,7 +179,7 @@ export function settle(prefs: FeedbackPrefs = loadFeedbackPrefs()): void {
 
 /** A deck key going down: a short, firm mechanical click. */
 export function keyPress(prefs: FeedbackPrefs = loadFeedbackPrefs()): void {
-  if (prefs.sound) click(1700 * jitter(0.05), 650, 0.1)
+  if (prefs.sound) click(1700 * jitter(0.05), 650, 0.17)
   if (prefs.haptics) haptic("generic")
 }
 
@@ -236,16 +258,16 @@ const later = (ms: number, fn: () => void) => window.setTimeout(fn, ms)
 /** PLAY pressed: the key thunks down and the motor spins the tape up to speed. */
 export function tapeStart(prefs: FeedbackPrefs = loadFeedbackPrefs()): void {
   if (!prefs.sound) return
-  click(850, 190, 0.15)
-  motor(48, 118, 0.5, 0.05, 0.02)
-  noiseSwell({ freq: 700, freqTo: 1500, level: 0.025, attack: 0.08, hold: 0.15, release: 0.25, delay: 0.02 })
+  click(850, 190, 0.2)
+  motor(48, 118, 0.5, 0.08, 0.02)
+  noiseSwell({ freq: 700, freqTo: 1500, level: 0.04, attack: 0.08, hold: 0.15, release: 0.25, delay: 0.02 })
 }
 
 /** PAUSE / stop: a lighter key click and the motor winding down. */
 export function tapeStop(prefs: FeedbackPrefs = loadFeedbackPrefs()): void {
   if (!prefs.sound) return
-  click(1100, 260, 0.11)
-  motor(118, 36, 0.42, 0.04)
+  click(1100, 260, 0.16)
+  motor(118, 36, 0.42, 0.065)
 }
 
 /** Fast-forward / rewind whirr for a seek; `forward` sweeps up, back sweeps down. */
@@ -274,15 +296,15 @@ export function doorRelease(prefs: FeedbackPrefs = loadFeedbackPrefs()): void {
 /** A cassette sliding into the holder: a quick plastic clatter. */
 export function tapeClatter(prefs: FeedbackPrefs = loadFeedbackPrefs()): void {
   if (!prefs.sound) return
-  click(2400 * jitter(0.08), 900, 0.06)
-  later(32, () => click(2000 * jitter(0.08), 760, 0.05))
-  later(75, () => click(2800 * jitter(0.08), 1000, 0.04))
+  click(2400 * jitter(0.08), 900, 0.11)
+  later(32, () => click(2000 * jitter(0.08), 760, 0.09))
+  later(75, () => click(2800 * jitter(0.08), 1000, 0.07))
 }
 
 /** Running a finger along the tapes in the crate: a tiny tick per tape. */
 export function tapeFlick(prefs: FeedbackPrefs = loadFeedbackPrefs()): void {
   if (!prefs.sound) return
-  click(3200 * jitter(0.1), 1400, 0.022)
+  click(3200 * jitter(0.1), 1400, 0.045)
 }
 
 /** Taking a tape out of the crate. */
@@ -302,7 +324,7 @@ export function crateRattle(count: number, prefs: FeedbackPrefs = loadFeedbackPr
 
 // Tape hiss: a quiet, steady bed of high, soft noise while the tape plays.
 let hissNodes: { src: AudioBufferSourceNode; gain: GainNode } | null = null
-const HISS_LEVEL = 0.014
+const HISS_LEVEL = 0.032
 
 /** Fade the hiss in (playing) or out (paused, stopped, or the deck going away). */
 export function setTapeHiss(on: boolean, prefs: FeedbackPrefs = loadFeedbackPrefs()): void {

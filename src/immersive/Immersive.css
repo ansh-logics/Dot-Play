@@ -828,6 +828,277 @@ body,
   }
 }
 
+/* ---------- Cassette style ----------
+   The room goes dark and the tape deck's amber phosphor display takes over: a glowing
+   clock with its unlit segments faintly behind it, scanlines, and the playing tape with its
+   reels turning. The tape itself is drawn by components/now-playing/cassette.css. */
+
+.im-root[data-skin="cassette"] {
+  --phos: 255, 178, 72;
+  --paper: 241, 233, 214;
+  --im-ink: var(--phos);
+  --im-mono: "SF Mono", Menlo, Consolas, "Courier New", monospace;
+}
+
+.im-root[data-skin="cassette"] .im-backdrop {
+  background: radial-gradient(120% 90% at 50% 38%, #1c130b, #080604 68%, #020101);
+}
+.im-root[data-skin="cassette"] .im-backdrop-tint { display: none; }
+
+/* Faint scanlines over everything on the display, like the deck's screen up close. */
+.im-root[data-skin="cassette"] .im-content::after {
+  content: "";
+  position: absolute;
+  inset: -2vmin;
+  pointer-events: none;
+  background: repeating-linear-gradient(180deg, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px);
+  mix-blend-mode: multiply;
+}
+
+/* Phosphor glow, shared by the text below. */
+.im-cas-date,
+.im-cas-line,
+.im-cas-status,
+.im-cas-next span,
+.im-cas-empty,
+.im-cas-lit {
+  color: rgb(var(--phos));
+  text-shadow: 0 0 0.9vmin rgba(var(--phos), 0.55), 0 0 3.2vmin rgba(var(--phos), 0.22);
+}
+
+/* ---- Clock display ---- */
+
+.im-cas-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10vh 6vw 8vh;
+}
+
+.im-cas-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.im-cas-date {
+  font-family: var(--im-mono);
+  font-size: 2.3vmin;
+  font-weight: 600;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.im-cas-clock,
+.im-cas-corner-clock {
+  position: relative;
+  font-family: var(--im-mono);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.im-cas-clock { margin-top: 2vmin; font-size: 23vmin; }
+
+/* Every segment, unlit, behind the lit time: what makes it read as a real display. */
+.im-cas-unlit {
+  position: absolute;
+  inset: 0;
+  color: rgba(var(--phos), 0.07);
+}
+.im-cas-lit { position: relative; }
+.im-cas-colon { animation: im-cas-blink 2s steps(1) infinite; }
+@keyframes im-cas-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+.im-cas-line {
+  max-width: 80vw;
+  margin-top: 3.4vmin;
+  font-family: var(--im-mono);
+  font-size: 3.4vmin;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: center;
+  animation: im-line-in 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.im-cas-deck {
+  display: flex;
+  align-items: center;
+  gap: 5vmin;
+}
+
+.im-cas-tape,
+.im-cas-hero-tape {
+  flex: none;
+  transition: scale 1.2s ease, filter 1.2s ease;
+  filter: drop-shadow(0 3vmin 4vmin rgba(0, 0, 0, 0.6));
+}
+.im-cas-tape { width: 44vmin; }
+.im-cas-tape.is-paused,
+.im-cas-hero-tape.is-paused { scale: 0.95; filter: drop-shadow(0 2vmin 3vmin rgba(0, 0, 0, 0.6)) brightness(0.72); }
+
+.im-cas-info {
+  width: 46vmin;
+  min-width: 0;
+}
+
+.im-cas-title {
+  font-family: "American Typewriter", "Courier Prime", "Courier New", monospace;
+  font-size: 4.2vmin;
+  font-weight: 600;
+  line-height: 1.15;
+  color: rgb(var(--paper));
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.im-cas-artist {
+  margin-top: 1vmin;
+  font-family: "American Typewriter", "Courier Prime", "Courier New", monospace;
+  font-size: 2.4vmin;
+  letter-spacing: 0.04em;
+  color: rgba(var(--paper), 0.62);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.im-cas-status { margin-top: 2.6vmin; font-family: var(--im-mono); }
+.im-cas-status-line {
+  display: flex;
+  justify-content: space-between;
+  font-size: 1.8vmin;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.im-cas-status-line span:first-child:not(.is-on) { opacity: 0.6; }
+
+/* A bar-graph display: dashed rail, lit dashes for what's played. */
+.im-cas-bar {
+  position: relative;
+  height: 0.7vmin;
+  margin-top: 1.2vmin;
+  background: repeating-linear-gradient(90deg, rgba(var(--phos), 0.18) 0 0.7vmin, transparent 0.7vmin 1.1vmin);
+}
+.im-cas-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: repeating-linear-gradient(90deg, rgb(var(--phos)) 0 0.7vmin, transparent 0.7vmin 1.1vmin);
+  box-shadow: 0 0 1.2vmin rgba(var(--phos), 0.5);
+  transition: width 1s linear;
+}
+
+.im-cas-next {
+  margin-top: 2.2vmin;
+  font-family: var(--im-mono);
+  font-size: 1.8vmin;
+  color: rgba(var(--paper), 0.6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.im-cas-next span { letter-spacing: 0.14em; text-transform: uppercase; margin-right: 0.6em; }
+
+.im-cas-empty {
+  margin: auto 0 18vh;
+  font-family: var(--im-mono);
+  font-size: 3.4vmin;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+/* ---- Artwork display: the tape as the centrepiece ---- */
+
+.im-cas-art {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5vmin;
+}
+.im-cas-hero-tape { width: min(80vmin, 74vw); }
+.im-cas-art-meta {
+  width: min(64vmin, 80vw);
+  text-align: center;
+}
+.im-cas-art-meta .im-cas-artist { white-space: normal; }
+.im-cas-corner-clock {
+  position: absolute;
+  top: 5vmin;
+  right: 6vmin;
+  font-size: 6vmin;
+}
+
+/* ---- Lyrics display: the same phosphor screen ---- */
+
+.im-root[data-skin="cassette"] .im-lyric {
+  font-family: var(--im-mono);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.im-root[data-skin="cassette"] .im-lyric.is-active {
+  color: rgb(var(--phos));
+  text-shadow: 0 0 1vmin rgba(var(--phos), 0.6), 0 0 4vmin rgba(var(--phos), 0.25);
+}
+.im-root[data-skin="cassette"] .im-corner-time,
+.im-root[data-skin="cassette"] .im-corner-date {
+  font-family: var(--im-mono);
+  color: rgb(var(--phos));
+  text-shadow: 0 0 0.8vmin rgba(var(--phos), 0.5);
+}
+.im-root[data-skin="cassette"] .im-corner-date { text-transform: uppercase; letter-spacing: 0.2em; }
+.im-root[data-skin="cassette"] .im-mini-title,
+.im-root[data-skin="cassette"] .im-mini-artist {
+  font-family: "American Typewriter", "Courier Prime", "Courier New", monospace;
+  color: rgb(var(--paper));
+}
+.im-root[data-skin="cassette"] .im-mini-artist { color: rgba(var(--paper), 0.6); }
+
+/* ---- Other display shapes ---- */
+
+@media (orientation: portrait) {
+  .im-cas-stage { justify-content: flex-start; padding: 9vh 7vw 7vh; }
+  .im-cas-clock { font-size: 27vmin; }
+  .im-cas-date { font-size: 3.2vmin; }
+  .im-cas-line { max-width: 86vw; font-size: 4.6vmin; }
+  .im-cas-deck {
+    flex-direction: column;
+    gap: 5vh;
+    width: 86vw;
+    margin-top: auto;
+    text-align: center;
+  }
+  .im-cas-tape { width: 80vw; }
+  .im-cas-info { width: 80vw; }
+  .im-cas-title { font-size: 5.4vmin; }
+  .im-cas-artist { font-size: 3.4vmin; }
+  .im-cas-status-line,
+  .im-cas-next { font-size: 2.6vmin; }
+  .im-cas-hero-tape { width: 86vw; }
+}
+
+@media (min-aspect-ratio: 2/1) {
+  .im-cas-stage {
+    flex-direction: row;
+    justify-content: center;
+    gap: 8vw;
+    padding: 0 8vw;
+  }
+  .im-cas-display { align-items: flex-start; }
+  .im-cas-clock { font-size: 30vmin; }
+  .im-cas-line { max-width: 40vw; text-align: left; }
+  .im-cas-deck { flex-direction: column; align-items: flex-start; gap: 4vmin; }
+  .im-cas-tape { width: 36vmin; }
+}
+
 /* No text selection or copying anywhere in the app: dragging tapes, sliders or the style
    wheel never highlights text, and images can't be dragged out. Fields you type in stay
    selectable so editing still works. */

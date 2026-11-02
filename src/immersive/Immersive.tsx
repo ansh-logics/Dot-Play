@@ -8,6 +8,7 @@ import { useArtworkPalette } from "../lib/useArtworkPalette";
 import { usePosition } from "../tray/usePosition";
 import { formatTime, media, type NowPlaying } from "../tray/types";
 import { Cover } from "./Cover";
+import { CassetteArt, CassetteStage } from "./CassetteSaver";
 import {
   SCREEN,
   clockParts,
@@ -95,11 +96,20 @@ export function Immersive() {
     <div className={`im-root${controls.visible ? "" : " is-idle"}`} data-skin={skin} data-view={shown} style={tint}>
       <Backdrop art={art} skin={skin} />
       <div className="im-content">
-        {shown === "stage" && (
-          <Stage np={np} now={now} position={position} skin={skin} art={art} zoom={zoom} next={state?.next ?? null} lyrics={inlineLyric ? lyrics : null} />
-        )}
+        {shown === "stage" &&
+          (skin === "cassette" ? (
+            <CassetteStage np={np} now={now} position={position} next={state?.next ?? null} lyrics={inlineLyric ? lyrics : null} />
+          ) : (
+            <Stage np={np} now={now} position={position} skin={skin} art={art} zoom={zoom} next={state?.next ?? null} lyrics={inlineLyric ? lyrics : null} />
+          ))}
         {shown === "lyrics" && np && <LyricsScreen np={np} now={now} position={position} lyrics={lyrics} art={art} zoom={zoom} />}
-        {shown === "art" && np && <ArtScreen np={np} now={now} position={position} skin={skin} art={art} zoom={zoom} />}
+        {shown === "art" &&
+          np &&
+          (skin === "cassette" ? (
+            <CassetteArt np={np} now={now} position={position} />
+          ) : (
+            <ArtScreen np={np} now={now} position={position} skin={skin} art={art} zoom={zoom} />
+          ))}
       </div>
       <Controls np={np} view={view} onView={setView} displays={displays} />
     </div>
@@ -133,7 +143,7 @@ function useControlsReveal() {
 function Backdrop({ art, skin }: { art: string | null; skin: PlayerSkinId }) {
   return (
     <div className="im-backdrop" aria-hidden="true">
-      {art && skin !== "nothing" && <img className="im-backdrop-art" src={art} alt="" referrerPolicy="no-referrer" />}
+      {art && skin !== "nothing" && skin !== "cassette" && <img className="im-backdrop-art" src={art} alt="" referrerPolicy="no-referrer" />}
       <div className="im-backdrop-tint" />
       <div className="im-backdrop-vignette" />
     </div>

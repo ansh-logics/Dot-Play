@@ -11,7 +11,7 @@ import {
   useTransform,
   type PanInfo,
 } from "motion/react";
-import { ChevronDown, Disc3, Expand, MessageSquareQuote, MonitorPlay, Shrink } from "lucide-react";
+import { ChevronDown, Disc3, Expand, ListMusic, MessageSquareQuote, MonitorPlay, Shrink } from "lucide-react";
 import { openImmersive } from "../../lib/immersive";
 import { isTauriEnvironment } from "../../lib/search";
 import "./NowPlaying.css";
@@ -386,7 +386,6 @@ function NowPlayingScreen(props: NowPlayingProps) {
         onSelect={chooseSkin}
         onClose={closeWheel}
         reduceMotion={reduceMotion}
-        artworkUrl={art?.url}
       />
 
       <header className="np-topbar">
@@ -411,6 +410,19 @@ function NowPlayingScreen(props: NowPlayingProps) {
         >
           <MessageSquareQuote size={20} />
         </button>
+        {onDeck && (
+          // The deck has no bottom card: the queue, like, shuffle and repeat live behind this.
+          <button
+            type="button"
+            className={`np-icon-btn ${sheetOpen ? "is-active" : ""}`}
+            onClick={toggleSheet}
+            aria-pressed={sheetOpen}
+            aria-label="Queue and controls"
+            title="Queue, like, shuffle and repeat"
+          >
+            <ListMusic size={19} />
+          </button>
+        )}
         <button
           type="button"
           // No "active" glass: the icon already shows the state; only hover gets a background.
@@ -475,7 +487,10 @@ function NowPlayingScreen(props: NowPlayingProps) {
                   onNext={props.onNext}
                   onPrevious={props.onPrevious}
                   onSeek={props.onSeek}
-                  onEject={() => setSheet(true)}
+                  volume={props.volume}
+                  isMuted={props.isMuted}
+                  onVolumeChange={props.onVolumeChange}
+                  onToggleMute={props.onToggleMute}
                   upcoming={session.upcoming}
                   onPlayTrack={props.onSelectTrack}
                   screen={
