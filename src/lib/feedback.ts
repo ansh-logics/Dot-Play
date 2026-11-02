@@ -9,12 +9,10 @@ import { isTauriEnvironment } from "./search"
 export interface FeedbackPrefs {
   sound: boolean
   haptics: boolean
-  /** A faint tape hiss under the music in the Cassette style. */
-  hiss: boolean
 }
 
 const STORAGE_KEY = "dot_feedback"
-const DEFAULT_PREFS: FeedbackPrefs = { sound: true, haptics: true, hiss: true }
+const DEFAULT_PREFS: FeedbackPrefs = { sound: true, haptics: true }
 
 export function loadFeedbackPrefs(): FeedbackPrefs {
   try {
@@ -24,14 +22,11 @@ export function loadFeedbackPrefs(): FeedbackPrefs {
     return {
       sound: typeof p.sound === "boolean" ? p.sound : DEFAULT_PREFS.sound,
       haptics: typeof p.haptics === "boolean" ? p.haptics : DEFAULT_PREFS.haptics,
-      hiss: typeof p.hiss === "boolean" ? p.hiss : DEFAULT_PREFS.hiss,
     }
   } catch {
     return { ...DEFAULT_PREFS }
   }
 }
-
-const prefListeners = new Set<() => void>()
 
 export function saveFeedbackPrefs(prefs: FeedbackPrefs): void {
   try {
@@ -39,14 +34,8 @@ export function saveFeedbackPrefs(prefs: FeedbackPrefs): void {
   } catch {
     // ignore
   }
-  prefListeners.forEach((fn) => fn())
 }
 
-/** Notifies when the prefs change (the deck turns its hiss on or off right away). */
-export function subscribeFeedbackPrefs(listener: () => void): () => void {
-  prefListeners.add(listener)
-  return () => prefListeners.delete(listener)
-}
 
 // ---- Sound -------------------------------------------------------------------
 
@@ -72,8 +61,8 @@ function audio(): AudioContext | null {
 let unlockArmed = false
 
 /**
- * WebKit keeps audio paused until a click or key press, so sound started any other way (the
- * tape hiss, which starts when the deck opens) would stay silent. Resume on the next one.
+ * WebKit keeps audio paused until a click or key press, so a sound started any other way
+ * (the deck's motor when a song starts by itself) would stay silent. Resume on the next one.
  */
 function armUnlock() {
   if (unlockArmed) return
@@ -198,7 +187,7 @@ export function clunk(prefs: FeedbackPrefs = loadFeedbackPrefs()): void {
 
 let tapeNoise: AudioBuffer | null = null
 
-/** Two seconds of white noise, looped for hiss and winding. */
+/** Two seconds of white noise, looped for the winding and motor sounds. */
 function longNoise(ac: AudioContext): AudioBuffer {
   if (!tapeNoise) {
     tapeNoise = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate)
@@ -278,12 +267,11 @@ export function tapeWind(forward: boolean, prefs: FeedbackPrefs = loadFeedbackPr
   later(560, () => click(1400, 420, 0.07)) // the wind button pops back up
 }
 
-/** The end of the tape: clear leader hisses past the head, then the auto-stop clacks. */
+/** The end of the tape: the auto-stop clacks. */
 export function tapeRunOut(prefs: FeedbackPrefs = loadFeedbackPrefs()): void {
   if (!prefs.sound) return
-  noiseSwell({ freq: 4200, q: 0.6, level: 0.035, attack: 0.15, hold: 0.25, release: 0.2 })
-  later(600, () => click(700, 170, 0.16))
-  later(680, () => click(1300, 380, 0.08))
+  later(300, () => click(700, 170, 0.16))
+  later(380, () => click(1300, 380, 0.08))
 }
 
 /** The door's latch letting go. */
@@ -320,42 +308,4 @@ export function crateRattle(count: number, prefs: FeedbackPrefs = loadFeedbackPr
   for (let i = 0; i < Math.min(count, 6); i++) {
     later(i * 42 + Math.random() * 12, () => click(2200 + Math.random() * 1200, 900, 0.035))
   }
-}
-
-// Tape hiss: a quiet, steady bed of high, soft noise while the tape plays.
-let hissNodes: { src: AudioBufferSourceNode; gain: GainNode } | null = null
-const HISS_LEVEL = 0.032
-
-/** Fade the hiss in (playing) or out (paused, stopped, or the deck going away). */
-export function setTapeHiss(on: boolean, prefs: FeedbackPrefs = loadFeedbackPrefs()): void {
-  const ac = audio()
-  if (!ac) return
-  const t = ac.currentTime
-  if (on && prefs.hiss) {
-    if (!hissNodes) {
-      const src = ac.createBufferSource()
-      src.buffer = longNoise(ac)
-      src.loop = true
-      const hp = ac.createBiquadFilter()
-      hp.type = "highpass"
-      hp.frequency.value = 2800
-      const lp = ac.createBiquadFilter()
-      lp.type = "lowpass"
-      lp.frequency.value = 9500
-      const gain = ac.createGain()
-      gain.gain.value = 0.0001
-      src.connect(hp).connect(lp).connect(gain).connect(ac.destination)
-      src.start()
-      hissNodes = { src, gain }
-    }
-    hissNodes.gain.gain.cancelScheduledValues(t)
-    hissNodes.gain.gain.setTargetAtTime(HISS_LEVEL, t, 0.25)
-    return
-  }
-  if (!hissNodes) return
-  const nodes = hissNodes
-  hissNodes = null
-  nodes.gain.gain.cancelScheduledValues(t)
-  nodes.gain.gain.setTargetAtTime(0.0001, t, 0.12)
-  nodes.src.stop(t + 0.8)
 }

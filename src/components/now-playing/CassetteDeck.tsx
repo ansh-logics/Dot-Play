@@ -10,8 +10,6 @@ import {
   crateRattle,
   doorRelease,
   keyPress,
-  setTapeHiss,
-  subscribeFeedbackPrefs,
   tapeClatter,
   tapeFlick,
   tapePickUp,
@@ -139,7 +137,7 @@ export function CassetteDeck(props: CassetteDeckProps) {
     if (crateTimer.current) window.clearTimeout(crateTimer.current);
   }, []);
 
-  // ---- Sound: the tape runs (motor + hiss) only while playing with the door shut ----
+  // ---- Sound: the motor runs only while playing with the door shut ----
   const open = doorOpen || hoverOpen || ejected;
   const running = isPlaying && !open;
   const wasRunning = useRef(running);
@@ -149,11 +147,7 @@ export function CassetteDeck(props: CassetteDeckProps) {
       else tapeStop();
       wasRunning.current = running;
     }
-    setTapeHiss(running);
   }, [running]);
-  // Follow the hiss setting live, and silence the tape when the deck goes away.
-  useEffect(() => subscribeFeedbackPrefs(() => setTapeHiss(wasRunning.current)), []);
-  useEffect(() => () => setTapeHiss(false), []);
 
   const wasOpen = useRef(open);
   useEffect(() => {

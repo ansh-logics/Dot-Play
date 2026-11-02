@@ -84,12 +84,6 @@ export function SettingsModal({
           onToggle={() => onFeedbackChange({ sound: !feedbackPrefs.sound })}
         />
         <SwitchRow
-          label="Tape hiss"
-          description="A faint hiss under the music while the Cassette deck plays"
-          checked={feedbackPrefs.hiss}
-          onToggle={() => onFeedbackChange({ hiss: !feedbackPrefs.hiss })}
-        />
-        <SwitchRow
           label="Trackpad haptics"
           description="Feel each notch on a Force Touch trackpad"
           checked={feedbackPrefs.haptics}
