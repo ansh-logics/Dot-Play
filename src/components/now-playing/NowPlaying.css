@@ -910,65 +910,152 @@
   z-index: 5;
 }
 
+/* Every size below is in --np-wheel-u (about 1px in a typical window), so the knob and its
+   labels shrink together in a small window and grow a little on a big display. */
 .np-wheel {
+  --np-wheel-u: clamp(0.66px, min(0.112vh, 0.078vw), 1.12px);
   --np-wheel-ink: 255, 255, 255;
+  --np-wheel-accent: var(--accent-red, #d71921);
   position: absolute;
   left: 0;
   top: 50%;
-  width: 440px;
-  height: 460px;
-  margin-top: -230px;
+  width: calc(440 * var(--np-wheel-u));
+  height: calc(460 * var(--np-wheel-u));
+  margin-top: calc(-230 * var(--np-wheel-u));
   z-index: 6;
   touch-action: none;
   cursor: grab;
   user-select: none;
 }
 
-.np-wheel:active { cursor: grabbing; }
+.np-wheel.is-pressed { cursor: grabbing; }
 
 /* Keeps the labels legible over busy artwork without a hard panel edge. */
 .np-wheel-scrim {
   position: absolute;
-  inset: -60px auto -60px 0;
-  width: 560px;
+  inset: calc(-60 * var(--np-wheel-u)) auto calc(-60 * var(--np-wheel-u)) 0;
+  width: calc(560 * var(--np-wheel-u));
   pointer-events: none;
-  background: radial-gradient(60% 55% at 0% 50%, rgba(0, 0, 0, 0.45), transparent 100%);
+  background: radial-gradient(60% 55% at 0% 50%, rgba(0, 0, 0, 0.5), transparent 100%);
 }
 
-/* Disc mostly off-screen. A static frosted look rather than a live backdrop-filter:
-   re-blurring behind moving labels every frame is costly and prone to WebKit seams. */
+/* The knob, mostly off-screen. The body and its lighting stay put; only the rotor turns,
+   the way light sits still on a real dial while it spins. No backdrop-filter: re-blurring
+   behind moving labels every frame is costly and prone to WebKit seams. */
 .np-wheel-disc {
   position: absolute;
-  left: -150px;
+  left: calc(-150 * var(--np-wheel-u));
   top: 50%;
-  width: 240px;
-  height: 240px;
-  margin-top: -120px;
+  width: calc(240 * var(--np-wheel-u));
+  height: calc(240 * var(--np-wheel-u));
+  margin-top: calc(-120 * var(--np-wheel-u));
   border-radius: 50%;
-  background:
-    radial-gradient(120% 120% at 70% 30%, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.06) 60%),
-    rgba(20, 20, 24, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  background: #1a1a1e;
+  box-shadow:
+    0 calc(18 * var(--np-wheel-u)) calc(40 * var(--np-wheel-u)) rgba(0, 0, 0, 0.55),
+    0 calc(3 * var(--np-wheel-u)) calc(8 * var(--np-wheel-u)) rgba(0, 0, 0, 0.45),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  transition: transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-/* Selection indicator on the disc's rim; glow is painted, not a box-shadow. */
-.np-wheel-disc::after {
-  content: "";
+/* Pressing the knob seats it a touch, like a finger pushing on a real one. */
+.np-wheel.is-pressed .np-wheel-disc { transform: scale(0.985); }
+
+.np-wheel-rotor {
   position: absolute;
-  right: 6px;
-  top: 50%;
-  width: 18px;
-  height: 18px;
-  margin-top: -9px;
+  inset: 0;
   border-radius: 50%;
-  background: radial-gradient(circle, var(--accent-red, #d71921) 0 3px, rgba(215, 25, 33, 0.35) 3.5px, transparent 9px);
+  /* Brushed aluminium: a fine spun-metal sheen around the centre. */
+  background:
+    repeating-radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 3px),
+    conic-gradient(
+      from 0deg,
+      #6d6e74, #a6a8ae 8%, #5d5e63 20%, #9a9ca2 33%, #55565b 46%,
+      #a2a4aa 58%, #5f6065 71%, #9c9ea4 84%, #6d6e74
+    );
+  will-change: transform;
+}
+
+/* Grip ridges around the edge. */
+.np-wheel-knurl {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: repeating-conic-gradient(
+    from 0deg,
+    rgba(0, 0, 0, 0.42) 0deg 1.1deg,
+    rgba(255, 255, 255, 0.16) 1.1deg 1.5deg,
+    rgba(0, 0, 0, 0) 1.5deg 2.125deg
+  );
+  -webkit-mask: radial-gradient(circle, transparent 0 calc(50% - 11 * var(--np-wheel-u)), #000 calc(50% - 10 * var(--np-wheel-u)));
+  mask: radial-gradient(circle, transparent 0 calc(50% - 11 * var(--np-wheel-u)), #000 calc(50% - 10 * var(--np-wheel-u)));
+}
+
+/* One engraved mark per style, lined up with the pawl when a style is selected (17° apart). */
+.np-wheel-ticks {
+  position: absolute;
+  inset: calc(14 * var(--np-wheel-u));
+  border-radius: 50%;
+  background: repeating-conic-gradient(
+    from 89.4deg,
+    rgba(255, 255, 255, 0.75) 0deg 1.2deg,
+    transparent 1.2deg 17deg
+  );
+  -webkit-mask: radial-gradient(circle, transparent 0 calc(50% - 16 * var(--np-wheel-u)), #000 calc(50% - 15 * var(--np-wheel-u)));
+  mask: radial-gradient(circle, transparent 0 calc(50% - 16 * var(--np-wheel-u)), #000 calc(50% - 15 * var(--np-wheel-u)));
+  opacity: 0.85;
+}
+
+/* A slightly dished centre cap, separated from the ring by a fine groove. */
+.np-wheel-cap {
+  position: absolute;
+  inset: calc(44 * var(--np-wheel-u));
+  border-radius: 50%;
+  background:
+    repeating-radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.03) 0 1px, transparent 1px 2.5px),
+    conic-gradient(from 20deg, #7a7c82, #b4b6bc 12%, #6a6b70 30%, #aeb0b6 50%, #66676c 70%, #b0b2b8 88%, #7a7c82);
+  box-shadow:
+    inset 0 calc(2 * var(--np-wheel-u)) calc(4 * var(--np-wheel-u)) rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(0, 0, 0, 0.35),
+    0 1px 0 1px rgba(255, 255, 255, 0.12);
+}
+
+/* Fixed lighting over the rotor: a soft key light from the upper right, shade lower left,
+   and a crisp bevel on the rim. */
+.np-wheel-glare {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  background:
+    radial-gradient(70% 55% at 72% 22%, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(80% 70% at 25% 85%, rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0) 70%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -2px 3px rgba(0, 0, 0, 0.4);
+  mix-blend-mode: soft-light;
+}
+
+/* The pawl that marks the selection. It pivots on its tail and gets kicked by each notch. */
+.np-wheel-pawl {
+  position: absolute;
+  right: calc(-6 * var(--np-wheel-u));
+  top: 50%;
+  width: calc(22 * var(--np-wheel-u));
+  height: calc(8 * var(--np-wheel-u));
+  margin-top: calc(-4 * var(--np-wheel-u));
+  transform-origin: 100% 50%;
+  border-radius: calc(4 * var(--np-wheel-u)) 999px 999px calc(4 * var(--np-wheel-u));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--np-wheel-accent) 70%, #fff), var(--np-wheel-accent) 55%, color-mix(in srgb, var(--np-wheel-accent) 70%, #000));
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.6),
+    0 0 calc(10 * var(--np-wheel-u)) color-mix(in srgb, var(--np-wheel-accent) 55%, transparent);
 }
 
 /* Origin sits at the disc centre; each item is rotated then pushed out along the arc. */
 .np-wheel-list {
   position: absolute;
-  left: -30px;
+  left: calc(-30 * var(--np-wheel-u));
   top: 50%;
   margin: 0;
   padding: 0;
@@ -983,16 +1070,126 @@
   margin-top: -0.6em;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: calc(10 * var(--np-wheel-u));
   white-space: nowrap;
   transform-origin: 0 50%;
   font-family: var(--font-body), system-ui, sans-serif;
-  font-size: 40px;
+  font-size: calc(40 * var(--np-wheel-u));
   font-weight: 600;
   line-height: 1.2;
   letter-spacing: -0.01em;
   color: rgb(var(--np-wheel-ink)); /* label colour/blur are driven per frame in SkinWheel */
   cursor: pointer;
+}
+
+/* Each style's little preview, with your cover in it. Off the pointer it's an icon; at the
+   pointer it grows to full size (scale is driven per frame in SkinWheel). */
+.np-wheel-thumb {
+  position: relative;
+  flex: none;
+  width: 1.15em;
+  height: 1.15em;
+  border-radius: 0.2em;
+}
+
+.np-wheel-thumb-art {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--np-thumb-art) center / cover no-repeat, linear-gradient(135deg, #4a4a52, #26262b);
+}
+
+/* Apple: the cover as a glossy rounded tile. */
+.np-wheel-thumb.is-apple {
+  box-shadow: 0 0.06em 0.18em rgba(0, 0, 0, 0.5);
+}
+.np-wheel-thumb.is-apple::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0) 45%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+}
+
+/* Nothing: the cover in dot-matrix on a black panel, with the red dot. */
+.np-wheel-thumb.is-nothing {
+  background: #0b0b0d;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2), 0 0.06em 0.18em rgba(0, 0, 0, 0.5);
+}
+.np-wheel-thumb.is-nothing .np-wheel-thumb-art {
+  inset: 0.1em;
+  border-radius: 0.08em;
+  filter: grayscale(1) contrast(1.3);
+  -webkit-mask: radial-gradient(circle, #000 0.028em, transparent 0.034em) 0 0 / 0.085em 0.085em;
+  mask: radial-gradient(circle, #000 0.028em, transparent 0.034em) 0 0 / 0.085em 0.085em;
+}
+.np-wheel-thumb.is-nothing::after {
+  content: "";
+  position: absolute;
+  top: 0.08em;
+  right: 0.08em;
+  width: 0.13em;
+  height: 0.13em;
+  border-radius: 50%;
+  background: var(--accent-red, #d71921);
+}
+
+/* Vinyl: a record, the cover as its centre label. */
+.np-wheel-thumb.is-vinyl {
+  border-radius: 50%;
+  background:
+    conic-gradient(from 30deg, transparent 0 20deg, rgba(255, 248, 235, 0.16) 40deg, transparent 60deg 200deg, rgba(255, 248, 235, 0.12) 220deg, transparent 240deg),
+    repeating-radial-gradient(circle, #141210 0 0.018em, #1d1a16 0.022em 0.036em);
+  box-shadow: 0 0.06em 0.18em rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.np-wheel-thumb.is-vinyl .np-wheel-thumb-art {
+  inset: 31%;
+  border-radius: 50%;
+}
+.np-wheel-thumb.is-vinyl::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0.07em;
+  height: 0.07em;
+  margin: -0.035em 0 0 -0.035em;
+  border-radius: 50%;
+  background: #0d0b09;
+}
+
+/* Cassette: a tape shell with two reels and the cover as its label. */
+.np-wheel-thumb.is-cassette {
+  height: 0.78em;
+  border-radius: 0.08em;
+  background:
+    radial-gradient(circle at 31% 64%, #111 0 0.055em, #d9d4c7 0.06em 0.11em, transparent 0.115em),
+    radial-gradient(circle at 69% 64%, #111 0 0.055em, #d9d4c7 0.06em 0.11em, transparent 0.115em),
+    linear-gradient(180deg, #3d3d44, #26262b);
+  box-shadow: 0 0.06em 0.18em rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+.np-wheel-thumb.is-cassette .np-wheel-thumb-art {
+  inset: 0.08em 0.1em auto;
+  height: 0.2em;
+  border-radius: 0.03em;
+}
+
+/* "Cassette is coming soon", just under the pointer after the wheel knocks against it. */
+.np-wheel-hint {
+  position: absolute;
+  left: calc(120 * var(--np-wheel-u));
+  top: calc(50% + 38 * var(--np-wheel-u));
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-family: var(--font-body), system-ui, sans-serif;
+  font-size: max(11px, calc(12 * var(--np-wheel-u)));
+  font-weight: 500;
+  white-space: nowrap;
+  color: rgba(var(--np-wheel-ink), 0.92);
+  background: rgba(0, 0, 0, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(var(--np-wheel-ink), 0.16);
+  pointer-events: none;
 }
 
 .np-wheel-soon {
@@ -1146,9 +1343,31 @@
   box-shadow: 0 0 10px rgba(215, 25, 33, 0.65);
 }
 
+/* Matte black knob, a ring of dots for the notches, a flat red pawl. */
 .np-root[data-skin="nothing"] .np-wheel-disc {
   background: #0b0b0d;
-  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 calc(14 * var(--np-wheel-u)) calc(30 * var(--np-wheel-u)) rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+.np-root[data-skin="nothing"] .np-wheel-rotor {
+  background: radial-gradient(circle at 50% 50%, #141417, #0b0b0d 70%);
+}
+.np-root[data-skin="nothing"] .np-wheel-knurl {
+  background: repeating-conic-gradient(from 0deg, rgba(255, 255, 255, 0.08) 0deg 0.5deg, transparent 0.5deg 4.25deg);
+}
+.np-root[data-skin="nothing"] .np-wheel-ticks {
+  background: repeating-conic-gradient(from 89deg, #fff 0deg 2deg, transparent 2deg 17deg);
+  -webkit-mask: radial-gradient(circle, transparent 0 calc(50% - 7 * var(--np-wheel-u)), #000 calc(50% - 6.5 * var(--np-wheel-u)) calc(50% - 1 * var(--np-wheel-u)), transparent calc(50% - 0.5 * var(--np-wheel-u)));
+  mask: radial-gradient(circle, transparent 0 calc(50% - 7 * var(--np-wheel-u)), #000 calc(50% - 6.5 * var(--np-wheel-u)) calc(50% - 1 * var(--np-wheel-u)), transparent calc(50% - 0.5 * var(--np-wheel-u)));
+  opacity: 0.9;
+}
+.np-root[data-skin="nothing"] .np-wheel-cap {
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.14) 0 1px, transparent 1.5px) 0 0 / calc(8 * var(--np-wheel-u)) calc(8 * var(--np-wheel-u)), #0e0e11;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+.np-root[data-skin="nothing"] .np-wheel-glare { display: none; }
+.np-root[data-skin="nothing"] .np-wheel-pawl {
+  background: var(--np-wheel-accent);
+  border-radius: 999px;
   box-shadow: none;
 }
 .np-root[data-skin="nothing"] .np-wheel-item {
@@ -1225,18 +1444,48 @@
 .np-root[data-skin="vinyl"] { --np-lyric-ink: 239, 227, 203; }
 .np-root[data-skin="vinyl"] .np-interlude-dots i { background: rgb(var(--np-cream)); }
 
-.np-root[data-skin="vinyl"] .np-wheel { --np-wheel-ink: 239, 227, 203; }
+.np-root[data-skin="vinyl"] .np-wheel { --np-wheel-ink: 239, 227, 203; --np-wheel-accent: rgb(var(--np-cream)); }
 .np-root[data-skin="vinyl"] .np-wheel-item { font-family: var(--font-serif); font-weight: 400; }
+/* A small record: grooves on the rotor, the sheen stays where the light is, cream label. */
 .np-root[data-skin="vinyl"] .np-wheel-disc {
+  background: #15120f;
+  box-shadow:
+    0 calc(16 * var(--np-wheel-u)) calc(36 * var(--np-wheel-u)) rgba(0, 0, 0, 0.6),
+    inset 0 0 0 1px rgba(var(--np-cream), 0.16);
+}
+.np-root[data-skin="vinyl"] .np-wheel-rotor {
   background:
     repeating-radial-gradient(
       circle at 50% 50%,
       rgba(255, 255, 255, 0) 0 2.2px,
-      rgba(255, 248, 235, 0.028) 2.6px,
+      rgba(255, 248, 235, 0.035) 2.6px,
       rgba(255, 255, 255, 0) 3.2px
     ),
     #15120f;
-  border-color: rgba(var(--np-cream), 0.18);
+}
+.np-root[data-skin="vinyl"] .np-wheel-knurl { display: none; }
+.np-root[data-skin="vinyl"] .np-wheel-ticks {
+  background: repeating-conic-gradient(from 89.4deg, rgba(var(--np-cream), 0.55) 0deg 1.2deg, transparent 1.2deg 17deg);
+}
+.np-root[data-skin="vinyl"] .np-wheel-cap {
+  inset: calc(70 * var(--np-wheel-u));
+  background:
+    radial-gradient(circle, #15120f 0 calc(4 * var(--np-wheel-u)), transparent calc(4.5 * var(--np-wheel-u))),
+    linear-gradient(90deg, transparent 47%, rgba(21, 18, 15, 0.35) 47% 53%, transparent 53%),
+    radial-gradient(circle, #e4d4b3, #cdb68c 70%, #b79d70);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+.np-root[data-skin="vinyl"] .np-wheel-glare {
+  background: conic-gradient(
+    from 30deg,
+    transparent 0deg 20deg,
+    rgba(255, 248, 235, 0.12) 40deg,
+    transparent 60deg 200deg,
+    rgba(255, 248, 235, 0.09) 220deg,
+    transparent 240deg
+  );
+  box-shadow: inset 0 1px 0 rgba(var(--np-cream), 0.2);
+  mix-blend-mode: normal;
 }
 
 /* ---------- Theme change: circle reveal from the wheel ---------- */

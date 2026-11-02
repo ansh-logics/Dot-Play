@@ -61,19 +61,3 @@ const N = PLAYER_SKINS.length
 
 /** Wraps any (possibly negative) wheel position to a skin index. */
 export const wrapIndex = (i: number) => ((Math.round(i) % N) + N) % N
-
-/**
- * The wheel loops, so `pos` is unbounded. Returns the integer position closest to `pos`
- * whose skin is selectable, so snapping never spins the long way round.
- */
-export function nearestSelectablePosition(pos: number): number {
-  const base = Math.round(pos)
-  for (let step = 0; step <= N; step++) {
-    // Prefer the side `pos` is already leaning towards on ties.
-    const order = pos >= base ? [base + step, base - step] : [base - step, base + step]
-    for (const candidate of order) {
-      if (!PLAYER_SKINS[wrapIndex(candidate)].soon) return candidate
-    }
-  }
-  return base
-}

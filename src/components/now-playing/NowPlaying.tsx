@@ -382,6 +382,7 @@ function NowPlayingScreen(props: NowPlayingProps) {
         onSelect={chooseSkin}
         onClose={closeWheel}
         reduceMotion={reduceMotion}
+        artworkUrl={art?.url}
       />
 
       <header className="np-topbar">

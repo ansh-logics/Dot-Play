@@ -87,7 +87,7 @@ function click(freq: number, body: number, level: number) {
 
 // ---- Haptics -----------------------------------------------------------------
 
-function haptic(pattern: "alignment" | "level") {
+function haptic(pattern: "alignment" | "level" | "generic") {
   if (!isTauriEnvironment()) return
   invoke("perform_haptic", { pattern }).catch(() => {
     // Not available (older build / non-mac); feedback is best-effort.
@@ -99,13 +99,41 @@ function haptic(pattern: "alignment" | "level") {
 let lastTick = 0
 const MIN_TICK_GAP_MS = 28
 
-/** One detent passed. Throttled so a fast flick ratchets instead of buzzing. */
-export function tick(prefs: FeedbackPrefs = loadFeedbackPrefs()): void {
+/** Below this gap a haptic per notch turns into a buzz, so a fast spin only clicks. */
+const MIN_HAPTIC_GAP_MS = 45
+let lastHaptic = 0
+
+/** Up to ±`amount` of random variation, so repeated clicks don't sound machine-made. */
+const jitter = (amount: number) => 1 + (Math.random() * 2 - 1) * amount
+
+/**
+ * One detent passed. `speed` is in notches per second: a fast spin clicks lighter and
+ * higher, a slow turn heavier and lower, like a real ratchet. Throttled so a fast flick
+ * ratchets instead of buzzing.
+ */
+export function tick(speed = 0, prefs: FeedbackPrefs = loadFeedbackPrefs()): void {
   const now = performance.now()
   if (now - lastTick < MIN_TICK_GAP_MS) return
   lastTick = now
-  if (prefs.sound) click(3200, 1800, 0.07)
-  if (prefs.haptics) haptic("alignment")
+  const fast = Math.min(1, Math.max(0, (speed - 3) / 20)) // 0 slow … 1 flung
+  if (prefs.sound) click(2700 * (1 + fast * 0.35) * jitter(0.06), 1500 * (1 + fast * 0.3), 0.085 * (1 - fast * 0.45) * jitter(0.12))
+  if (prefs.haptics && now - lastHaptic >= MIN_HAPTIC_GAP_MS) {
+    lastHaptic = now
+    haptic("alignment")
+  }
+}
+
+/** Hit a stop (a style that isn't out yet): two dull, low knocks. */
+export function reject(prefs: FeedbackPrefs = loadFeedbackPrefs()): void {
+  lastTick = performance.now()
+  if (prefs.sound) {
+    click(900, 260, 0.16)
+    window.setTimeout(() => click(760, 220, 0.11), 85)
+  }
+  if (prefs.haptics) {
+    haptic("generic")
+    window.setTimeout(() => haptic("generic"), 85)
+  }
 }
 
 /** The control came to rest on a new value: a slightly heavier, lower click. */
