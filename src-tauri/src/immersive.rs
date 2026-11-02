@@ -87,7 +87,9 @@ fn windows(app: &AppHandle) -> Vec<WebviewWindow> {
         .collect()
 }
 
-/// Opens immersive mode on every display. Must run on the main thread.
+/// Opens immersive mode on every chosen display. Must NOT run on the main thread: on Windows,
+/// creating a webview window from the main thread (an event handler or `run_on_main_thread`)
+/// deadlocks, so the windows are built here and only shown from the main thread.
 fn open(app: &AppHandle, trigger: Trigger) {
     {
         let mut session = SESSION.lock().unwrap();
@@ -95,7 +97,7 @@ fn open(app: &AppHandle, trigger: Trigger) {
             // Asking for it by hand while the idle version shows turns it into the manual one.
             if trigger == Trigger::Manual && current.trigger == Trigger::Idle {
                 current.trigger = Trigger::Manual;
-                if let Some(first) = windows(app).first() {
+                if let Some(first) = windows(app).into_iter().min_by_key(|w| w.label().to_string()) {
                     let _ = first.set_focus();
                 }
             }
@@ -116,6 +118,7 @@ fn open(app: &AppHandle, trigger: Trigger) {
         if on.is_empty() { all.iter().enumerate().take(1).collect() } else { on }
     };
     let count = shown.len();
+    let mut built = Vec::new();
     for (index, monitor) in shown {
         let info = ScreenInfo {
             index,
@@ -123,31 +126,37 @@ fn open(app: &AppHandle, trigger: Trigger) {
             screen_key: screen_key(monitor),
             trigger,
         };
-        if let Err(error) = build_window(app, monitor, &info) {
-            log::warn!("Immersive window {index} could not be created: {error}");
+        match build_window(app, monitor, &info) {
+            Ok(window) => built.push(window),
+            Err(error) => log::warn!("Immersive window {index} could not be created: {error}"),
         }
     }
 
-    let windows = windows(app);
-    if windows.is_empty() {
+    if built.is_empty() {
         *SESSION.lock().unwrap() = None;
         return;
     }
-    for window in &windows {
-        show(window);
-    }
-    if trigger == Trigger::Manual {
-        let _ = windows[0].set_focus();
-    }
+    // The first one built is the display dot(.)music is on: it takes the keyboard.
+    show(app, built, trigger == Trigger::Manual);
     let _ = app.emit_to("main", VISIBILITY_EVENT, serde_json::json!({ "open": true }));
 }
 
-/// Shows a window above everything without activating the app. Main thread only.
-fn show(window: &WebviewWindow) {
-    #[cfg(target_os = "macos")]
-    native::raise(window);
-    #[cfg(not(target_os = "macos"))]
-    let _ = window.show();
+/// Shows freshly built windows above everything, on the main thread (AppKit requires it), and
+/// optionally gives the first one keyboard focus.
+fn show(app: &AppHandle, windows: Vec<WebviewWindow>, focus_first: bool) {
+    let _ = app.run_on_main_thread(move || {
+        for window in &windows {
+            #[cfg(target_os = "macos")]
+            native::raise(window);
+            #[cfg(not(target_os = "macos"))]
+            let _ = window.show();
+        }
+        if focus_first {
+            if let Some(first) = windows.first() {
+                let _ = first.set_focus();
+            }
+        }
+    });
 }
 
 /// Closes every immersive window. Must run on the main thread.
@@ -299,8 +308,7 @@ fn idle_watch(app: AppHandle) {
                     .as_ref()
                     .is_some_and(|s| s.info.is_playing);
                 if minutes > 0 && playing && idle.is_some_and(|s| s >= f64::from(minutes) * 60.0) {
-                    let main = app.clone();
-                    let _ = app.run_on_main_thread(move || open(&main, Trigger::Idle));
+                    open(&app, Trigger::Idle); // this thread isn't the main one
                 }
                 std::thread::sleep(Duration::from_secs(2));
             }
@@ -326,10 +334,10 @@ fn idle_seconds() -> Option<f64> {
     None
 }
 
+/// Async, so it runs off the main thread (see `open`).
 #[tauri::command]
-pub fn open_immersive(app: AppHandle) {
-    let main = app.clone();
-    let _ = app.run_on_main_thread(move || open(&main, Trigger::Manual));
+pub async fn open_immersive(app: AppHandle) {
+    open(&app, Trigger::Manual);
 }
 
 #[tauri::command]
@@ -400,10 +408,11 @@ pub fn set_immersive_screens(off: Vec<String>) {
 /// Turns one display on or off from the controls on any display, live: a window appears on
 /// it or goes away, and every window is told so its display chips stay in step. The last
 /// display showing immersive mode can't be turned off (✕ leaves instead).
+/// Async, so it runs off the main thread: turning a display on builds a window (see `open`).
 #[tauri::command]
-pub fn set_immersive_display(app: AppHandle, key: String, on: bool) {
-    let main = app.clone();
-    let _ = app.run_on_main_thread(move || {
+pub async fn set_immersive_display(app: AppHandle, key: String, on: bool) {
+    let main = app;
+    {
         let all = ordered_monitors(&main);
         let Some(index) = all.iter().position(|m| screen_key(m) == key) else { return };
         let label = format!("{LABEL_PREFIX}{index}");
@@ -430,7 +439,7 @@ pub fn set_immersive_display(app: AppHandle, key: String, on: bool) {
                 let info = ScreenInfo { index, count: count + 1, screen_key: key.clone(), trigger };
                 match build_window(&main, &all[index], &info) {
                     Ok(window) => {
-                        show(&window);
+                        show(&main, vec![window], false);
                         count += 1;
                     }
                     Err(error) => log::warn!("Immersive window {index} could not be created: {error}"),
@@ -451,7 +460,7 @@ pub fn set_immersive_display(app: AppHandle, key: String, on: bool) {
 
         let off: Vec<String> = SCREENS_OFF.lock().unwrap().iter().flatten().cloned().collect();
         let _ = main.emit(DISPLAYS_EVENT, serde_json::json!({ "off": off, "count": count }));
-    });
+    }
 }
 
 /// Minutes without input before immersive mode starts by itself; 0 turns it off.
@@ -460,9 +469,11 @@ pub fn set_immersive_idle(minutes: u32) {
     IDLE_MINUTES.store(minutes, Ordering::Relaxed);
 }
 
-/// Opens it from the menu bar menu.
+/// Opens it from the menu bar menu. Menu events arrive on the main thread, so the windows are
+/// built from another one (see `open`).
 pub fn open_manual(app: &AppHandle) {
-    open(app, Trigger::Manual);
+    let app = app.clone();
+    std::thread::spawn(move || open(&app, Trigger::Manual));
 }
 
 #[cfg(target_os = "macos")]
