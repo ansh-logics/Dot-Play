@@ -10,7 +10,7 @@ export interface PlayerSkin {
 
 /** Wheel order, top to bottom. */
 export const PLAYER_SKINS: PlayerSkin[] = [
-  { id: "cassette", label: "Cassette", soon: true },
+  { id: "cassette", label: "Cassette" },
   { id: "apple", label: "Apple" },
   { id: "nothing", label: "Nothing" },
   { id: "vinyl", label: "Vinyl" },

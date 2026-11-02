@@ -23,6 +23,8 @@ function canDisplay(url: string): Promise<boolean> {
 export interface SettledArtwork {
   url: string;
   palette: ArtworkPalette | null;
+  /** The song this cover belongs to (it can still be the previous song's for a moment). */
+  videoId?: string;
 }
 
 /**

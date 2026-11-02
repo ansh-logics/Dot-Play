@@ -26,6 +26,7 @@ import { QueuePanel, type QueueContextMenuHandler } from "./QueuePanel";
 import { useLyrics } from "./useLyrics";
 import { SkinWheel } from "./SkinWheel";
 import { VinylRecord } from "./VinylRecord";
+import { CassetteDeck } from "./CassetteDeck";
 import { useWindowFullscreen } from "../../lib/useWindowFullscreen";
 import { useSettledArtwork } from "./useSettledArtwork";
 import { SettledArt } from "./SettledArt";
@@ -171,7 +172,10 @@ function NowPlayingScreen(props: NowPlayingProps) {
   const { data: lyrics, status: lyricsStatus } = useLyrics(track, props.duration);
   const hasLyrics = lyricsStatus === "synced" || lyricsStatus === "plain" || lyricsStatus === "loading";
   const showLyrics = lyricsOn && hasLyrics;
-  const layoutKey = `${showLyrics}-${compact}`;
+  // The Cassette deck fills the stage and shows lyrics on its own screen, not beside it.
+  const onDeck = skin === "cassette";
+  const lyricsBeside = showLyrics && !onDeck;
+  const layoutKey = `${lyricsBeside}-${compact}`;
 
   // The cover, its colours and its letterbox zoom, handed over together once fully loaded.
   const art = useSettledArtwork(track);
@@ -432,7 +436,7 @@ function NowPlayingScreen(props: NowPlayingProps) {
       </header>
 
       <motion.main
-        className={`np-stage ${showLyrics ? "has-lyrics" : "art-only"} ${compact && showLyrics ? "lyrics-only" : ""}`}
+        className={`np-stage ${lyricsBeside ? "has-lyrics" : "art-only"} ${compact && lyricsBeside ? "lyrics-only" : ""}`}
         style={{ opacity: stageOpacity, scale: stageScale, y: stageY }}
         initial={reduceMotion ? false : { scale: 0.97 }}
         animate={{ scale: 1 }}
@@ -458,12 +462,42 @@ function NowPlayingScreen(props: NowPlayingProps) {
                   duration={props.duration}
                   reduceMotion={reduceMotion}
                 />
+              ) : skin === "cassette" ? (
+                <CassetteDeck
+                  track={track}
+                  art={art}
+                  isPlaying={props.isPlaying}
+                  isReady={props.isReady}
+                  currentTime={props.currentTime}
+                  duration={props.duration}
+                  reduceMotion={reduceMotion}
+                  onPlayPause={props.onPlayPause}
+                  onNext={props.onNext}
+                  onPrevious={props.onPrevious}
+                  onSeek={props.onSeek}
+                  onEject={() => setSheet(true)}
+                  upcoming={session.upcoming}
+                  onPlayTrack={props.onSelectTrack}
+                  screen={
+                    showLyrics ? (
+                      <LyricsPanel
+                        data={lyrics}
+                        status={lyricsStatus}
+                        currentTime={props.currentTime}
+                        isPlaying={props.isPlaying}
+                        onSeek={props.onSeek}
+                        reduceMotion={reduceMotion}
+                        paused={!stageLive || revealing}
+                      />
+                    ) : null
+                  }
+                />
               ) : (
                 <SettledArt art={art} alt={`${track.title} artwork`} />
               )}
             </motion.div>
             <AnimatePresence mode="popLayout">
-              {showLyrics && (
+              {lyricsBeside && (
                 <motion.section
                   key="lyrics"
                   className="np-lyrics-col"

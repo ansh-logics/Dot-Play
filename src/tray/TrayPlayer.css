@@ -561,3 +561,21 @@ input:focus-visible {
     transform: none;
   }
 }
+
+/* No text selection or copying anywhere in the app: dragging tapes, sliders or the style
+   wheel never highlights text, and images can't be dragged out. Fields you type in stay
+   selectable so editing still works. */
+html {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+input,
+textarea,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+img {
+  -webkit-user-drag: none;
+}

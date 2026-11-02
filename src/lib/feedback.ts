@@ -9,10 +9,12 @@ import { isTauriEnvironment } from "./search"
 export interface FeedbackPrefs {
   sound: boolean
   haptics: boolean
+  /** A faint tape hiss under the music in the Cassette style. */
+  hiss: boolean
 }
 
 const STORAGE_KEY = "dot_feedback"
-const DEFAULT_PREFS: FeedbackPrefs = { sound: true, haptics: true }
+const DEFAULT_PREFS: FeedbackPrefs = { sound: true, haptics: true, hiss: true }
 
 export function loadFeedbackPrefs(): FeedbackPrefs {
   try {
@@ -22,11 +24,14 @@ export function loadFeedbackPrefs(): FeedbackPrefs {
     return {
       sound: typeof p.sound === "boolean" ? p.sound : DEFAULT_PREFS.sound,
       haptics: typeof p.haptics === "boolean" ? p.haptics : DEFAULT_PREFS.haptics,
+      hiss: typeof p.hiss === "boolean" ? p.hiss : DEFAULT_PREFS.hiss,
     }
   } catch {
     return { ...DEFAULT_PREFS }
   }
 }
+
+const prefListeners = new Set<() => void>()
 
 export function saveFeedbackPrefs(prefs: FeedbackPrefs): void {
   try {
@@ -34,6 +39,13 @@ export function saveFeedbackPrefs(prefs: FeedbackPrefs): void {
   } catch {
     // ignore
   }
+  prefListeners.forEach((fn) => fn())
+}
+
+/** Notifies when the prefs change (the deck turns its hiss on or off right away). */
+export function subscribeFeedbackPrefs(listener: () => void): () => void {
+  prefListeners.add(listener)
+  return () => prefListeners.delete(listener)
 }
 
 // ---- Sound -------------------------------------------------------------------
@@ -141,4 +153,187 @@ export function settle(prefs: FeedbackPrefs = loadFeedbackPrefs()): void {
   lastTick = performance.now()
   if (prefs.sound) click(2200, 1100, 0.1)
   if (prefs.haptics) haptic("level")
+}
+
+/** A deck key going down: a short, firm mechanical click. */
+export function keyPress(prefs: FeedbackPrefs = loadFeedbackPrefs()): void {
+  if (prefs.sound) click(1700 * jitter(0.05), 650, 0.1)
+  if (prefs.haptics) haptic("generic")
+}
+
+/** A cassette seating and the deck door shutting: a low clunk with a small rattle after it. */
+export function clunk(prefs: FeedbackPrefs = loadFeedbackPrefs()): void {
+  if (prefs.sound) {
+    click(620, 150, 0.2)
+    window.setTimeout(() => click(1500, 520, 0.05), 45)
+  }
+  if (prefs.haptics) haptic("level")
+}
+
+// ---- Cassette deck ---------------------------------------------------------------
+// Everything is synthesised (no audio files): noise shaped by filters for tape and air,
+// low oscillators for the capstan motor, short clicks for plastic and metal.
+
+let tapeNoise: AudioBuffer | null = null
+
+/** Two seconds of white noise, looped for hiss and winding. */
+function longNoise(ac: AudioContext): AudioBuffer {
+  if (!tapeNoise) {
+    tapeNoise = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate)
+    const data = tapeNoise.getChannelData(0)
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1
+  }
+  return tapeNoise
+}
+
+/** Filtered noise with an attack/hold/release envelope, optionally sweeping its frequency. */
+function noiseSwell(o: { freq: number; freqTo?: number; q?: number; level: number; attack: number; hold: number; release: number; delay?: number }) {
+  const ac = audio()
+  if (!ac) return
+  const t = ac.currentTime + 0.005 + (o.delay ?? 0)
+  const end = t + o.attack + o.hold + o.release
+  const src = ac.createBufferSource()
+  src.buffer = longNoise(ac)
+  src.loop = true
+  const band = ac.createBiquadFilter()
+  band.type = "bandpass"
+  band.Q.value = o.q ?? 0.8
+  band.frequency.setValueAtTime(o.freq, t)
+  if (o.freqTo) band.frequency.exponentialRampToValueAtTime(o.freqTo, end)
+  const g = ac.createGain()
+  g.gain.setValueAtTime(0.0001, t)
+  g.gain.exponentialRampToValueAtTime(o.level, t + o.attack)
+  g.gain.setValueAtTime(o.level, t + o.attack + o.hold)
+  g.gain.exponentialRampToValueAtTime(0.0001, end)
+  src.connect(band).connect(g).connect(ac.destination)
+  src.start(t, Math.random())
+  src.stop(end + 0.02)
+}
+
+/** A low motor tone gliding between two pitches (the capstan spinning up or down). */
+function motor(from: number, to: number, dur: number, level: number, delay = 0) {
+  const ac = audio()
+  if (!ac) return
+  const t = ac.currentTime + 0.005 + delay
+  const osc = ac.createOscillator()
+  osc.type = "sawtooth"
+  osc.frequency.setValueAtTime(from, t)
+  osc.frequency.exponentialRampToValueAtTime(to, t + dur)
+  const lp = ac.createBiquadFilter()
+  lp.type = "lowpass"
+  lp.frequency.value = 420
+  const g = ac.createGain()
+  g.gain.setValueAtTime(0.0001, t)
+  g.gain.exponentialRampToValueAtTime(level, t + dur * 0.25)
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur)
+  osc.connect(lp).connect(g).connect(ac.destination)
+  osc.start(t)
+  osc.stop(t + dur + 0.02)
+}
+
+const later = (ms: number, fn: () => void) => window.setTimeout(fn, ms)
+
+/** PLAY pressed: the key thunks down and the motor spins the tape up to speed. */
+export function tapeStart(prefs: FeedbackPrefs = loadFeedbackPrefs()): void {
+  if (!prefs.sound) return
+  click(850, 190, 0.15)
+  motor(48, 118, 0.5, 0.05, 0.02)
+  noiseSwell({ freq: 700, freqTo: 1500, level: 0.025, attack: 0.08, hold: 0.15, release: 0.25, delay: 0.02 })
+}
+
+/** PAUSE / stop: a lighter key click and the motor winding down. */
+export function tapeStop(prefs: FeedbackPrefs = loadFeedbackPrefs()): void {
+  if (!prefs.sound) return
+  click(1100, 260, 0.11)
+  motor(118, 36, 0.42, 0.04)
+}
+
+/** Fast-forward / rewind whirr for a seek; `forward` sweeps up, back sweeps down. */
+export function tapeWind(forward: boolean, prefs: FeedbackPrefs = loadFeedbackPrefs()): void {
+  if (!prefs.sound) return
+  noiseSwell({ freq: forward ? 1100 : 2600, freqTo: forward ? 2600 : 1100, q: 2.2, level: 0.05, attack: 0.05, hold: 0.32, release: 0.18 })
+  motor(forward ? 140 : 260, forward ? 260 : 140, 0.55, 0.03)
+  later(560, () => click(1400, 420, 0.07)) // the wind button pops back up
+}
+
+/** The end of the tape: clear leader hisses past the head, then the auto-stop clacks. */
+export function tapeRunOut(prefs: FeedbackPrefs = loadFeedbackPrefs()): void {
+  if (!prefs.sound) return
+  noiseSwell({ freq: 4200, q: 0.6, level: 0.035, attack: 0.15, hold: 0.25, release: 0.2 })
+  later(600, () => click(700, 170, 0.16))
+  later(680, () => click(1300, 380, 0.08))
+}
+
+/** The door's latch letting go. */
+export function doorRelease(prefs: FeedbackPrefs = loadFeedbackPrefs()): void {
+  if (!prefs.sound) return
+  click(2600, 900, 0.06)
+  motor(150, 90, 0.18, 0.012)
+}
+
+/** A cassette sliding into the holder: a quick plastic clatter. */
+export function tapeClatter(prefs: FeedbackPrefs = loadFeedbackPrefs()): void {
+  if (!prefs.sound) return
+  click(2400 * jitter(0.08), 900, 0.06)
+  later(32, () => click(2000 * jitter(0.08), 760, 0.05))
+  later(75, () => click(2800 * jitter(0.08), 1000, 0.04))
+}
+
+/** Running a finger along the tapes in the crate: a tiny tick per tape. */
+export function tapeFlick(prefs: FeedbackPrefs = loadFeedbackPrefs()): void {
+  if (!prefs.sound) return
+  click(3200 * jitter(0.1), 1400, 0.022)
+}
+
+/** Taking a tape out of the crate. */
+export function tapePickUp(prefs: FeedbackPrefs = loadFeedbackPrefs()): void {
+  if (!prefs.sound) return
+  click(2800 * jitter(0.06), 1200, 0.05)
+  later(26, () => click(2100 * jitter(0.06), 800, 0.04))
+}
+
+/** The crate's tapes knocking together as they pop up: one small click each, staggered. */
+export function crateRattle(count: number, prefs: FeedbackPrefs = loadFeedbackPrefs()): void {
+  if (!prefs.sound) return
+  for (let i = 0; i < Math.min(count, 6); i++) {
+    later(i * 42 + Math.random() * 12, () => click(2200 + Math.random() * 1200, 900, 0.035))
+  }
+}
+
+// Tape hiss: a quiet, steady bed of high, soft noise while the tape plays.
+let hissNodes: { src: AudioBufferSourceNode; gain: GainNode } | null = null
+const HISS_LEVEL = 0.014
+
+/** Fade the hiss in (playing) or out (paused, stopped, or the deck going away). */
+export function setTapeHiss(on: boolean, prefs: FeedbackPrefs = loadFeedbackPrefs()): void {
+  const ac = audio()
+  if (!ac) return
+  const t = ac.currentTime
+  if (on && prefs.hiss) {
+    if (!hissNodes) {
+      const src = ac.createBufferSource()
+      src.buffer = longNoise(ac)
+      src.loop = true
+      const hp = ac.createBiquadFilter()
+      hp.type = "highpass"
+      hp.frequency.value = 2800
+      const lp = ac.createBiquadFilter()
+      lp.type = "lowpass"
+      lp.frequency.value = 9500
+      const gain = ac.createGain()
+      gain.gain.value = 0.0001
+      src.connect(hp).connect(lp).connect(gain).connect(ac.destination)
+      src.start()
+      hissNodes = { src, gain }
+    }
+    hissNodes.gain.gain.cancelScheduledValues(t)
+    hissNodes.gain.gain.setTargetAtTime(HISS_LEVEL, t, 0.25)
+    return
+  }
+  if (!hissNodes) return
+  const nodes = hissNodes
+  hissNodes = null
+  nodes.gain.gain.cancelScheduledValues(t)
+  nodes.gain.gain.setTargetAtTime(0.0001, t, 0.12)
+  nodes.src.stop(t + 0.8)
 }

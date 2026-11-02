@@ -1,0 +1,963 @@
+/* ---------- Cassette tape ----------
+   Drawn in cqw (1cqw = 1% of the tape's width) so every part scales together. Layout, in
+   those units: shell 100 × 64; label 5–95 across, 4–45 down; window 23–77 across, 21–39
+   down; reel centres at 32 and 68 across, 30 down; the mouth along the bottom from 48. */
+
+.cassette {
+  --tape-paper: 241, 233, 214;
+  --tape-ink: 38, 32, 44;
+  --tape-accent: 236, 108, 44;
+  container-type: inline-size;
+  position: relative;
+  width: 100%;
+  aspect-ratio: 100 / 64;
+  user-select: none;
+}
+
+.cassette-shell {
+  position: absolute;
+  inset: 0;
+  border-radius: 3.2cqw;
+  /* Dark smoked plastic with a faint moulding texture. */
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.012) 0 0.35cqw, transparent 0.35cqw 0.7cqw),
+    linear-gradient(180deg, #34333a 0%, #24232a 55%, #1c1b21 100%);
+  box-shadow:
+    inset 0 0.25cqw 0 rgba(255, 255, 255, 0.12),
+    inset 0 -0.4cqw 0.8cqw rgba(0, 0, 0, 0.45),
+    inset 0 0 0 0.15cqw rgba(0, 0, 0, 0.6),
+    0 4cqw 8cqw -2cqw rgba(0, 0, 0, 0.6),
+    0 1cqw 2cqw rgba(0, 0, 0, 0.35);
+}
+
+/* Phillips screws, each turned a little differently, as they come out of the factory. */
+.cassette-screw {
+  position: absolute;
+  width: 2.6cqw;
+  height: 2.6cqw;
+  border-radius: 50%;
+  background:
+    linear-gradient(var(--screw-turn, 20deg), transparent 44%, rgba(0, 0, 0, 0.7) 44% 56%, transparent 56%),
+    linear-gradient(calc(var(--screw-turn, 20deg) + 90deg), transparent 44%, rgba(0, 0, 0, 0.7) 44% 56%, transparent 56%),
+    radial-gradient(circle at 35% 30%, #d6d6dc, #8a8a92 60%, #55555c);
+  box-shadow: 0 0 0 0.3cqw rgba(0, 0, 0, 0.35), 0 0.1cqw 0 0.35cqw rgba(255, 255, 255, 0.05);
+}
+.cassette-screw.is-tl { left: 2cqw; top: 2cqw; --screw-turn: 12deg; }
+.cassette-screw.is-tr { right: 2cqw; top: 2cqw; --screw-turn: 47deg; }
+.cassette-screw.is-bl { left: 2cqw; bottom: 2cqw; --screw-turn: 71deg; }
+.cassette-screw.is-br { right: 2cqw; bottom: 2cqw; --screw-turn: 28deg; }
+.cassette-screw.is-bottom { left: 50%; bottom: 2.2cqw; margin-left: -1.3cqw; --screw-turn: 58deg; }
+
+/* ---- Paper label ---- */
+
+.cassette-label {
+  position: absolute;
+  left: 5cqw;
+  right: 5cqw;
+  top: 4cqw;
+  height: 41cqw;
+  border-radius: 1.4cqw;
+  overflow: hidden;
+  background:
+    /* paper fibre */
+    repeating-linear-gradient(0deg, rgba(120, 100, 70, 0.03) 0 0.2cqw, transparent 0.2cqw 0.5cqw),
+    rgb(var(--tape-paper));
+  box-shadow: inset 0 0 1.5cqw rgba(120, 90, 50, 0.22), 0 0.15cqw 0 rgba(0, 0, 0, 0.35);
+}
+
+.cassette-label-top {
+  position: absolute;
+  left: 2.4cqw;
+  right: 2.4cqw;
+  top: 1.2cqw;
+  height: 6.4cqw;
+  display: flex;
+  align-items: flex-end;
+  gap: 2cqw;
+  /* The ruled writing line under the title. */
+  border-bottom: 0.18cqw solid rgba(var(--tape-ink), 0.28);
+}
+
+.cassette-side {
+  flex: none;
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 5cqw;
+  font-weight: 800;
+  line-height: 1;
+  padding-bottom: 0.5cqw;
+  color: rgb(var(--tape-accent));
+}
+
+/* The title as if written on the label in felt-tip. */
+.cassette-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: "Bradley Hand", "Segoe Print", "Ink Free", "Marker Felt", "Comic Sans MS", cursive;
+  font-size: 4.6cqw;
+  font-weight: 700;
+  line-height: 1.25;
+  color: rgb(var(--tape-ink));
+  transform: rotate(-1deg);
+  transform-origin: 0 100%;
+}
+
+.cassette-label-artist {
+  position: absolute;
+  left: 9.4cqw;
+  right: 2.4cqw;
+  top: 8cqw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: "Bradley Hand", "Segoe Print", "Ink Free", "Marker Felt", "Comic Sans MS", cursive;
+  font-size: 2.8cqw;
+  line-height: 1.3;
+  color: rgba(var(--tape-ink), 0.72);
+}
+
+/* The colour band across the label is the cover, printed a little faded like old card. */
+.cassette-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 13cqw;
+  bottom: 0;
+  overflow: hidden;
+  /* Blank card until the cover is printed on (it fades in once loaded). */
+  background: rgb(226, 214, 190);
+}
+.cassette-band .np-art {
+  width: 100%;
+  height: 100%;
+}
+.cassette-band .np-art img {
+  object-fit: cover;
+  filter: saturate(0.85) contrast(0.95) sepia(0.12);
+}
+/* Printed ink sits on paper: a soft vignette and a hairline at the top edge. */
+.cassette-band::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 2.5cqw rgba(40, 25, 10, 0.35), inset 0 0.18cqw 0 rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+}
+
+.cassette-band-mark {
+  position: absolute;
+  bottom: 1.4cqw;
+  z-index: 1;
+  padding: 0.3cqw 1cqw;
+  border-radius: 0.6cqw;
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  font-size: 2.2cqw;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgb(var(--tape-paper));
+  background: rgba(0, 0, 0, 0.45);
+}
+.cassette-band-mark.is-left { left: 2cqw; }
+.cassette-band-mark.is-right { right: 2cqw; }
+
+/* ---- Window and reels ---- */
+
+.cassette-window {
+  position: absolute;
+  left: 23cqw;
+  top: 21cqw;
+  width: 54cqw;
+  height: 18cqw;
+  border-radius: 1.6cqw;
+  overflow: hidden;
+  background: radial-gradient(120% 140% at 50% 50%, #241f1c, #120f0e);
+  box-shadow:
+    0 0 0 0.5cqw #1d1c22,
+    0 0 0 0.7cqw rgba(0, 0, 0, 0.5),
+    inset 0 0.4cqw 1cqw rgba(0, 0, 0, 0.7);
+}
+
+/* Wound tape: drawn full size and scaled to the current pack (transform only). */
+.cassette-pack {
+  position: absolute;
+  top: -8cqw; /* centre 9cqw down the window */
+  width: 34cqw;
+  height: 34cqw;
+  border-radius: 50%;
+  background:
+    repeating-radial-gradient(circle, rgba(255, 220, 180, 0.035) 0 0.25cqw, transparent 0.25cqw 0.6cqw),
+    radial-gradient(circle, #4a2f1e 30%, #3a2416 70%, #2e1c12 100%);
+  box-shadow: inset 0 0 0 0.2cqw rgba(0, 0, 0, 0.35);
+}
+.cassette-pack.is-left { left: -8cqw; }  /* centre 9cqw across */
+.cassette-pack.is-right { left: 28cqw; } /* centre 45cqw across */
+
+/* The white plastic hub with its six drive teeth: this is what you see turning. */
+.cassette-hub {
+  position: absolute;
+  top: 4.4cqw;
+  width: 9.2cqw;
+  height: 9.2cqw;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, transparent 0 1.9cqw, #ecebe6 1.95cqw 2.9cqw, transparent 2.95cqw),
+    repeating-conic-gradient(from 0deg, #ecebe6 0deg 14deg, transparent 14deg 60deg),
+    radial-gradient(circle, transparent 0 2.9cqw, #e4e2db 2.95cqw 4.2cqw, #b9b6ad 4.3cqw 4.6cqw, transparent 4.6cqw);
+  -webkit-mask: radial-gradient(circle, transparent 0 1.35cqw, #000 1.4cqw);
+  mask: radial-gradient(circle, transparent 0 1.35cqw, #000 1.4cqw);
+  box-shadow: 0 0.3cqw 0.6cqw rgba(0, 0, 0, 0.5);
+}
+.cassette-hub.is-left { left: 4.4cqw; }
+.cassette-hub.is-right { left: 40.4cqw; }
+
+/* Smoked glass over the reels, with a streak of reflection. */
+.cassette-glass {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(105deg, transparent 20%, rgba(255, 255, 255, 0.1) 26%, transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(0, 0, 0, 0.2));
+}
+
+/* ---- The mouth along the bottom (where the head reads the tape) ---- */
+
+.cassette-mouth {
+  position: absolute;
+  left: 15cqw;
+  right: 15cqw;
+  top: 48cqw;
+  bottom: 0;
+  clip-path: polygon(8% 0, 92% 0, 100% 100%, 0 100%);
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.02) 0 0.3cqw, transparent 0.3cqw 0.9cqw),
+    linear-gradient(180deg, #2b2a31, #1e1d23);
+  box-shadow: inset 0 0.3cqw 0.4cqw rgba(0, 0, 0, 0.5);
+}
+
+.cassette-hole {
+  position: absolute;
+  bottom: 2.6cqw;
+  width: 4cqw;
+  height: 4cqw;
+  border-radius: 50%;
+  background: radial-gradient(circle, #050506 55%, #2a2930 70%, #121116);
+}
+.cassette-hole.is-left { left: 14%; }
+.cassette-hole.is-right { right: 14%; }
+
+/* The brown tape running across the head opening. */
+.cassette-head {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 14cqw;
+  height: 5cqw;
+  margin-left: -7cqw;
+  background:
+    linear-gradient(180deg, transparent 0 62%, #5a3a24 62% 74%, transparent 74%),
+    #0b0b0d;
+  border-radius: 0.6cqw 0.6cqw 0 0;
+}
+
+/* Fixed light across the whole tape. */
+.cassette-sheen {
+  position: absolute;
+  inset: 0;
+  border-radius: 3.2cqw;
+  pointer-events: none;
+  background:
+    radial-gradient(70% 60% at 78% 8%, rgba(255, 255, 255, 0.12), transparent 70%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 40%);
+}
+
+/* ---------- Tape deck ----------
+   The Cassette player style fills the window: a full-bleed brushed-aluminium face with
+   rack-mount ears, the deck's controls in a 16:9 module (drawn in cqw, 100 × 56.25), and a
+   crate of up-next tapes rising from the bottom edge.
+   Module layout: door well 3–43 across, 7.5–41.5 down; phosphor screen 46–97 across,
+   7.5–31.5 down; meters and counter under it; piano keys along the bottom from 44. */
+
+.deck {
+  --crate-tape: clamp(220px, 22vw, 400px);
+  --crate-peek: calc(var(--crate-tape) * 0.64 * 0.95);
+  /* Only the pull tab takes room at the bottom; the crate comes up over the deck. */
+  --tab-h: 40px;
+  --ear: clamp(18px, 2.4vw, 40px);
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  user-select: none;
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  background:
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.055) 0 1px, rgba(0, 0, 0, 0.03) 1px 3px),
+    radial-gradient(120% 80% at 50% 0%, #e2e2e5, #c4c5c9 45%, #a3a4a9 100%);
+  box-shadow: inset 0 -40px 80px rgba(0, 0, 0, 0.18);
+}
+
+/* Rack ears down both sides: a darker strip with a handle slot and two screws. */
+.deck::before,
+.deck::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: var(--ear);
+  background:
+    radial-gradient(circle at 50% 9%, #7b7c81 0 3px, #3d3e43 3.5px 5px, transparent 5.5px),
+    radial-gradient(circle at 50% 91%, #7b7c81 0 3px, #3d3e43 3.5px 5px, transparent 5.5px),
+    linear-gradient(180deg, transparent 22%, rgba(0, 0, 0, 0.55) 22% 78%, transparent 78%) 50% 0 / 34% 100% no-repeat,
+    linear-gradient(90deg, #8f9095, #b4b5b9 40%, #9a9ba0);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+}
+.deck::before { left: 0; }
+.deck::after { right: 0; }
+
+/* The controls: centred under the top bar, as large as the space above the crate allows. */
+.deck-module {
+  container-type: inline-size;
+  position: absolute;
+  left: 50%;
+  top: clamp(56px, 8vh, 84px);
+  /* The deck fills the window, so the window's size is the space to fit. */
+  width: min(
+    calc(100vw - 2 * var(--ear) - 4vw),
+    calc((100vh - clamp(56px, 8vh, 84px) - var(--tab-h) - 8px) * 16 / 9)
+  );
+  aspect-ratio: 16 / 9;
+  transform: translateX(-50%);
+}
+
+.deck-top {
+  position: absolute;
+  left: 3cqw;
+  right: 3cqw;
+  top: 1.6cqw;
+  height: 4.4cqw;
+  display: flex;
+  align-items: center;
+  gap: 1.8cqw;
+  color: #2c2c31;
+}
+.deck-brand {
+  font-size: 2.3cqw;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.deck-model {
+  font-size: 1.05cqw;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+.deck-power {
+  display: flex;
+  align-items: center;
+  gap: 0.7cqw;
+  font-size: 0.95cqw;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+.deck-led {
+  width: 0.9cqw;
+  height: 0.9cqw;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #8a3a20, #4a1a0c);
+  box-shadow: inset 0 0 0 0.08cqw rgba(0, 0, 0, 0.4);
+  transition: background 0.3s, box-shadow 0.3s;
+}
+.deck.is-playing .deck-led {
+  background: radial-gradient(circle at 35% 35%, #ffd2a8, #ff7a2c 55%, #c94612);
+  box-shadow: 0 0 1cqw rgba(255, 122, 44, 0.75);
+}
+
+/* Tape type lamps, in the top strip. */
+.deck-tapetype {
+  margin-left: auto;
+  display: flex;
+  gap: 1.6cqw;
+  font-size: 0.95cqw;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(40, 40, 46, 0.7);
+}
+.deck-tapetype span::before {
+  content: "";
+  display: inline-block;
+  width: 0.65cqw;
+  height: 0.65cqw;
+  margin-right: 0.5cqw;
+  border-radius: 50%;
+  vertical-align: 0.05em;
+  background: #6e6f74;
+}
+.deck-tapetype .is-lit::before {
+  background: #ff7a2c;
+  box-shadow: 0 0 0.7cqw rgba(255, 122, 44, 0.7);
+}
+
+/* The recess the tape sits in, behind the door. */
+.deck-well {
+  position: absolute;
+  left: 3cqw;
+  top: 7.5cqw;
+  width: 40cqw;
+  height: 34cqw;
+  border-radius: 1.1cqw;
+  perspective: 110cqw;
+  background: linear-gradient(180deg, #121215, #1d1d22);
+  box-shadow:
+    inset 0 0.5cqw 1.2cqw rgba(0, 0, 0, 0.8),
+    0 0 0 0.2cqw #8d8e93,
+    0 0.15cqw 0 0.2cqw rgba(255, 255, 255, 0.5);
+}
+
+.deck-tape {
+  position: absolute;
+  left: 3cqw;
+  right: 3cqw;
+  top: 6.1cqw;
+  transform-origin: 50% 0;
+}
+
+/* Smoked door with a frame; hinged at the bottom, tilts toward you to open. */
+.deck-door {
+  position: absolute;
+  inset: 0;
+  border-radius: 1.1cqw;
+  transform-origin: 50% 100%;
+  border: 1.2cqw solid rgba(40, 40, 46, 0.92);
+  background: rgba(30, 28, 34, 0.22);
+  box-shadow:
+    inset 0 0 0 0.12cqw rgba(255, 255, 255, 0.12),
+    0 0 0 0.1cqw rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+.deck-door-glare {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(115deg, transparent 18%, rgba(255, 255, 255, 0.14) 24%, transparent 31%),
+    linear-gradient(115deg, transparent 62%, rgba(255, 255, 255, 0.06) 66%, transparent 70%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 50%);
+}
+
+/* ---- Phosphor screen: amber, glowing, scanned, behind slightly curved glass ---- */
+
+.deck-screen {
+  --phosphor: 255, 178, 72;
+  position: absolute;
+  left: 46cqw;
+  top: 7.5cqw;
+  width: 51cqw;
+  height: 24cqw;
+  border-radius: 1.4cqw;
+  overflow: hidden;
+  background: radial-gradient(130% 120% at 50% 45%, #1d140b, #0b0806 70%, #050403);
+  box-shadow:
+    inset 0 0 0 0.8cqw #1b1b1f,
+    inset 0 0 0 0.95cqw #4a4a50,
+    inset 0 0 3cqw rgba(0, 0, 0, 0.9),
+    0 0.15cqw 0 0.15cqw rgba(255, 255, 255, 0.5);
+}
+
+.deck-screen-glass {
+  position: absolute;
+  inset: 1.6cqw 2.4cqw 4.6cqw;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  animation: deck-flicker 5s steps(1) infinite;
+}
+
+/* The tube's faint shimmer: a step-wise flicker, too small to notice except as "alive". */
+@keyframes deck-flicker {
+  0%, 100% { opacity: 1; }
+  47% { opacity: 0.96; }
+  48% { opacity: 1; }
+  83% { opacity: 0.975; }
+  84% { opacity: 1; }
+}
+
+/* Lyrics on the screen: phosphor ink and glow, typewriter-ish mono, sized to the deck. */
+.deck-screen .np-lyrics {
+  --np-lyric-ink: var(--phosphor);
+  min-height: 0; /* scroll inside the screen instead of growing past it */
+  mask-image: linear-gradient(180deg, transparent 0%, #000 16%, #000 78%, transparent 100%);
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 16%, #000 78%, transparent 100%);
+}
+.deck-screen .np-lyrics-pad { height: 38%; }
+.deck-screen .np-lyric,
+.deck-screen .np-interlude {
+  font-family: "SF Mono", "Menlo", "Consolas", "Courier New", monospace;
+  font-size: 2.15cqw;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0;
+  text-shadow: 0 0 0.6cqw rgba(var(--phosphor), 0.55), 0 0 1.6cqw rgba(var(--phosphor), 0.25);
+}
+.deck-screen .np-lyric--plain { font-size: 1.7cqw; }
+.deck-screen .np-ch { transform: none; }
+.deck-screen .np-word.is-held .np-ch { text-shadow: 0 0 1cqw rgba(var(--phosphor), 0.8); }
+.deck-screen .np-interlude-dots i { background: rgb(var(--phosphor)); box-shadow: 0 0 0.8cqw rgba(var(--phosphor), 0.7); }
+.deck-screen .np-lyrics-state {
+  font-family: "SF Mono", "Menlo", "Consolas", monospace;
+  font-size: 1.4cqw;
+  color: rgba(var(--phosphor), 0.8);
+  text-shadow: 0 0 0.6cqw rgba(var(--phosphor), 0.5);
+}
+
+/* No lyrics on: the song's details, like a deck's info display. */
+.deck-screen-info {
+  margin: auto 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8cqw;
+  min-width: 0;
+  font-family: "SF Mono", "Menlo", "Consolas", "Courier New", monospace;
+  color: rgb(var(--phosphor));
+  text-shadow: 0 0 0.6cqw rgba(var(--phosphor), 0.55), 0 0 1.6cqw rgba(var(--phosphor), 0.25);
+}
+.deck-screen-kicker {
+  font-size: 1.1cqw;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+.deck-screen-title {
+  font-size: 2.8cqw;
+  font-weight: 700;
+  line-height: 1.15;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.deck-screen-artist {
+  font-size: 1.6cqw;
+  opacity: 0.75;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Scanlines + bloom + curved-glass vignette and reflection, over the content. */
+.deck-screen-scan {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    repeating-linear-gradient(180deg, rgba(0, 0, 0, 0.28) 0 0.12cqw, transparent 0.12cqw 0.32cqw),
+    radial-gradient(120% 110% at 50% 50%, transparent 55%, rgba(0, 0, 0, 0.55) 100%),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.07), transparent 35%);
+  box-shadow: inset 0 0 0 0.8cqw #1b1b1f, inset 0 0 0 0.95cqw #4a4a50;
+}
+
+/* ---- Meters and counter, under the screen ---- */
+
+.deck-side {
+  position: absolute;
+  left: 46cqw;
+  top: 33.3cqw;
+  width: 51cqw;
+  height: 8.2cqw;
+  display: flex;
+  align-items: stretch;
+  gap: 1cqw;
+}
+
+/* Backlit VU meter: warm paper behind glass, brighter while playing. */
+.deck-vu {
+  position: relative;
+  height: 100%;
+  aspect-ratio: 100 / 72;
+  border-radius: 0.6cqw;
+  overflow: hidden;
+  background: radial-gradient(120% 100% at 50% 100%, #f2deb0, #dcc089);
+  box-shadow:
+    inset 0 0 0 0.28cqw #2a2a2f,
+    inset 0 0.5cqw 0.8cqw rgba(0, 0, 0, 0.35),
+    0 0.12cqw 0 rgba(255, 255, 255, 0.6);
+  transition: filter 0.4s;
+  filter: brightness(0.82);
+}
+.deck.is-playing .deck-vu { filter: brightness(1.05) drop-shadow(0 0 0.6cqw rgba(255, 190, 90, 0.25)); }
+
+.deck-vu-scale {
+  position: absolute;
+  inset: 4% 4% 10%;
+  width: 92%;
+  height: 86%;
+}
+.deck-vu-arc { fill: none; stroke: #2b2622; stroke-width: 1.2; }
+.deck-vu-arc.is-red { stroke: #c8321e; stroke-width: 2.4; }
+.deck-vu-tick { stroke: #2b2622; stroke-width: 1.2; }
+.deck-vu-tick.is-red { stroke: #c8321e; }
+.deck-vu-text { font: 700 7px "Helvetica Neue", Arial, sans-serif; fill: #2b2622; }
+.deck-vu-text.is-red { fill: #c8321e; }
+.deck-vu-text.is-big { font-size: 10px; letter-spacing: 0.08em; opacity: 0.8; }
+
+.deck-vu-needle {
+  position: absolute;
+  left: 50%;
+  bottom: 9%;
+  width: 0.22cqw;
+  height: 72%;
+  margin-left: -0.11cqw;
+  transform-origin: 50% 100%;
+  border-radius: 0.2cqw;
+  background: linear-gradient(180deg, #b01e10, #1c1a18 35%);
+  box-shadow: 0.2cqw 0.3cqw 0.35cqw rgba(0, 0, 0, 0.25);
+}
+.deck-vu-pivot {
+  position: absolute;
+  left: 50%;
+  bottom: 4%;
+  width: 2.6cqw;
+  height: 1.2cqw;
+  margin-left: -1.3cqw;
+  border-radius: 1.3cqw 1.3cqw 0 0;
+  background: #2a2a2f;
+}
+.deck-vu-channel {
+  position: absolute;
+  right: 0.7cqw;
+  bottom: 0.5cqw;
+  font-size: 1cqw;
+  font-weight: 800;
+  color: #2b2622;
+}
+
+/* Mechanical counter: white digits on black wheels behind a small window. */
+.deck-counter {
+  margin-left: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0.7cqw;
+}
+.deck-counter-label {
+  font-size: 0.95cqw;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(40, 40, 46, 0.7);
+}
+.deck-counter-window {
+  display: flex;
+  gap: 0.18cqw;
+  padding: 0.45cqw 0.5cqw;
+  border-radius: 0.45cqw;
+  background: #121215;
+  box-shadow: inset 0 0.25cqw 0.5cqw rgba(0, 0, 0, 0.8), 0 0.12cqw 0 rgba(255, 255, 255, 0.55);
+}
+.deck-digit {
+  position: relative;
+  width: 2.1cqw;
+  height: 1em;
+  overflow: hidden;
+  font: 600 3cqw/1 "SF Mono", Menlo, Consolas, monospace;
+  color: #f2f0ea;
+  text-align: center;
+  background: linear-gradient(180deg, #050506, #26262b 50%, #050506);
+  border-radius: 0.18cqw;
+}
+.deck-digit-strip {
+  display: flex;
+  flex-direction: column;
+}
+.deck-digit-strip > span { height: 1em; }
+.deck-counter-colon {
+  align-self: center;
+  font: 600 2.4cqw/1 "SF Mono", Menlo, Consolas, monospace;
+  color: #f2f0ea;
+  padding: 0 0.1cqw;
+}
+
+/* ---- Piano keys ---- */
+
+.deck-keys {
+  position: absolute;
+  left: 3cqw;
+  right: 3cqw;
+  top: 44.2cqw;
+  height: 9.4cqw;
+  display: flex;
+  gap: 1cqw;
+  padding: 0.8cqw;
+  border-radius: 1cqw;
+  background: #2a2a2f;
+  box-shadow: inset 0 0.4cqw 0.8cqw rgba(0, 0, 0, 0.6), 0 0.15cqw 0 rgba(255, 255, 255, 0.55);
+}
+
+.deck-key {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3cqw;
+  padding: 0;
+  border: 0;
+  border-radius: 0.6cqw;
+  cursor: pointer;
+  color: #2a2a2f;
+  background: linear-gradient(180deg, #ececee, #c9cacd);
+  box-shadow:
+    inset 0 0.15cqw 0 rgba(255, 255, 255, 0.9),
+    0 0.7cqw 0 #77787d,
+    0 0.9cqw 0.6cqw rgba(0, 0, 0, 0.45);
+  transform: translateY(-0.5cqw);
+  transition: transform 70ms ease-out, box-shadow 70ms ease-out, background 120ms;
+}
+.deck-key:hover:not(:disabled) { background: linear-gradient(180deg, #f6f6f7, #d3d4d7); }
+.deck-key:active:not(:disabled),
+.deck-key.is-latched {
+  transform: translateY(0.1cqw);
+  box-shadow:
+    inset 0 0.15cqw 0 rgba(255, 255, 255, 0.6),
+    0 0.12cqw 0 #77787d,
+    0 0.2cqw 0.3cqw rgba(0, 0, 0, 0.4);
+}
+/* A latched key sits down and its glyph lights up, like a deck mid-play. */
+.deck-key.is-latched { background: linear-gradient(180deg, #d8d9dc, #b9babe); }
+.deck-key.is-latched .deck-key-glyph { color: #e2621f; }
+.deck-key:disabled { cursor: default; opacity: 0.55; }
+.deck-key:focus-visible { outline: 0.3cqw solid #ff7a2c; outline-offset: 0.2cqw; }
+
+.deck-key-glyph {
+  font-size: 2.3cqw;
+  line-height: 1;
+  letter-spacing: -0.12em;
+}
+.deck-key-label {
+  font-size: 1.1cqw;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+/* ---- Seek bar at the foot of the screen ---- */
+
+.deck-seek {
+  position: absolute;
+  left: 2.4cqw;
+  right: 2.4cqw;
+  bottom: 1.5cqw;
+  height: 2.4cqw;
+  display: flex;
+  align-items: center;
+  gap: 1.2cqw;
+  font: 600 1.15cqw/1 "SF Mono", Menlo, Consolas, monospace;
+  color: rgba(var(--phosphor), 0.85);
+  text-shadow: 0 0 0.5cqw rgba(var(--phosphor), 0.5);
+  z-index: 1;
+}
+.deck-seek-bar {
+  position: relative;
+  flex: 1;
+  height: 100%;
+  cursor: pointer;
+  touch-action: none;
+}
+.deck-seek-bar[aria-disabled] { cursor: default; }
+/* Dotted rail, solid glowing fill: a bar graph segment display. */
+.deck-seek-bar::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 0.5cqw;
+  margin-top: -0.25cqw;
+  background: repeating-linear-gradient(90deg, rgba(var(--phosphor), 0.22) 0 0.5cqw, transparent 0.5cqw 0.8cqw);
+}
+.deck-seek-fill {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  height: 0.5cqw;
+  margin-top: -0.25cqw;
+  background: repeating-linear-gradient(90deg, rgb(var(--phosphor)) 0 0.5cqw, transparent 0.5cqw 0.8cqw);
+  box-shadow: 0 0 0.8cqw rgba(var(--phosphor), 0.55);
+}
+
+/* ---- Crate of up-next tapes, rising from the bottom edge ---- */
+
+/* Holds the crate, its pull tab and the bottom-edge trigger, so moving off any of them
+   (but not between them) tucks the crate away. */
+.deck-crate-zone {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: calc(var(--crate-tape) * 1.25);
+  height: calc(var(--crate-peek) + var(--tab-h));
+  transform: translateX(-50%);
+  z-index: 20;
+  pointer-events: none;
+}
+.deck-crate-zone.is-open .deck-crate { pointer-events: auto; }
+.deck-crate-zone:not(.is-open) .deck-crate { pointer-events: none; }
+
+/* An invisible strip along the whole bottom edge: reach for it and the crate comes up. */
+.deck-crate-edge {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 100vw;
+  height: 14px;
+  transform: translateX(-50%);
+  pointer-events: auto;
+}
+
+/* The pull tab, like the handle of a drawer under the deck. */
+.deck-crate-tab {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 18px;
+  transform: translateX(-50%);
+  border: 0;
+  border-radius: 10px 10px 0 0;
+  pointer-events: auto;
+  cursor: pointer;
+  font-family: "American Typewriter", "Courier Prime", "Courier New", monospace;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: rgba(241, 233, 214, 0.9);
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.03) 0 2px, transparent 2px 6px),
+    linear-gradient(180deg, #4a3a2e, #2a201a);
+  box-shadow: 0 -4px 14px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1), filter 0.18s;
+}
+.deck-crate-tab:hover { transform: translateX(-50%) translateY(-2px); filter: brightness(1.12); }
+.deck-crate-tab:active { transform: translateX(-50%) translateY(0); }
+.deck-crate-tab:focus-visible { outline: 2px solid #ff7a2c; outline-offset: 3px; }
+.deck-crate-tab-arrow { font-size: 14px; line-height: 1; color: #ff7a2c; }
+
+.deck-crate {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  pointer-events: none;
+  width: var(--crate-tape);
+  height: var(--crate-peek);
+  transform: translateX(-50%);
+  perspective: 1400px;
+  perspective-origin: 50% 0%;
+}
+
+.deck-crate-stack {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  transform-style: preserve-3d;
+}
+
+/* Front to back: each tape further back stands higher and deeper, leaning back a little,
+   so its label clears the one in front. The lower part of the stack is below the edge. */
+.deck-crate-slot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--crate-tape) * -0.24);
+  transform:
+    translateY(calc(var(--i) * var(--crate-tape) * -0.1))
+    translateZ(calc(var(--i) * -38px))
+    rotateX(9deg)
+    rotateZ(var(--tilt));
+  transform-origin: 50% 100%;
+}
+
+/* The part that moves: bounces up with the crate, lifts when pointed at, tips forward when
+   a tape behind it is pointed at. (Hover is worked out by the crate, not CSS :hover, so a
+   lifted tape can't slide out from under the pointer.) */
+.deck-crate-lift {
+  transform-origin: 50% 100%;
+}
+
+.deck-crate-tape {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: inherit;
+  outline: none;
+  filter: brightness(calc(1 - var(--i) * 0.1));
+  transition: filter 0.2s, opacity 0.15s;
+}
+.deck-crate-lift.is-pointed .deck-crate-tape {
+  filter: brightness(1.05) drop-shadow(0 16px 22px rgba(0, 0, 0, 0.45));
+}
+.deck-crate-tape.is-held { opacity: 0; }
+.deck-crate-tape:focus-visible { outline: 3px solid #ff7a2c; outline-offset: 4px; border-radius: 10px; }
+
+.deck-crate { touch-action: none; }
+.deck-crate.is-pointing { cursor: grab; }
+.deck-crate.is-pointing:active { cursor: grabbing; }
+
+/* The crate's front lip the tapes stand in. */
+.deck-crate-front {
+  position: absolute;
+  left: -6%;
+  right: -6%;
+  bottom: 0;
+  height: 24%;
+  z-index: 10;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 7px;
+  border-radius: 10px 10px 0 0;
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 2px, transparent 2px 7px),
+    linear-gradient(180deg, #4a3a2e, #2a201a);
+  box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  font-family: "American Typewriter", "Courier Prime", "Courier New", monospace;
+  font-size: clamp(10px, 0.8vw, 13px);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(241, 233, 214, 0.75);
+  pointer-events: none;
+}
+.deck-crate-front span { padding: 0 12px; text-align: center; }
+
+/* The tape in your hand: drawn over everything, with a lifted shadow. */
+.deck-ghost {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 30;
+  transform-origin: 50% 0;
+  pointer-events: none;
+  filter: drop-shadow(0 26px 30px rgba(0, 0, 0, 0.45)) drop-shadow(0 6px 8px rgba(0, 0, 0, 0.3));
+}
+
+/* The door glows faintly while a tape is held over it: let go to put it in. */
+.deck-well.is-target {
+  box-shadow:
+    inset 0 0.5cqw 1.2cqw rgba(0, 0, 0, 0.8),
+    0 0 0 0.2cqw #ff7a2c,
+    0 0 2.4cqw rgba(255, 122, 44, 0.45);
+}

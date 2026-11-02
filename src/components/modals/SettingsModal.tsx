@@ -78,10 +78,16 @@ export function SettingsModal({
       <div className="settings-section">
         <span className="settings-section-title">PLAYER</span>
         <SwitchRow
-          label="Wheel click sound"
-          description="A soft click on each notch of the player-style wheel"
+          label="Player sounds"
+          description="Clicks on the player-style wheel, and the Cassette deck's keys, motor and tape"
           checked={feedbackPrefs.sound}
           onToggle={() => onFeedbackChange({ sound: !feedbackPrefs.sound })}
+        />
+        <SwitchRow
+          label="Tape hiss"
+          description="A faint hiss under the music while the Cassette deck plays"
+          checked={feedbackPrefs.hiss}
+          onToggle={() => onFeedbackChange({ hiss: !feedbackPrefs.hiss })}
         />
         <SwitchRow
           label="Trackpad haptics"

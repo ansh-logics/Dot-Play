@@ -281,7 +281,6 @@
   scrollbar-width: none;
   mask-image: linear-gradient(180deg, transparent 0%, #000 9%, #000 80%, transparent 100%);
   -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 9%, #000 80%, transparent 100%);
-  user-select: text;
 }
 
 .np-lyrics::-webkit-scrollbar { display: none; }
@@ -1486,6 +1485,121 @@
   );
   box-shadow: inset 0 1px 0 rgba(var(--np-cream), 0.2);
   mix-blend-mode: normal;
+}
+
+/* ---------- Cassette style ----------
+   The player becomes a tape: the cover is printed on the label, the title is handwritten,
+   and the reels wind as the song plays. Typewriter type, paper colour, one rust-orange
+   accent, like a 70s deck. The tape itself is drawn by cassette.css. */
+
+.np-root[data-skin="cassette"] {
+  --np-paper: 241, 233, 214;
+  --np-rust: 236, 108, 44;
+  --np-lyric-ink: 241, 233, 214;
+}
+
+/* The deck fills the whole window, edge to edge: the player card is hidden here and comes up
+   only from the deck's Eject key. The title is on the tape and the lyrics on the deck's screen. */
+.np-root[data-skin="cassette"] .np-stage {
+  inset: 0;
+  padding: 0;
+  gap: 0;
+}
+.np-root[data-skin="cassette"] .np-stage-row {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+}
+.np-root[data-skin="cassette"] .np-art-wrap {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+  overflow: hidden;
+  border-radius: 0;
+  box-shadow: none;
+}
+.np-root[data-skin="cassette"] .np-meta { display: none; }
+.np-root[data-skin="cassette"] .np-card {
+  transition: opacity 0.25s ease;
+}
+.np-root[data-skin="cassette"] .np-card:not(.is-open) {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Muted, warm room light. */
+.np-root[data-skin="cassette"] .np-backdrop-colour::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(45, 35, 30, 0.4);
+  mix-blend-mode: multiply;
+}
+.np-root[data-skin="cassette"] .np-grain { opacity: 0.12; }
+
+.np-root[data-skin="cassette"] .np-title {
+  font-family: "American Typewriter", "Courier Prime", "Courier New", monospace;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: -0.01em;
+  color: rgb(var(--np-paper));
+}
+.np-root[data-skin="cassette"] .np-artist {
+  font-family: "American Typewriter", "Courier Prime", "Courier New", monospace;
+  font-size: clamp(12px, 1.05vw, 15px);
+  letter-spacing: 0.06em;
+  color: rgba(var(--np-paper), 0.75);
+}
+
+.np-root[data-skin="cassette"] .np-card {
+  background-color: rgba(30, 28, 34, 0.5);
+  border-color: rgba(var(--np-paper), 0.14);
+}
+
+/* The progress bar as a strip of tape. */
+.np-root[data-skin="cassette"] .np-slider { --np-track-h: 3px; }
+.np-root[data-skin="cassette"] .np-slider-rail { background: rgba(var(--np-paper), 0.18); }
+.np-root[data-skin="cassette"] .np-slider-fill { background: rgb(var(--np-rust)); }
+.np-root[data-skin="cassette"] .np-slider-knob {
+  width: 8px;
+  height: 14px;
+  margin: -7px 0 0 -4px;
+  border-radius: 2px;
+  background: rgb(var(--np-paper));
+}
+.np-root[data-skin="cassette"] .np-times {
+  font-family: "American Typewriter", "Courier Prime", "Courier New", monospace;
+  color: rgba(var(--np-paper), 0.6);
+}
+
+.np-root[data-skin="cassette"] .np-pill { border-color: rgba(var(--np-paper), 0.16); background: rgba(var(--np-paper), 0.05); }
+.np-root[data-skin="cassette"] .np-skip,
+.np-root[data-skin="cassette"] .np-volume-btn,
+.np-root[data-skin="cassette"] .np-round-btn,
+.np-root[data-skin="cassette"] .np-song-action,
+.np-root[data-skin="cassette"] .np-icon-btn { color: rgb(var(--np-paper)); }
+/* The top bar sits on the deck's brushed metal: dark icons there. */
+.np-root[data-skin="cassette"] .np-topbar .np-icon-btn { color: #2a2a2f; border-color: rgba(0, 0, 0, 0.12); }
+.np-root[data-skin="cassette"] .np-minimize { color: #2a2a2f; }
+.np-root[data-skin="cassette"] .np-mode.is-on { color: rgb(var(--np-rust)); }
+.np-root[data-skin="cassette"] .np-mode.is-on::after { background: rgb(var(--np-rust)); }
+.np-root[data-skin="cassette"] .like-btn.is-liked { color: rgb(var(--np-rust)); }
+/* A chunky deck key. */
+.np-root[data-skin="cassette"] .np-play {
+  background: linear-gradient(180deg, rgb(var(--np-rust)), rgb(205, 88, 34));
+  color: #1e1712;
+  border-color: transparent;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 2px 0 rgba(0, 0, 0, 0.35);
+}
+.np-root[data-skin="cassette"] .np-icon-btn.is-active { background: rgba(var(--np-paper), 0.16); border-color: rgba(var(--np-paper), 0.28); }
+.np-root[data-skin="cassette"] .np-topbar .np-icon-btn.is-active { background: rgba(0, 0, 0, 0.08); border-color: rgba(0, 0, 0, 0.2); }
+
+.np-root[data-skin="cassette"] .np-interlude-dots i { background: rgb(var(--np-rust)); }
+
+.np-root[data-skin="cassette"] .np-wheel { --np-wheel-ink: 241, 233, 214; --np-wheel-accent: rgb(236, 108, 44); }
+.np-root[data-skin="cassette"] .np-wheel-item {
+  font-family: "American Typewriter", "Courier Prime", "Courier New", monospace;
+  font-weight: 600;
 }
 
 /* ---------- Theme change: circle reveal from the wheel ---------- */
