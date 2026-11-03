@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-match-track"
+description = "Enables the match_track command without any pre-configured scope."
+commands.allow = ["match_track"]
+
+[[permission]]
+identifier = "deny-match-track"
+description = "Denies the match_track command without any pre-configured scope."
+commands.deny = ["match_track"]

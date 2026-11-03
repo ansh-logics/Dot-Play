@@ -1,6 +1,7 @@
 mod feed;
 mod fsutil;
 mod haptics;
+mod import;
 mod immersive;
 mod library;
 mod lyrics;
@@ -118,6 +119,12 @@ pub fn run() {
                         .permission("allow-set-immersive-screens")
                         .permission("allow-set-immersive-display")
                         .permission("allow-leave-immersive-to-player")
+                        .permission("allow-fetch-external-playlist")
+                        .permission("allow-match-track")
+                        .permission("allow-list-local-playlists")
+                        .permission("allow-get-local-playlist")
+                        .permission("allow-save-local-playlist")
+                        .permission("allow-delete-local-playlist")
                         .permission("core:window:allow-minimize"),
                 )?;
                 tray_url = Some(app_url.clone());
@@ -173,7 +180,13 @@ pub fn run() {
             immersive::list_immersive_displays,
             immersive::set_immersive_screens,
             immersive::set_immersive_display,
-            immersive::leave_immersive_to_player
+            immersive::leave_immersive_to_player,
+            import::fetch_external_playlist,
+            import::match_track,
+            import::list_local_playlists,
+            import::get_local_playlist,
+            import::save_local_playlist,
+            import::delete_local_playlist
         ])
         // Closing the main window keeps the music playing; the menu bar icon controls it.
         // Quit from the tray menu or with Cmd+Q.

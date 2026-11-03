@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { Library, Plus, RefreshCw, UserPlus } from "lucide-react";
+import { Download, Library, Plus, RefreshCw, UserPlus } from "lucide-react";
 import { CardGrid } from "../components/TrackCard";
 import { SectionHeader } from "../components/SectionHeader";
 import type { HomeSection, SearchResult } from "../lib/search";
@@ -14,6 +14,9 @@ interface LibraryViewProps extends BrowseProps {
   onRefresh: () => void;
   onSignIn: () => void;
   onNewPlaylist: () => void;
+  /** Playlists imported from other services, kept on this Mac. */
+  importedPlaylists: SearchResult[];
+  onImport: () => void;
 }
 
 /** Saved playlists from the account, then playlists featured on the home feed. */
@@ -26,6 +29,8 @@ export const LibraryView = memo(function LibraryView({
   onRefresh,
   onSignIn,
   onNewPlaylist,
+  importedPlaylists,
+  onImport,
   ...browse
 }: LibraryViewProps) {
   return (
@@ -43,25 +48,44 @@ export const LibraryView = memo(function LibraryView({
           </div>
         </div>
 
-        {isLoggedIn && (
-          <div className="library-header-actions">
-            <button type="button" className="history-refresh-btn" onClick={onNewPlaylist}>
-              <Plus size={13} />
-              <span>New Playlist</span>
-            </button>
-            <button
-              type="button"
-              className="history-refresh-btn"
-              onClick={onRefresh}
-              disabled={isLoading}
-              title="Refresh library playlists"
-            >
-              <RefreshCw size={13} className={isLoading ? "history-spin" : ""} />
-              <span>Refresh</span>
-            </button>
-          </div>
-        )}
+        <div className="library-header-actions">
+          <button type="button" className="history-refresh-btn import-library-btn" onClick={onImport}>
+            <Download size={13} />
+            <span>Import Playlist</span>
+          </button>
+          {isLoggedIn && (
+            <>
+              <button type="button" className="history-refresh-btn" onClick={onNewPlaylist}>
+                <Plus size={13} />
+                <span>New Playlist</span>
+              </button>
+              <button
+                type="button"
+                className="history-refresh-btn"
+                onClick={onRefresh}
+                disabled={isLoading}
+                title="Refresh library playlists"
+              >
+                <RefreshCw size={13} className={isLoading ? "history-spin" : ""} />
+                <span>Refresh</span>
+              </button>
+            </>
+          )}
+        </div>
       </div>
+
+      {importedPlaylists.length > 0 && (
+        <section className="content-section">
+          <SectionHeader title="Imported" />
+          <CardGrid
+            items={importedPlaylists}
+            keyPrefix="imported-"
+            fallbackKind="playlist"
+            withContext={false}
+            {...browse}
+          />
+        </section>
+      )}
 
       {!isLoggedIn && (
         <div className="history-auth-prompt" style={{ margin: "16px 0 24px" }}>

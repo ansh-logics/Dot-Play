@@ -16,11 +16,22 @@ import { HomeView } from "./views/HomeView";
 import { HistoryView } from "./views/HistoryView";
 import { LibraryView } from "./views/LibraryView";
 import { PlaylistView } from "./views/PlaylistView";
+import { ImportView } from "./views/ImportView";
 import { SearchLandingView } from "./views/SearchLandingView";
 import { SearchResultsView } from "./views/SearchResultsView";
 import type { CardClickHandler, CardContextMenuHandler, NavTab } from "./views/types";
 import { ArrowLeft } from "lucide-react";
-import { getPlaylistDetails, type PlaylistDetails, type SearchResult } from "./lib/search";
+import { getPlaylistDetails, type PlaylistDetails, type PlaylistTrack, type SearchResult } from "./lib/search";
+import {
+  deleteLocalPlaylist,
+  getLocalPlaylist,
+  isLocalPlaylistId,
+  listLocalPlaylists,
+  toCard,
+  toPlaylistDetails,
+  type LocalPlaylist,
+} from "./lib/imports";
+import { createPlaylist } from "./lib/playlists";
 import { cacheTracks } from "./lib/trackCache";
 import { loadFeedbackPrefs, saveFeedbackPrefs, type FeedbackPrefs } from "./lib/feedback";
 import { HISTORY_REFRESH_MS } from "./lib/listeningHistory";
@@ -64,6 +75,16 @@ function App() {
   const [isLoadingPlaylist, setIsLoadingPlaylist] = useState(false);
   const [playlistError, setPlaylistError] = useState<string | null>(null);
   const playlistRequestRef = useRef(0);
+  /** The open playlist when it's an import kept on this Mac. */
+  const [openLocal, setOpenLocal] = useState<LocalPlaylist | null>(null);
+  const [localPlaylists, setLocalPlaylists] = useState<LocalPlaylist[]>([]);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importBusy, setImportBusy] = useState(false);
+  const refreshLocalPlaylists = useCallback(() => {
+    if (isTauriEnvironment()) listLocalPlaylists().then(setLocalPlaylists, console.error);
+  }, []);
+  useEffect(refreshLocalPlaylists, [refreshLocalPlaylists]);
+  const importedCards = useMemo(() => localPlaylists.map(toCard), [localPlaylists]);
 
   const [feedbackPrefs, setFeedbackPrefs] = useState<FeedbackPrefs>(loadFeedbackPrefs);
   const updateFeedbackPrefs = useCallback((patch: Partial<FeedbackPrefs>) => {
@@ -103,6 +124,7 @@ function App() {
     isSearchActive,
     onSignedOut: () => {
       setSelectedPlaylist(null);
+      setOpenLocal(null);
       setActiveNav((current) => (current === "library" || current === "history" ? "home" : current));
       playback.clearSessionHistory();
       clearLikes();
@@ -138,10 +160,11 @@ function App() {
     [isLoggedIn, showToast],
   );
 
+  const playableTracks = useMemo(() => selectedPlaylist?.tracks.filter((t) => !t.missing), [selectedPlaylist]);
   const playback = usePlayback({
     showToast,
     onPlaybackRecorded: account.addToHistory,
-    playlistTracks: selectedPlaylist?.tracks,
+    playlistTracks: playableTracks,
     canLike: isLoggedIn,
     onToggleLike: toggleLike,
   });
@@ -188,9 +211,13 @@ function App() {
     setIsLoadingPlaylist(true);
     setPlaylistError(null);
     setSelectedPlaylist(null);
+    setOpenLocal(null);
+    setImportOpen(false);
     try {
-      const details = await getPlaylistDetails(playlistId);
+      const local = isLocalPlaylistId(playlistId) ? await getLocalPlaylist(playlistId) : null;
+      const details = local ? toPlaylistDetails(local) : await getPlaylistDetails(playlistId);
       if (requestId !== playlistRequestRef.current) return;
+      setOpenLocal(local);
       setSelectedPlaylist(details);
       if (details.tracks && details.tracks.length > 0) {
         cacheTracks(details.tracks);
@@ -204,7 +231,10 @@ function App() {
     }
   }, []);
 
-  const closePlaylist = useCallback(() => setSelectedPlaylist(null), []);
+  const closePlaylist = useCallback(() => {
+    setSelectedPlaylist(null);
+    setOpenLocal(null);
+  }, []);
   const dismissPlaylistError = useCallback(() => setPlaylistError(null), []);
 
   const handleCardClick = useCallback<CardClickHandler>(
@@ -273,6 +303,8 @@ function App() {
       }
       setSearchQuery("");
       setSelectedPlaylist(null);
+      setOpenLocal(null);
+      setImportOpen(false);
       if (tab === "library" && isLoggedIn && librarySections.length === 0) void fetchLibrary();
     },
     [setSearchQuery, isLoggedIn, librarySections.length, fetchLibrary],
@@ -301,6 +333,7 @@ function App() {
     (query: string) => {
       setSearchQuery(query);
       setActiveNav("search");
+      setImportOpen(false);
     },
     [setSearchQuery],
   );
@@ -391,7 +424,11 @@ function App() {
       else if (showSupportModal) setShowSupportModal(false);
       else if (showProfileMenu) setShowProfileMenu(false);
       else if (showQueue) setShowQueue(false);
-      else if (selectedPlaylist) setSelectedPlaylist(null);
+      else if (selectedPlaylist) closePlaylist();
+      // Esc never abandons an import that's still merging.
+      else if (importOpen) {
+        if (!importBusy) setImportOpen(false);
+      }
       else if (document.activeElement === searchInputRef.current) searchInputRef.current?.blur();
       else if (isSearchActive) clearSearch();
       // Nothing left to close: back to Home, then minimise (but never out of full screen).
@@ -419,6 +456,49 @@ function App() {
     onContextMenu: handleContextMenu,
   };
 
+  const openImport = useCallback(() => {
+    closePlaylist();
+    setImportOpen(true);
+  }, [closePlaylist]);
+  const closeImport = useCallback(() => setImportOpen(false), []);
+  const addLocalPlaylist = useCallback(
+    (playlist: LocalPlaylist) => setLocalPlaylists((list) => [playlist, ...list.filter((p) => p.id !== playlist.id)]),
+    [],
+  );
+  const findMissingSong = useCallback(
+    (track: PlaylistTrack) => {
+      closePlaylist();
+      handleQueryChange(`${track.title} ${track.artist}`.trim());
+    },
+    [closePlaylist, handleQueryChange],
+  );
+  const importActions = useMemo(() => {
+    if (!openLocal) return undefined;
+    const saveToYouTube = async () => {
+      const videoIds = [...new Set(openLocal.tracks.flatMap((t) => (t.match ? [t.match.videoId] : [])))];
+      try {
+        await createPlaylist(openLocal.title, "PRIVATE", videoIds);
+        showToast(`Saved ${openLocal.title} to YouTube Music`);
+        void fetchLibrary();
+      } catch {
+        showToast("Couldn't save to YouTube Music. Try again.");
+      }
+    };
+    return {
+      onSaveToYouTube: isLoggedIn ? () => void saveToYouTube() : undefined,
+      onDelete: () => {
+        deleteLocalPlaylist(openLocal.id).then(
+          () => {
+            setLocalPlaylists((list) => list.filter((p) => p.id !== openLocal.id));
+            closePlaylist();
+            showToast(`Deleted ${openLocal.title}`);
+          },
+          () => showToast("Couldn't delete the playlist. Try again."),
+        );
+      },
+    };
+  }, [openLocal, isLoggedIn, showToast, fetchLibrary, closePlaylist]);
+
   const renderMainView = () => {
     if (isLoadingPlaylist) {
       return (
@@ -439,6 +519,18 @@ function App() {
           onPlayNext={playback.handlePlayNext}
           onAddToQueue={playback.handleAddToQueue}
           onContextMenu={handleContextMenu}
+          onFindMissing={findMissingSong}
+          importActions={importActions}
+        />
+      );
+    }
+    if (importOpen) {
+      return (
+        <ImportView
+          onClose={closeImport}
+          onOpenPlaylist={openPlaylist}
+          onImported={addLocalPlaylist}
+          onBusyChange={setImportBusy}
         />
       );
     }
@@ -491,6 +583,8 @@ function App() {
           onRefresh={fetchLibrary}
           onSignIn={handleSignInFresh}
           onNewPlaylist={() => setShowNewPlaylist(true)}
+          importedPlaylists={importedCards}
+          onImport={openImport}
           {...browse}
         />
       );

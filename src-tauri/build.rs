@@ -40,6 +40,12 @@ fn main() {
         "set_immersive_screens",
         "set_immersive_display",
         "leave_immersive_to_player",
+        "fetch_external_playlist",
+        "match_track",
+        "list_local_playlists",
+        "get_local_playlist",
+        "save_local_playlist",
+        "delete_local_playlist",
       ]),
     ),
   )

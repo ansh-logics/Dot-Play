@@ -21,6 +21,8 @@ export interface PlaylistTrack {
   artist: string
   duration: string
   thumbnailUrl: string
+  /** An imported song that wasn't found on YouTube Music (its videoId is empty). */
+  missing?: boolean
 }
 
 export interface PlaylistDetails {
@@ -36,6 +38,8 @@ export interface PlaylistDetails {
   thumbnailUrl: string
   trackCount: string
   tracks: PlaylistTrack[]
+  /** Imported playlists: where they came from ("spotify", "apple", "deezer", "text", "youtube"). */
+  source?: string
 }
 
 export interface HomeSection {

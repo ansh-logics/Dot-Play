@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-fetch-external-playlist"
+description = "Enables the fetch_external_playlist command without any pre-configured scope."
+commands.allow = ["fetch_external_playlist"]
+
+[[permission]]
+identifier = "deny-fetch-external-playlist"
+description = "Denies the fetch_external_playlist command without any pre-configured scope."
+commands.deny = ["fetch_external_playlist"]

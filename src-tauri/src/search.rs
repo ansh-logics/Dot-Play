@@ -6,6 +6,25 @@ use crate::ytmusic::{web_remix_context, with_ytm_headers, HTTP_CLIENT};
 
 #[tauri::command]
 pub(crate) async fn search_tracks(query: String) -> Result<Vec<SearchResult>, String> {
+    Ok(search_songs(&query).await?.into_iter().map(|hit| hit.result).collect())
+}
+
+/// One search result plus its length as YouTube Music shows it ("3:45"), when listed.
+pub(crate) struct SongHit {
+    pub result: SearchResult,
+    pub duration: Option<String>,
+}
+
+/// "3:45" or "1:02:03", the duration run in a result's subtitle.
+fn duration_run(runs: Option<&Vec<serde_json::Value>>) -> Option<String> {
+    runs?.iter().rev().filter_map(|r| r.get("text").and_then(|t| t.as_str())).find(|t| {
+        let parts: Vec<&str> = t.split(':').collect();
+        parts.len() >= 2 && parts.iter().all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
+    }).map(str::to_string)
+}
+
+/// The top hit and the song rows for a query, at most 10.
+pub(crate) async fn search_songs(query: &str) -> Result<Vec<SongHit>, String> {
     let clean_query = query.trim();
     if clean_query.is_empty() {
         return Ok(Vec::new());
@@ -56,14 +75,17 @@ pub(crate) async fn search_tracks(query: String) -> Result<Vec<SearchResult>, St
 
         if let (Some(id), Some(t)) = (video_id, title) {
             let (clean_t, clean_a) = clean_ytmusic_title_and_artist(t, &raw_artist);
-            results.push(SearchResult {
-                video_id: id.to_string(),
-                title: clean_t,
-                artist: clean_a,
-                thumbnail_url: thumb.to_string(),
-                playlist_id: None,
-                item_type: Some("song".to_string()),
-                queue_source: None,
+            results.push(SongHit {
+                result: SearchResult {
+                    video_id: id.to_string(),
+                    title: clean_t,
+                    artist: clean_a,
+                    thumbnail_url: thumb.to_string(),
+                    playlist_id: None,
+                    item_type: Some("song".to_string()),
+                    queue_source: None,
+                },
+                duration: duration_run(subtitle_runs),
             });
         }
     }
@@ -111,15 +133,18 @@ pub(crate) async fn search_tracks(query: String) -> Result<Vec<SearchResult>, St
 
                         if let (Some(id), Some(t)) = (video_id, title) {
                             let (clean_t, clean_a) = clean_ytmusic_title_and_artist(t, &raw_artist);
-                            if !results.iter().any(|r| r.video_id == id) {
-                                results.push(SearchResult {
-                                    video_id: id.to_string(),
-                                    title: clean_t,
-                                    artist: clean_a,
-                                    thumbnail_url: thumb.to_string(),
-                                    playlist_id: None,
-                                    item_type: Some("song".to_string()),
-                                    queue_source: None,
+                            if !results.iter().any(|r| r.result.video_id == id) {
+                                results.push(SongHit {
+                                    result: SearchResult {
+                                        video_id: id.to_string(),
+                                        title: clean_t,
+                                        artist: clean_a,
+                                        thumbnail_url: thumb.to_string(),
+                                        playlist_id: None,
+                                        item_type: Some("song".to_string()),
+                                        queue_source: None,
+                                    },
+                                    duration: duration_run(subtitle_runs),
                                 });
                             }
                         }

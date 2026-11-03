@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-save-local-playlist"
+description = "Enables the save_local_playlist command without any pre-configured scope."
+commands.allow = ["save_local_playlist"]
+
+[[permission]]
+identifier = "deny-save-local-playlist"
+description = "Denies the save_local_playlist command without any pre-configured scope."
+commands.deny = ["save_local_playlist"]

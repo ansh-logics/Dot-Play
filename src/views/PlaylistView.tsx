@@ -1,8 +1,9 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
-import { ChevronLeft, CornerDownRight, ListEnd, Play, Shuffle } from "lucide-react";
+import { ChevronLeft, CornerDownRight, ListEnd, Play, Search, Shuffle, Trash2, Upload } from "lucide-react";
 import { ArtworkImage } from "../components/ArtworkImage";
 import { cleanDisplayTitle } from "../lib/displayText";
 import { useArtwork } from "../lib/imagePipeline";
+import { SOURCE_NAMES, type ImportSource } from "../lib/imports";
 import type { PlaylistDetails, PlaylistTrack, SearchResult } from "../lib/search";
 import { useArtworkPalette } from "../lib/useArtworkPalette";
 import type { CardContextMenuHandler } from "./types";
@@ -16,6 +17,10 @@ interface PlaylistViewProps {
   onPlayNext: (track: SearchResult) => void;
   onAddToQueue: (track: SearchResult) => void;
   onContextMenu: CardContextMenuHandler;
+  /** Imported playlists: a song that wasn't found was clicked. */
+  onFindMissing?: (track: PlaylistTrack) => void;
+  /** Imported playlists: keep it on YouTube Music too, or delete the local copy. */
+  importActions?: { onSaveToYouTube?: () => void; onDelete: () => void };
 }
 
 const ALBUM_KINDS = ["Album", "Single", "EP"];
@@ -58,10 +63,15 @@ export const PlaylistView = memo(function PlaylistView({
   onPlayNext,
   onAddToQueue,
   onContextMenu,
+  onFindMissing,
+  importActions,
 }: PlaylistViewProps) {
-  const { tracks } = playlist;
+  const { tracks: allTracks } = playlist;
+  // Imported songs that weren't found stay listed but never play.
+  const tracks = allTracks.filter((t) => !t.missing);
   const isAlbum = playlist.id.startsWith("MPRE") || ALBUM_KINDS.includes(playlist.kind ?? "");
-  const kind = playlist.kind ?? (isAlbum ? "Album" : "Playlist");
+  const sourceName = playlist.source ? SOURCE_NAMES[playlist.source as ImportSource] : undefined;
+  const kind = sourceName ? `${playlist.kind ?? "Playlist"} · Imported from ${sourceName}` : (playlist.kind ?? (isAlbum ? "Album" : "Playlist"));
   const title = cleanDisplayTitle(playlist.title);
 
   // Same URL the cover resolves to, so the colours match the pixels on screen.
@@ -117,6 +127,13 @@ export const PlaylistView = memo(function PlaylistView({
   }, [playlist.id]);
 
   const descriptionRef = useRef<HTMLParagraphElement>(null);
+  // Delete takes two clicks: the first arms the button for a few seconds.
+  const [deleteArmed, setDeleteArmed] = useState(false);
+  useEffect(() => {
+    if (!deleteArmed) return;
+    const timer = window.setTimeout(() => setDeleteArmed(false), 3000);
+    return () => window.clearTimeout(timer);
+  }, [deleteArmed]);
   const [descriptionOpen, setDescriptionOpen] = useState(false);
   const [descriptionClipped, setDescriptionClipped] = useState(false);
   useLayoutEffect(() => {
@@ -139,8 +156,8 @@ export const PlaylistView = memo(function PlaylistView({
     if (list.length > 0) onSelectTrack(toItem(list[0]), list);
   };
 
-  const totalSeconds = tracks.reduce((sum, t) => sum + durationSeconds(t.duration), 0);
-  const songCount = playlist.trackCount || (tracks.length > 0 ? `${tracks.length} ${tracks.length === 1 ? "song" : "songs"}` : "");
+  const totalSeconds = allTracks.reduce((sum, t) => sum + durationSeconds(t.duration), 0);
+  const songCount = playlist.trackCount || (allTracks.length > 0 ? `${allTracks.length} ${allTracks.length === 1 ? "song" : "songs"}` : "");
   const meta = [
     playlist.artist ?? playlist.author,
     playlist.year,
@@ -251,6 +268,30 @@ export const PlaylistView = memo(function PlaylistView({
               >
                 <ListEnd size={17} />
               </button>
+              {importActions?.onSaveToYouTube && (
+                <button
+                  type="button"
+                  className="album-glass-btn"
+                  onClick={importActions.onSaveToYouTube}
+                  disabled={tracks.length === 0}
+                  aria-label="Save to YouTube Music"
+                  title="Save to YouTube Music"
+                >
+                  <Upload size={17} />
+                </button>
+              )}
+              {importActions && (
+                <button
+                  type="button"
+                  className={`album-glass-btn ${deleteArmed ? "is-armed" : ""}`}
+                  onClick={() => (deleteArmed ? importActions.onDelete() : setDeleteArmed(true))}
+                  onBlur={() => setDeleteArmed(false)}
+                  aria-label={deleteArmed ? "Click again to delete" : "Delete imported playlist"}
+                  title={deleteArmed ? "Click again to delete" : "Delete imported playlist"}
+                >
+                  <Trash2 size={16} />
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -265,12 +306,36 @@ export const PlaylistView = memo(function PlaylistView({
         </div>
 
         <div className="tracklist-rows">
-          {tracks.map((track, idx) => {
+          {allTracks.map((track, idx) => {
+            if (track.missing) {
+              return (
+                <div
+                  key={`missing-${idx}`}
+                  className="tracklist-row is-missing"
+                  onClick={() => onFindMissing?.(track)}
+                  title="Not found on YouTube Music. Click to search for it."
+                >
+                  <span className="col-num">{idx + 1}</span>
+                  <div className="col-title-wrap">
+                    {!isAlbum && (
+                      <ArtworkImage src={track.thumbnailUrl} alt={track.title} className="track-row-thumb" variant="thumbnail" />
+                    )}
+                    <span className="track-row-title">{track.title}</span>
+                  </div>
+                  <span className="col-artist">{track.artist}</span>
+                  <div className="col-time-actions">
+                    <span className="track-row-missing-note">
+                      <Search size={12} /> Not found
+                    </span>
+                  </div>
+                </div>
+              );
+            }
             const isTrackActive = currentVideoId === track.videoId;
             const trackItem = toItem(track);
             return (
               <div
-                key={track.videoId || idx}
+                key={`${track.videoId}-${idx}`}
                 className={`tracklist-row ${isTrackActive ? "active" : ""}`}
                 onClick={() => onSelectTrack(trackItem, tracks)}
                 onContextMenu={(e) => onContextMenu(e, trackItem, "playlist", { contextList: tracks })}
@@ -320,7 +385,7 @@ export const PlaylistView = memo(function PlaylistView({
           })}
         </div>
 
-        {tracks.length === 0 && <p className="empty-message">No playable tracks found in this playlist.</p>}
+        {allTracks.length === 0 && <p className="empty-message">No playable tracks found in this playlist.</p>}
       </section>
     </div>
   );

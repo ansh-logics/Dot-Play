@@ -50,6 +50,12 @@
     "allow-list-immersive-displays",
     "allow-set-immersive-screens",
     "allow-set-immersive-display",
-    "allow-leave-immersive-to-player"
+    "allow-leave-immersive-to-player",
+    "allow-fetch-external-playlist",
+    "allow-match-track",
+    "allow-list-local-playlists",
+    "allow-get-local-playlist",
+    "allow-save-local-playlist",
+    "allow-delete-local-playlist"
   ]
 }

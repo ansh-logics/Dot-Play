@@ -448,3 +448,17 @@
   letter-spacing: 0;
   font-variant-numeric: tabular-nums;
 }
+
+/* Imported songs that weren't found on YouTube Music: listed, dimmed, click to search. */
+.tracklist-row.is-missing { opacity: 0.45; }
+.tracklist-row.is-missing:hover { opacity: 0.75; }
+.track-row-missing-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+.album-glass-btn.is-armed { background: var(--accent-red); border-color: var(--accent-red); }
+.album-glass-btn.is-armed:hover:not(:disabled) { background: var(--accent-red-hover); }
