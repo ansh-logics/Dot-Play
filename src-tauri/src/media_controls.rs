@@ -78,6 +78,7 @@ pub async fn set_now_playing(app: AppHandle, info: Option<NowPlayingInfo>) -> Re
     // listening for the event anyway, so one emit avoids duplicates).
     let _ = app.emit(NOW_PLAYING_EVENT, &snapshot);
     crate::tray::refresh_menu(&app, snapshot.as_ref().map(|s| &s.info));
+    crate::remote::publish_now_playing(&app, snapshot.as_ref());
 
     #[cfg(target_os = "macos")]
     {

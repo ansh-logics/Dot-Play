@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-answer-pair-request"
+description = "Enables the answer_pair_request command without any pre-configured scope."
+commands.allow = ["answer_pair_request"]
+
+[[permission]]
+identifier = "deny-answer-pair-request"
+description = "Denies the answer_pair_request command without any pre-configured scope."
+commands.deny = ["answer_pair_request"]

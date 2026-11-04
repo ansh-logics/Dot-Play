@@ -46,6 +46,11 @@ fn main() {
         "get_local_playlist",
         "save_local_playlist",
         "delete_local_playlist",
+        "get_remote_status",
+        "set_remote_enabled",
+        "answer_pair_request",
+        "forget_remote_device",
+        "set_remote_state",
       ]),
     ),
   )

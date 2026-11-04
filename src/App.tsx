@@ -39,6 +39,8 @@ import { useAccountData } from "./lib/useAccountData";
 import { clearLikes, isLiked, setLiked } from "./lib/likes";
 import { SaveToPlaylistModal } from "./components/modals/SaveToPlaylistModal";
 import { NewPlaylistModal } from "./components/modals/NewPlaylistModal";
+import { RemotePairModal } from "./components/modals/RemotePairModal";
+import { answerPairRequest, type PairRequest } from "./lib/remote";
 import { useKeyboardShortcuts } from "./lib/useKeyboardShortcuts";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -371,6 +373,23 @@ function App() {
   const openNowPlaying = useCallback(() => setShowNowPlaying(true), []);
   const closeNowPlaying = useCallback(() => setShowNowPlaying(false), []);
 
+  // Phone Remote: a phone asks to pair (or gave up waiting).
+  const [pairRequest, setPairRequest] = useState<PairRequest | null>(null);
+  useEffect(() => {
+    if (!isTauriEnvironment()) return;
+    let disposed = false;
+    const unlisteners: Array<() => void> = [];
+    const keep = (fn: () => void) => (disposed ? fn() : unlisteners.push(fn));
+    void listen<PairRequest>("remote-pair-request", ({ payload }) => setPairRequest(payload)).then(keep);
+    void listen<{ id: string }>("remote-pair-closed", ({ payload }) =>
+      setPairRequest((current) => (current?.id === payload.id ? null : current)),
+    ).then(keep);
+    return () => {
+      disposed = true;
+      unlisteners.forEach((fn) => fn());
+    };
+  }, []);
+
   // Esc in immersive mode and F while minimised (both from Rust) bring the window back with
   // the player open.
   const hasTrackRef = useRef(false);
@@ -418,7 +437,10 @@ function App() {
 
   useKeyboardShortcuts({
     onEscape: () => {
-      if (saveTarget) setSaveTarget(null);
+      if (pairRequest) {
+        void answerPairRequest(pairRequest.id, false).catch(() => {});
+        setPairRequest(null);
+      } else if (saveTarget) setSaveTarget(null);
       else if (showNewPlaylist) setShowNewPlaylist(false);
       else if (showSettingsModal) setShowSettingsModal(false);
       else if (showSupportModal) setShowSupportModal(false);
@@ -800,6 +822,8 @@ function App() {
           }}
         />
       )}
+
+      {pairRequest && <RemotePairModal request={pairRequest} onDone={() => setPairRequest(null)} />}
 
       <Toast message={toastMessage} onDismiss={dismissToast} />
 

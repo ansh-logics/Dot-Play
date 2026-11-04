@@ -27,7 +27,15 @@ reqwest = { version = "0.12", features = ["json"] }
 sha1 = "0.10"
 tauri-plugin-localhost = "2"
 portpicker = "0.1"
-tokio = { version = "1", features = ["time", "macros"] }
+tokio = { version = "1", features = ["time", "macros", "net", "io-util", "sync", "rt"] }
+getrandom = "0.3"
+tokio-tungstenite = { version = "0.28", features = ["native-tls"] }
+futures-util = { version = "0.3.34", default-features = false, features = ["sink", "std"] }
+aes-gcm = "0.10"
+hkdf = "0.12"
+sha2 = "0.10"
+base64 = "0.22"
+qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"

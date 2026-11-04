@@ -12,6 +12,7 @@ mod player_server;
 mod playlist;
 mod queue_session;
 mod recommendations;
+mod remote;
 mod search;
 mod session;
 mod shortcuts;
@@ -39,6 +40,7 @@ pub fn run() {
         .manage(PlayerServerState(player_port))
         .manage(media_controls::LastNowPlaying::default())
         .manage(updater::PendingUpdate::default())
+        .manage(remote::RemoteHub::default())
         .plugin(tauri_plugin_log::Builder::default().build())
         .plugin(tauri_plugin_updater::Builder::new().build());
 
@@ -125,6 +127,11 @@ pub fn run() {
                         .permission("allow-get-local-playlist")
                         .permission("allow-save-local-playlist")
                         .permission("allow-delete-local-playlist")
+                        .permission("allow-get-remote-status")
+                        .permission("allow-set-remote-enabled")
+                        .permission("allow-answer-pair-request")
+                        .permission("allow-forget-remote-device")
+                        .permission("allow-set-remote-state")
                         .permission("core:window:allow-minimize"),
                 )?;
                 tray_url = Some(app_url.clone());
@@ -140,6 +147,7 @@ pub fn run() {
             updater::init(app.handle());
 
             session::restore_saved_state(app);
+            remote::init(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -186,7 +194,12 @@ pub fn run() {
             import::list_local_playlists,
             import::get_local_playlist,
             import::save_local_playlist,
-            import::delete_local_playlist
+            import::delete_local_playlist,
+            remote::get_remote_status,
+            remote::set_remote_enabled,
+            remote::answer_pair_request,
+            remote::forget_remote_device,
+            remote::set_remote_state
         ])
         // Closing the main window keeps the music playing; the menu bar icon controls it.
         // Quit from the tray menu or with Cmd+Q.

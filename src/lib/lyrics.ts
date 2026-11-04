@@ -30,7 +30,7 @@ export interface TrackLyrics {
 // Backward compatibility type alias
 export type SyncedLyricLine = RichLyricLine;
 
-interface LyricsPayload {
+export interface LyricsPayload {
   source: string;
   isrc?: string;
   ttml?: string;
@@ -530,7 +530,7 @@ export async function fetchLyricsMultiProvider(
   return notFound;
 }
 
-function processLyricsPayload(payload: LyricsPayload): TrackLyrics {
+export function processLyricsPayload(payload: LyricsPayload): TrackLyrics {
   // A. TTML (Apple-style syllable timing)
   if (payload.ttml) {
     const lines = parseTtml(payload.ttml);

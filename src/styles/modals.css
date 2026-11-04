@@ -655,3 +655,38 @@
 .new-playlist-modal { max-width: 400px; }
 .new-playlist-modal .nothing-modal-body { padding: 16px; }
 .new-playlist-hint.is-error { color: #ff453a; }
+
+/* Settings → Phone Remote */
+.remote-pair-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 4px 0 8px;
+  padding: 12px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+}
+
+.remote-qr {
+  width: 120px;
+  height: 120px;
+  flex: none;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
+
+.remote-qr svg { width: 100%; height: 100%; display: block; }
+.remote-qr.is-empty { display: grid; place-items: center; color: #000; font-size: var(--fs-sm); font-weight: 600; }
+.remote-pair-text { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.remote-copy-btn { margin-top: 8px; }
+.remote-devices { list-style: none; margin: 0; padding: 0; }
+.remote-device-name { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); }
+.remote-settings-error { margin: 0 0 8px; font-size: var(--fs-sm); color: #ff453a; }
+.remote-pair-question { margin: 0 0 6px; font-size: var(--fs-lg); color: var(--text-primary); }
+.remote-relay-status { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: var(--fs-sm); color: var(--text-secondary); }
+.remote-relay-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-tertiary); }
+.remote-relay-status.is-online .remote-relay-dot { background: #30d158; box-shadow: 0 0 8px rgba(48, 209, 88, 0.5); }
+.remote-relay-status.is-connecting .remote-relay-dot { background: #ffd60a; }
+.remote-relay-status.is-offline .remote-relay-dot { background: var(--accent-red); }

@@ -699,6 +699,7 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     isMuted,
     onSelectUpcoming: handleSelectUpcoming,
     onRemoveUpcoming: handleRemoveUpcoming,
+    onReorderUpcoming: handleUpcomingReorder,
     onToggleShuffle: toggleShuffle,
     onCycleRepeat: cycleRepeatMode,
     onChangeVolume: changeVolume,

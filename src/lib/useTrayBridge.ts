@@ -1,4 +1,5 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react"
+import { invoke } from "@tauri-apps/api/core"
 import { emitTo, listen } from "@tauri-apps/api/event"
 import { cleanDisplayTitle } from "./displayText"
 import { optimizeThumbnailUrl } from "./imagePipeline"
@@ -33,9 +34,13 @@ export type TrayCommand =
   | { type: "removeQueueItem"; index: number; videoId: string }
   | { type: "toggleShuffle" | "cycleRepeat" | "toggleMute" | "toggleLike" }
   | { type: "setVolume"; volume: number }
+  /** Phone Remote: move a song to position `to` in Up Next (0 is Play Next). */
+  | { type: "moveQueueItem"; videoId: string; to: number }
 
 /** The popover only shows the start of a long queue; this keeps each message small. */
 const MAX_UPCOMING = 50
+/** The phone has more room to scroll. */
+const MAX_REMOTE_UPCOMING = 100
 
 interface TrayBridgeOptions {
   upcoming: SearchResult[]
@@ -45,6 +50,7 @@ interface TrayBridgeOptions {
   isMuted: boolean
   onSelectUpcoming: (track: SearchResult) => void
   onRemoveUpcoming: (index: number) => void
+  onReorderUpcoming: (upcoming: SearchResult[]) => void
   onToggleShuffle: () => void
   onCycleRepeat: () => void
   onChangeVolume: (volume: number) => void
@@ -68,6 +74,7 @@ export function useTrayBridge({
   isMuted,
   onSelectUpcoming,
   onRemoveUpcoming,
+  onReorderUpcoming,
   onToggleShuffle,
   onCycleRepeat,
   onChangeVolume,
@@ -80,6 +87,7 @@ export function useTrayBridge({
   const [open, setOpen] = useState(false)
   // Bumped when a freshly created popover has loaded and is listening.
   const [readyCount, setReadyCount] = useState(0)
+  const [remoteClients, setRemoteClients] = useState(0)
   const likeStatus = useLikeStatus(currentVideoId, canLike)
   const liked = likeStatus === undefined ? null : likeStatus === "LIKE"
   const upcomingRef = useRef(upcoming)
@@ -102,6 +110,15 @@ export function useTrayBridge({
             ? command.index
             : queue.findIndex((t) => t.videoId === command.videoId)
         if (index >= 0) onRemoveUpcoming(index)
+        break
+      }
+      case "moveQueueItem": {
+        const from = queue.findIndex((t) => t.videoId === command.videoId)
+        if (from < 0) break
+        const next = queue.slice()
+        const [track] = next.splice(from, 1)
+        next.splice(Math.max(0, Math.min(command.to, next.length)), 0, track)
+        onReorderUpcoming(next)
         break
       }
       case "toggleShuffle":
@@ -134,6 +151,9 @@ export function useTrayBridge({
       setReadyCount((n) => n + 1)
     }).then(keep)
     void listen<TrayCommand>("tray-command", ({ payload }) => handleCommand(payload)).then(keep)
+    // Phone Remote: the same commands, and how many phones are watching.
+    void listen<TrayCommand>("remote-command", ({ payload }) => handleCommand(payload)).then(keep)
+    void listen<{ count: number }>("remote-clients", ({ payload }) => setRemoteClients(payload.count)).then(keep)
 
     return () => {
       disposed = true
@@ -142,15 +162,16 @@ export function useTrayBridge({
   }, [enabled])
 
   // Pushed when the popover opens or finishes loading, and on every change while it's open.
+  // The same state goes to connected phones (with a longer queue) while any are watching.
   useEffect(() => {
-    if (!enabled || !open) return
-    const state: TrayState = {
-      upcoming: upcoming.slice(0, MAX_UPCOMING).map((track) => ({
-        videoId: track.videoId,
-        title: cleanDisplayTitle(track.title),
-        artist: track.artist,
-        thumb: optimizeThumbnailUrl(track.thumbnailUrl, track.videoId, "thumbnail"),
-      })),
+    if (!enabled || (!open && remoteClients === 0)) return
+    const toItem = (track: SearchResult): TrayQueueItem => ({
+      videoId: track.videoId,
+      title: cleanDisplayTitle(track.title),
+      artist: track.artist,
+      thumb: optimizeThumbnailUrl(track.thumbnailUrl, track.videoId, "thumbnail"),
+    })
+    const base = {
       shuffle: playbackModes.shuffle,
       repeat: playbackModes.repeat,
       autoplay: playbackModes.autoplay,
@@ -159,6 +180,17 @@ export function useTrayBridge({
       skin,
       liked,
     }
-    void emitTo("tray", "tray-state", state).catch(() => {})
-  }, [enabled, open, readyCount, upcoming, playbackModes, skin, volume, isMuted, liked])
+    if (open) {
+      const state: TrayState = { ...base, upcoming: upcoming.slice(0, MAX_UPCOMING).map(toItem) }
+      void emitTo("tray", "tray-state", state).catch(() => {})
+    }
+    if (remoteClients > 0) {
+      const state: TrayState & { total: number } = {
+        ...base,
+        upcoming: upcoming.slice(0, MAX_REMOTE_UPCOMING).map(toItem),
+        total: upcoming.length,
+      }
+      void invoke("set_remote_state", { state }).catch(() => {})
+    }
+  }, [enabled, open, readyCount, remoteClients, upcoming, playbackModes, skin, volume, isMuted, liked])
 }
