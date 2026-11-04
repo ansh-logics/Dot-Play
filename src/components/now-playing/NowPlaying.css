@@ -287,6 +287,15 @@
 
 .np-lyrics-pad { height: 40%; }
 
+/* Untimed lyrics have no line to centre: they start at the top, with no fade over the first
+   line. The bottom still fades so it's clear there's more below. */
+.np-lyrics.is-plain {
+  mask-image: linear-gradient(180deg, #000 0%, #000 82%, transparent 100%);
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 82%, transparent 100%);
+}
+.np-lyrics.is-plain .np-lyrics-pad:first-child { height: 0; }
+.np-lyrics.is-plain .np-lyrics-pad:last-child { height: 20%; }
+
 .np-lyric {
   margin: 0 0 0.42em;
   font-weight: 600;

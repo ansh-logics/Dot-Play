@@ -494,6 +494,12 @@
   -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 16%, #000 78%, transparent 100%);
 }
 .deck-screen .np-lyrics-pad { height: 38%; }
+.deck-screen .np-lyrics.is-plain {
+  mask-image: linear-gradient(180deg, #000 0%, #000 80%, transparent 100%);
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 80%, transparent 100%);
+}
+.deck-screen .np-lyrics.is-plain .np-lyrics-pad:first-child { height: 0; }
+.deck-screen .np-lyrics.is-plain .np-lyrics-pad:last-child { height: 20%; }
 .deck-screen .np-lyric,
 .deck-screen .np-interlude {
   font-family: "SF Mono", "Menlo", "Consolas", "Courier New", monospace;
