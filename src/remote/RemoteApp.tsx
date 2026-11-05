@@ -51,7 +51,7 @@ const SEARCH_MIN_CHARS = 2;
 const VOLUME_THROTTLE_MS = 80;
 
 export function RemoteApp() {
-  const { connection, np, state, send, requestLyrics, requestSearch } = useRemoteState();
+  const { connection, np, state, send, requestLyrics, requestSearch, computer } = useRemoteState();
   const [tab, setTab] = useState<Tab>("playing");
   // Kept here so the search survives switching tabs.
   const [query, setQuery] = useState("");
@@ -69,13 +69,13 @@ export function RemoteApp() {
   // Reopening: the last track and queue show at once while the connection comes back.
   if (connection.kind === "checking" && !np) return <Splash text="Connecting…" />;
   if (connection.kind === "waiting") {
-    return <Splash text="Waiting for your Mac" sub="Click Allow in dot(.)music on your Mac." breathing />;
+    return <Splash text={`Waiting for your ${computer}`} sub={`Click Allow in dot(.)music on your ${computer}.`} breathing />;
   }
   if (connection.kind === "macOffline") {
     return (
       <Splash
-        text="Your Mac is offline"
-        sub="Open dot(.)music on your Mac and make sure it's connected to the internet. This page reconnects by itself."
+        text={`Your ${computer} is offline`}
+        sub={`Open dot(.)music on your ${computer} and make sure it's connected to the internet. This page reconnects by itself.`}
         breathing
       />
     );
@@ -83,8 +83,8 @@ export function RemoteApp() {
   if (connection.kind === "unpaired") {
     return (
       <Splash
-        text="Pair with your Mac"
-        sub={connection.message ?? "In dot(.)music on your Mac, open Settings → Phone Remote and scan the QR code."}
+        text={`Pair with your ${computer}`}
+        sub={connection.message ?? `In dot(.)music on your ${computer}, open Settings → Phone Remote and scan the QR code.`}
       />
     );
   }
@@ -106,11 +106,11 @@ export function RemoteApp() {
 
       <main className="rm-main">
         {tab === "search" ? (
-          <SearchTab query={query} onQueryChange={setQuery} requestSearch={requestSearch} send={send} />
+          <SearchTab query={query} onQueryChange={setQuery} requestSearch={requestSearch} send={send} computer={computer} />
         ) : !np ? (
           <div className="rm-empty">
             <Music2 size={28} />
-            <p>Nothing playing on your Mac.</p>
+            <p>Nothing playing on your {computer}.</p>
           </div>
         ) : tab === "playing" ? (
           // A new song starts fresh: no half-finished drag carried over from the last one.
@@ -564,11 +564,13 @@ function SearchTab({
   onQueryChange,
   requestSearch,
   send,
+  computer,
 }: {
   query: string;
   onQueryChange: (query: string) => void;
   requestSearch: RequestSearch;
   send: Send;
+  computer: string;
 }) {
   const key = query.trim().toLowerCase();
   const [results, setResults] = useState<SearchHit[]>(() => searchCache.get(key) ?? []);
@@ -647,7 +649,7 @@ function SearchTab({
         )}
       </label>
 
-      {failed && <p className="rm-note is-small">Your Mac didn't answer. Check that it's online.</p>}
+      {failed && <p className="rm-note is-small">Your {computer} didn't answer. Check that it's online.</p>}
       {!failed && key.length >= SEARCH_MIN_CHARS && !loading && results.length === 0 && (
         <p className="rm-note is-small">No songs found.</p>
       )}

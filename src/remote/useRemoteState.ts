@@ -45,7 +45,18 @@ interface Pairing {
   peer: string;
   /** The device secret, base64url. */
   secret: string;
+  /** "mac" or "pc": what the paired computer is called on screen. */
+  os?: HostOs;
 }
+
+export type HostOs = "mac" | "pc";
+
+/** "Mac" for a Mac; "computer" for Windows, or before we know. */
+export function computerWord(os: HostOs | undefined): string {
+  return os === "mac" ? "Mac" : "computer";
+}
+
+const asHostOs = (value: unknown): HostOs | undefined => (value === "mac" || value === "pc" ? value : undefined);
 
 const STORE_KEY = "dot-music-remote";
 /** The last track and queue seen, shown instantly on reopen while the connection comes back. */
@@ -110,15 +121,17 @@ const START = (() => {
   const hash = new URLSearchParams(window.location.hash.slice(1));
   const linkRoom = hash.get("r");
   const linkSecret = hash.get("p");
+  const linkOs = asHostOs(hash.get("o"));
   if (linkRoom || linkSecret) window.history.replaceState(null, "", window.location.pathname);
   const saved = loadPairing();
   if (linkRoom && linkSecret && /^[a-f0-9]{32}$/.test(linkRoom) && saved?.room !== linkRoom) {
     return {
-      pairing: { room: linkRoom, peer: toHex(randomBytes(16)), secret: toBase64Url(randomBytes(32)) } as Pairing,
+      pairing: { room: linkRoom, peer: toHex(randomBytes(16)), secret: toBase64Url(randomBytes(32)), os: linkOs } as Pairing,
       pairKeySecret: fromBase64Url(linkSecret) as Uint8Array | null,
+      os: linkOs,
     };
   }
-  return { pairing: saved, pairKeySecret: null as Uint8Array | null };
+  return { pairing: saved, pairKeySecret: null as Uint8Array | null, os: saved?.os ?? linkOs };
 })();
 
 /** "iPhone", "Android phone"… for the Mac's "Allow …?" prompt. */
@@ -137,6 +150,7 @@ function deviceName(): string {
  */
 export function useRemoteState() {
   const [connection, setConnection] = useState<Connection>({ kind: "checking" });
+  const [hostOs, setHostOs] = useState<HostOs | undefined>(START.os);
   const [cached] = useState(() => (START.pairing && !START.pairKeySecret ? loadLast() : { np: null, state: null }));
   const [np, setNp] = useState<RemoteNowPlaying | null>(cached.np);
   const [state, setState] = useState<RemoteQueueState | null>(cached.state);
@@ -182,6 +196,7 @@ export function useRemoteState() {
     const current = pairing;
     pairingRef.current = current;
 
+    const word = () => computerWord(current.os);
     const finishUnpaired = (message: string) => {
       savePairing(null);
       try {
@@ -216,7 +231,7 @@ export function useRemoteState() {
           setConnection({ kind: "waiting" });
           window.clearTimeout(pairTimer);
           pairTimer = window.setTimeout(() => {
-            if (pairKeySecret) finishUnpaired("The Mac didn't answer. Scan the QR code in Settings again.");
+            if (pairKeySecret) finishUnpaired(`Your ${word()} didn't answer. Scan the QR code in Settings again.`);
             socketRef.current?.close();
           }, PAIR_TIMEOUT_MS);
         } else {
@@ -245,10 +260,10 @@ export function useRemoteState() {
         case "denied":
           pairKeySecret = null;
           window.clearTimeout(pairTimer);
-          finishUnpaired("The Mac didn't allow this phone.");
+          finishUnpaired(`Your ${word()} didn't allow this phone.`);
           break;
         case "revoked":
-          finishUnpaired("This phone was disconnected on the Mac.");
+          finishUnpaired(`This phone was disconnected on your ${word()}.`);
           break;
         case "nowPlaying": {
           const data = message.data as Omit<RemoteNowPlaying, "receivedAt"> | null;
@@ -258,6 +273,15 @@ export function useRemoteState() {
         case "state":
           setState(message.data as RemoteQueueState);
           break;
+        case "host": {
+          const os = asHostOs((message as { os?: unknown }).os);
+          if (os && os !== current.os) {
+            current.os = os;
+            setHostOs(os);
+            if (!pairKeySecret) savePairing(current);
+          }
+          break;
+        }
         case "lyrics":
           if (typeof message.id === "number") {
             lyricsWaiters.current.get(message.id)?.(message.payload ?? null);
@@ -288,7 +312,7 @@ export function useRemoteState() {
       socket.addEventListener("close", (e) => {
         if (disposed || socketRef.current !== socket) return;
         if (e.code === KICKED) {
-          if (pairingRef.current) finishUnpaired("This phone was disconnected on the Mac.");
+          if (pairingRef.current) finishUnpaired(`This phone was disconnected on your ${word()}.`);
           return;
         }
         if (!pairingRef.current) return;
@@ -389,7 +413,7 @@ export function useRemoteState() {
     [sendSealed],
   );
 
-  return { connection, np, state, send, requestLyrics, requestSearch };
+  return { connection, np, state, send, requestLyrics, requestSearch, computer: computerWord(hostOs) };
 }
 
 /** Elapsed seconds, extrapolated while playing; re-renders a few times a second. */

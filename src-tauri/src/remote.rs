@@ -198,6 +198,9 @@ pub struct RemoteStatus {
     clients: usize,
 }
 
+/// What the phone calls this computer: "mac" or "pc".
+const HOST_OS: &str = if cfg!(target_os = "macos") { "mac" } else { "pc" };
+
 fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
@@ -247,7 +250,9 @@ fn status_of(hub: &RemoteHub) -> RemoteStatus {
     let inner = hub.inner.lock().unwrap();
     let base = relay_base();
     let url = match (&base, inner.enabled) {
-        (Some(base), true) => Some(format!("{base}/#r={}&p={}", inner.room, B64.encode(inner.pair_secret))),
+        (Some(base), true) => {
+            Some(format!("{base}/#r={}&p={}&o={HOST_OS}", inner.room, B64.encode(inner.pair_secret)))
+        }
         _ => None,
     };
     RemoteStatus {
@@ -504,6 +509,8 @@ fn send_sealed(out: &mpsc::UnboundedSender<String>, peer: &str, key: &Key, messa
 /// The current track and queue, for a phone that just joined or asked for them.
 fn send_snapshot(app: &AppHandle, out: &mpsc::UnboundedSender<String>, device: &Device) {
     let Some(key) = device.key() else { return };
+    // Lets the phone say "your Mac" or "your computer".
+    send_sealed(out, &device.id, &key, &json!({ "type": "host", "os": HOST_OS }));
     let snapshot = app.state::<LastNowPlaying>().0.lock().unwrap().clone();
     send_sealed(out, &device.id, &key, &json!({ "type": "nowPlaying", "data": now_playing_data(snapshot.as_ref()) }));
     if let Some(state) = app.state::<RemoteHub>().inner.lock().unwrap().last_state.clone() {

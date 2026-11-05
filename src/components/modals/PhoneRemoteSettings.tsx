@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { Smartphone } from "lucide-react";
 import { forgetRemoteDevice, getRemoteStatus, setRemoteEnabled, type RemoteStatus } from "../../lib/remote";
+import { IS_MAC } from "../../lib/immersive";
 import { isTauriEnvironment } from "../../lib/search";
 
 /** Settings → Phone Remote: the switch, the pairing QR code and the paired phones. */
@@ -102,7 +103,7 @@ export function PhoneRemoteSettings() {
           <div className="remote-pair-text">
             <span className="settings-label">Scan with your phone's camera</span>
             <span className="settings-desc">
-              Your Mac will ask before a new phone can connect. Each code works once; a new one appears after
+              Your {IS_MAC ? "Mac" : "computer"} will ask before a new phone can connect. Each code works once; a new one appears after
               pairing.
             </span>
             {status.url && (
