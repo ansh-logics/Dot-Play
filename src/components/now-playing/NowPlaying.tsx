@@ -503,6 +503,7 @@ function NowPlayingScreen(props: NowPlayingProps) {
                         onSeek={props.onSeek}
                         reduceMotion={reduceMotion}
                         paused={!stageLive || revealing}
+                        trackKey={track?.videoId}
                       />
                     ) : null
                   }
@@ -529,6 +530,7 @@ function NowPlayingScreen(props: NowPlayingProps) {
                     onSeek={props.onSeek}
                     reduceMotion={reduceMotion}
                     paused={!stageLive || revealing}
+                    trackKey={track?.videoId}
                   />
                 </motion.section>
               )}

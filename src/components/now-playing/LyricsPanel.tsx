@@ -1,5 +1,5 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, type CSSProperties } from "react";
-import type { LyricWord, TrackLyrics } from "../../lib/lyrics";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { asPlain, type LyricWord, type TrackLyrics } from "../../lib/lyrics";
 import type { LyricsStatus } from "./useLyrics";
 import { activeRowIndex, buildLyricRows, type LyricRow } from "./lyricRows";
 import { useFrameLoop, useLyricClock } from "./useLyricClock";
@@ -13,6 +13,41 @@ interface LyricsPanelProps {
   reduceMotion: boolean;
   /** Hidden behind the open queue sheet: skip the per-frame letter writes. */
   paused?: boolean;
+  /** The song, so a choice to read its lyrics as plain text is remembered for it. */
+  trackKey?: string;
+}
+
+const PLAIN_PREF_KEY = "dot_lyrics_plain_v1";
+const PLAIN_PREF_MAX = 300;
+
+function readPlainPrefs(): string[] {
+  try {
+    const value = JSON.parse(localStorage.getItem(PLAIN_PREF_KEY) ?? "[]");
+    return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Songs whose synced lyrics the listener found out of sync, shown as plain text instead. */
+function usePlainPreference(trackKey: string | undefined): [boolean, () => void] {
+  const [prefs, setPrefs] = useState(readPlainPrefs);
+  const prefers = Boolean(trackKey && prefs.includes(trackKey));
+  const toggle = useCallback(() => {
+    if (!trackKey) return;
+    setPrefs((current) => {
+      const next = current.includes(trackKey)
+        ? current.filter((k) => k !== trackKey)
+        : [...current, trackKey].slice(-PLAIN_PREF_MAX);
+      try {
+        localStorage.setItem(PLAIN_PREF_KEY, JSON.stringify(next));
+      } catch {
+        // Storage unavailable: the choice lasts for this session.
+      }
+      return next;
+    });
+  }, [trackKey]);
+  return [prefers, toggle];
 }
 
 const USER_SCROLL_PAUSE_MS = 3500;
@@ -76,7 +111,22 @@ function TimedWords({ words, letters }: { words: LyricWord[]; letters: boolean }
   );
 }
 
-export function LyricsPanel({ data, status, currentTime, isPlaying, onSeek, reduceMotion, paused = false }: LyricsPanelProps) {
+export function LyricsPanel({
+  data: sourceData,
+  status: sourceStatus,
+  currentTime,
+  isPlaying,
+  onSeek,
+  reduceMotion,
+  paused = false,
+  trackKey,
+}: LyricsPanelProps) {
+  // Synced lyrics can be off for some songs; the listener may read them as plain text.
+  const [preferPlain, togglePlain] = usePlainPreference(trackKey);
+  const canChoose = sourceStatus === "synced" && Boolean(sourceData) && Boolean(trackKey);
+  const showPlain = canChoose && preferPlain;
+  const data = useMemo(() => (showPlain && sourceData ? asPlain(sourceData) : sourceData), [showPlain, sourceData]);
+  const status: LyricsStatus = showPlain ? "plain" : sourceStatus;
   const scrollRef = useRef<HTMLDivElement>(null);
   const userScrollUntil = useRef(0);
   const synced = status === "synced";
@@ -209,63 +259,70 @@ export function LyricsPanel({ data, status, currentTime, isPlaying, onSeek, redu
   }
 
   return (
-    <div
-      ref={scrollRef}
-      className={`np-lyrics ${synced ? "is-synced" : "is-plain"}`}
-      onWheel={() => {
-        userScrollUntil.current = Date.now() + USER_SCROLL_PAUSE_MS;
-      }}
-      aria-label="Lyrics"
-    >
-      <div className="np-lyrics-pad" aria-hidden="true" />
-      {rows.map((row, idx) => {
-        const distance = Math.abs(idx - focusIdx);
-        const isActive = idx === activeIdx;
+    <div className="np-lyrics-shell">
+      <div
+        ref={scrollRef}
+        className={`np-lyrics ${synced ? "is-synced" : "is-plain"}`}
+        onWheel={() => {
+          userScrollUntil.current = Date.now() + USER_SCROLL_PAUSE_MS;
+        }}
+        aria-label="Lyrics"
+      >
+        <div className="np-lyrics-pad" aria-hidden="true" />
+        {rows.map((row, idx) => {
+          const distance = Math.abs(idx - focusIdx);
+          const isActive = idx === activeIdx;
 
-        if (row.kind === "interlude") {
+          if (row.kind === "interlude") {
+            return (
+              <div
+                key={row.key}
+                data-row={idx}
+                className={`np-interlude ${isActive ? "is-active" : ""}`}
+                aria-hidden="true"
+              >
+                <span className="np-interlude-dots">
+                  {[0, 1, 2].map((i) => (
+                    <i key={i} style={{ "--i": i } as CSSProperties} />
+                  ))}
+                </span>
+              </div>
+            );
+          }
+
+          const { line } = row;
+          const state = !synced ? "plain" : isActive ? "active" : distance <= 1 ? "near" : distance === 2 ? "mid" : "far";
           return (
-            <div
+            <p
               key={row.key}
               data-row={idx}
-              className={`np-interlude ${isActive ? "is-active" : ""}`}
-              aria-hidden="true"
+              className={`np-lyric np-lyric--${state}`}
+              onClick={synced ? () => onSeek(line.startTime) : undefined}
             >
-              <span className="np-interlude-dots">
-                {[0, 1, 2].map((i) => (
-                  <i key={i} style={{ "--i": i } as CSSProperties} />
-                ))}
-              </span>
-            </div>
+              {synced && line.words && line.words.length > 0 ? (
+                <TimedWords words={line.words} letters={isActive} />
+              ) : (
+                line.text
+              )}
+              {line.background && (
+                <span className="np-bg">
+                  {synced && line.background.words && line.background.words.length > 0 ? (
+                    <TimedWords words={line.background.words} letters={isActive} />
+                  ) : (
+                    line.background.text
+                  )}
+                </span>
+              )}
+            </p>
           );
-        }
-
-        const { line } = row;
-        const state = !synced ? "plain" : isActive ? "active" : distance <= 1 ? "near" : distance === 2 ? "mid" : "far";
-        return (
-          <p
-            key={row.key}
-            data-row={idx}
-            className={`np-lyric np-lyric--${state}`}
-            onClick={synced ? () => onSeek(line.startTime) : undefined}
-          >
-            {synced && line.words && line.words.length > 0 ? (
-              <TimedWords words={line.words} letters={isActive} />
-            ) : (
-              line.text
-            )}
-            {line.background && (
-              <span className="np-bg">
-                {synced && line.background.words && line.background.words.length > 0 ? (
-                  <TimedWords words={line.background.words} letters={isActive} />
-                ) : (
-                  line.background.text
-                )}
-              </span>
-            )}
-          </p>
-        );
-      })}
-      <div className="np-lyrics-pad" aria-hidden="true" />
+        })}
+        <div className="np-lyrics-pad" aria-hidden="true" />
+      </div>
+      {canChoose && (
+        <button type="button" className="np-lyrics-mode" onClick={togglePlain}>
+          {showPlain ? "Show synced lyrics" : "Out of sync? Show as text"}
+        </button>
+      )}
     </div>
   );
 }

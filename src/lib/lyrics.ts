@@ -506,7 +506,7 @@ export async function fetchLyricsMultiProvider(
       });
 
       if (payload) {
-        const parsed = processLyricsPayload(payload);
+        const parsed = processLyricsPayload(payload, duration);
         if (parsed.lines.length > 0) {
           lyricsCache.set(cacheKey, parsed);
           return parsed;
@@ -530,7 +530,67 @@ export async function fetchLyricsMultiProvider(
   return notFound;
 }
 
-export function processLyricsPayload(payload: LyricsPayload): TrackLyrics {
+/**
+ * Whether timed lines carry real timing. Some sources wrap plain lyrics in LRC with every
+ * line at [00:00.00] (or a handful of identical stamps); shown as synced, the last line
+ * would count as "current" from the first second and the panel would sit at the bottom.
+ */
+export function hasRealTiming(lines: RichLyricLine[]): boolean {
+  if (lines.length < 2) return lines.length === 1 && lines[0].startTime > 0;
+  const starts = lines.map((l) => l.startTime);
+  const distinct = new Set(starts.map((t) => Math.round(t * 10))).size;
+  const span = Math.max(...starts) - Math.min(...starts);
+  // Real lyrics move through the song: most lines start at their own time, spread over it.
+  return distinct >= Math.max(2, Math.ceil(lines.length * 0.5)) && span >= Math.min(10, lines.length);
+}
+
+/**
+ * Whether the timing fits the song that's actually playing. Lyrics timed for another
+ * version (an extended mix, a music video with a long intro) run past the end of the song
+ * or start most of the way through it, and would highlight the wrong lines all along.
+ */
+export function timingFitsSong(lines: RichLyricLine[], duration?: number): boolean {
+  if (!duration || duration < 30 || lines.length === 0) return true;
+  const first = lines[0].startTime;
+  const last = lines[lines.length - 1].startTime;
+  return last <= duration + 5 && first <= duration * 0.6;
+}
+
+/** Timed lyrics without real timing, or timed for a different version of the song, are
+ *  shown as plain lyrics in their written order. */
+function untimedAsPlain(result: TrackLyrics, duration?: number): TrackLyrics {
+  if (!result.synced || (hasRealTiming(result.lines) && timingFitsSong(result.lines, duration))) return result;
+  return asPlain(result);
+}
+
+/** The same lyrics as plain text. The source's own plain lyrics are used as they are when it
+ *  sent them; otherwise the timed lines, without their timing. */
+export function asPlain(result: TrackLyrics): TrackLyrics {
+  const fromSource = result.plainText ? parsePlainLyrics(result.plainText) : [];
+  return {
+    ...result,
+    synced: false,
+    hasWordTiming: false,
+    syncType: "plain",
+    lines:
+      fromSource.length > 0
+        ? fromSource
+        : result.lines.map((line, id) => ({
+            id,
+            startTime: 0,
+            endTime: 0,
+            text: line.text,
+            background: line.background ? { ...line.background, words: undefined } : undefined,
+          })),
+  };
+}
+
+/** `duration` (seconds) is the playing song's length, used to catch timing for another version. */
+export function processLyricsPayload(payload: LyricsPayload, duration?: number): TrackLyrics {
+  return untimedAsPlain(processRawLyricsPayload(payload), duration);
+}
+
+function processRawLyricsPayload(payload: LyricsPayload): TrackLyrics {
   // A. TTML (Apple-style syllable timing)
   if (payload.ttml) {
     const lines = parseTtml(payload.ttml);

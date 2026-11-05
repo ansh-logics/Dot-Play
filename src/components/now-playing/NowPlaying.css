@@ -1418,3 +1418,36 @@
   .np-word.is-held .np-ch { text-shadow: none !important; }
   .np-lyric { transition: opacity 0.2s linear; }
 }
+
+/* Lyrics with the "show as text" switch for songs whose timing is off. */
+.np-lyrics-shell {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+.np-lyrics-mode {
+  position: absolute;
+  right: 0;
+  bottom: 4px;
+  z-index: 1;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  color: rgba(255, 255, 255, 0.85);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s ease, background 0.15s ease;
+}
+
+.np-lyrics-shell:hover .np-lyrics-mode,
+.np-lyrics-mode:focus-visible { opacity: 1; }
+.np-lyrics-mode:hover { background: rgba(255, 255, 255, 0.2); }
