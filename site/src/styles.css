@@ -1123,8 +1123,83 @@ svg {
   align-items: center;
 }
 
+/* The orbit's rings only fill the middle band of its square stage: pull the header and the
+   counter in so there's no empty strip above and below. */
 .import-demo .orbit-stage {
   width: 100%;
+  margin: -17% 0 -19%;
+}
+
+.import-demo-head {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 18px 10px 10px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  animation: import-head-in 0.6s var(--ease);
+}
+
+@keyframes import-head-in {
+  from { opacity: 0; transform: translateY(8px); }
+}
+
+.import-demo-cover {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  flex: none;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.import-demo-cover img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+  display: block;
+}
+
+.import-demo-badge {
+  position: absolute;
+  right: -7px;
+  bottom: -7px;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #111;
+  border: 2px solid #000;
+}
+
+.import-demo-text {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  line-height: 1.3;
+}
+
+.import-demo-from {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--red);
+}
+
+.import-demo-title {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.import-demo-meta {
+  font-size: 13px;
+  color: var(--dim);
 }
 
 .import-demo-still {
@@ -1141,6 +1216,10 @@ svg {
 }
 
 .source-chips span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: border-color 0.3s ease, background 0.3s ease, color 0.3s ease;
   padding: 6px 12px;
   border-radius: 999px;
   border: 1px solid var(--line);
@@ -1148,6 +1227,13 @@ svg {
   color: var(--dim);
   font-size: 13px;
   font-weight: 600;
+}
+
+/* The service the demo is importing from right now. */
+.source-chips span.is-on {
+  border-color: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--ink);
 }
 
 @media (max-width: 640px) {

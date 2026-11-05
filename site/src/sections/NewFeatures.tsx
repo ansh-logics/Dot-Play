@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { motion, useInView, useReducedMotion } from "motion/react";
 import { OrbitMerge, type OrbitResult, type OrbitSong } from "@app/components/import/OrbitMerge";
 import "@app/styles/import.css";
+import { siApplemusic, siDeezer, siSpotify, siYoutubemusic, type SimpleIcon } from "simple-icons";
 
 const ease = [0.22, 1, 0.36, 1] as const;
 
@@ -86,29 +87,83 @@ export function Remote() {
   );
 }
 
-/** Made-up songs for the import demo (the orbit draws initials discs for songs without covers). */
-const DEMO_SONGS: OrbitSong[] = [
-  "Golden Hour Drive",
-  "Paper Planes Home",
-  "Velvet Static",
-  "Northern Lights",
-  "Lemonade Summer",
-  "City After Rain",
-  "Slow Motion Heart",
-  "Coastline",
-  "Midnight Bloom",
-  "Neon Tide",
-  "Satellite Love",
-  "Afterglow",
-  "Wildfire Season",
-  "Blue Arcade",
-  "Sunday Polaroid",
-  "Echo Valley",
-  "Glass Houses",
-  "Late Night Radio",
-].map((title, i) => ({ title, artist: `Artist ${i + 1}` }));
+/** Well-known songs for the import demo. Their covers come from Apple's public iTunes search
+ *  when the section comes into view, the same way the site's demo song gets its cover. */
+const DEMO_SONGS: Array<[title: string, artist: string]> = [
+  ["Blinding Lights", "The Weeknd"],
+  ["Shape of You", "Ed Sheeran"],
+  ["Levitating", "Dua Lipa"],
+  ["As It Was", "Harry Styles"],
+  ["bad guy", "Billie Eilish"],
+  ["Flowers", "Miley Cyrus"],
+  ["Anti-Hero", "Taylor Swift"],
+  ["Kesariya", "Arijit Singh"],
+  ["Uptown Funk", "Mark Ronson"],
+  ["Espresso", "Sabrina Carpenter"],
+  ["Believer", "Imagine Dragons"],
+  ["Calm Down", "Rema"],
+  ["Starboy", "The Weeknd"],
+  ["Someone Like You", "Adele"],
+  ["Die With A Smile", "Lady Gaga"],
+  ["Viva La Vida", "Coldplay"],
+  ["Tum Hi Ho", "Arijit Singh"],
+  ["Peaches", "Justin Bieber"],
+];
 
-/** Songs "found" one by one at a believable pace, with the odd one not found. */
+const COVER_CACHE = "dm-site-import-covers";
+
+/** 300 px album covers for the demo songs, cached for the visit. Missing ones fall back to the
+ *  orbit's own initials discs. */
+async function loadDemoCovers(): Promise<Record<string, string>> {
+  try {
+    const cached = sessionStorage.getItem(COVER_CACHE);
+    if (cached) return JSON.parse(cached);
+  } catch {
+    // ignore
+  }
+  const entries = await Promise.all(
+    DEMO_SONGS.map(async ([title, artist]) => {
+      try {
+        const url = `https://itunes.apple.com/search?${new URLSearchParams({
+          term: `${title} ${artist}`,
+          entity: "song",
+          limit: "1",
+          country: "us",
+        })}`;
+        const data = (await (await fetch(url)).json()) as { results: Array<{ artworkUrl100?: string }> };
+        const art = data.results[0]?.artworkUrl100;
+        return art ? [title, art.replace(/\/\d+x\d+bb\.(jpg|png)$/, "/300x300bb.$1")] : null;
+      } catch {
+        return null;
+      }
+    }),
+  );
+  const covers = Object.fromEntries(entries.filter((e): e is [string, string] => e !== null));
+  try {
+    sessionStorage.setItem(COVER_CACHE, JSON.stringify(covers));
+  } catch {
+    // ignore
+  }
+  return covers;
+}
+
+/** The services an import can come from, with their logos (Simple Icons). */
+const SOURCES = [
+  { name: "Spotify", icon: siSpotify, playlist: "Road Trip Hits" },
+  { name: "Apple Music", icon: siApplemusic, playlist: "Feel-Good Favourites" },
+  { name: "Deezer", icon: siDeezer, playlist: "Sunday Morning" },
+  { name: "YouTube Music", icon: siYoutubemusic, playlist: "Late Night Drive" },
+] as const;
+
+function BrandLogo({ icon, size = 18 }: { icon: SimpleIcon; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={`#${icon.hex}`} aria-hidden="true">
+      <path d={icon.path} />
+    </svg>
+  );
+}
+
+/** Songs "found" one by one at a believable pace, with two of each run not found. */
 function useDemoResults(run: number, active: boolean): OrbitResult[] {
   const [results, setResults] = useState<OrbitResult[]>(() => DEMO_SONGS.map(() => undefined));
   useEffect(() => {
@@ -119,11 +174,10 @@ function useDemoResults(run: number, active: boolean): OrbitResult[] {
         () =>
           setResults((prev) => {
             const next = prev.slice();
-            // Two of each run's songs aren't found, so the "drifts away" path shows too.
-            next[i] = (i + run) % 9 === 4 ? null : "";
+            next[i] = (i + run * 5) % 9 === 4 ? null : "";
             return next;
           }),
-        700 + i * 260 + Math.random() * 400,
+        600 + i * 240 + Math.random() * 400,
       ),
     );
     return () => timers.forEach(window.clearTimeout);
@@ -131,19 +185,35 @@ function useDemoResults(run: number, active: boolean): OrbitResult[] {
   return results;
 }
 
-const IMPORT_SOURCES = ["Spotify", "Apple Music", "Deezer", "YouTube", "A song list"];
-
-/** Playlist import: the app's own orbit animation, playing on a loop while it's on screen. */
+/** Playlist import: the app's own orbit animation, playing on a loop while it's on screen, each
+ *  run "importing" from the next service. */
 export function ImportDemo() {
   const ref = useRef<HTMLDivElement>(null);
+  const near = useInView(ref, { amount: 0.1, margin: "300px 0px" });
   const inView = useInView(ref, { amount: 0.35 });
   const reduce = useReducedMotion();
+  const [covers, setCovers] = useState<Record<string, string> | null>(null);
   const [run, setRun] = useState(0);
   const [merged, setMerged] = useState(0);
-  const active = inView && !reduce;
+
+  // Covers load as the section approaches; the orbit starts once they're in (or failed).
+  useEffect(() => {
+    if (near && !covers) void loadDemoCovers().then(setCovers);
+  }, [near, covers]);
+
+  const active = inView && !reduce && covers !== null;
   const results = useDemoResults(run, active);
-  const songs = useMemo(() => DEMO_SONGS.slice(), [run]); // a new list restarts the orbit
+  const source = SOURCES[run % SOURCES.length];
+  const songs = useMemo<OrbitSong[]>(
+    () => DEMO_SONGS.map(([title, artist]) => ({ title, artist, cover: covers?.[title] })),
+    // A new run gets a new list, which restarts the orbit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [covers, run],
+  );
   const missing = results.filter((r) => r === null).length;
+  // The "playlist cover": a different song's art each run, skipping any that didn't load.
+  const available = DEMO_SONGS.map(([title]) => covers?.[title]).filter((c): c is string => Boolean(c));
+  const lead = available.length > 0 ? available[(run * 5) % available.length] : undefined;
 
   return (
     <section className="showcase import-show" id="import">
@@ -157,19 +227,36 @@ export function ImportDemo() {
           The playlist is kept on your computer with its name and cover, ready to play or save to your library.
         </p>
         <div className="source-chips" aria-label="Works with">
-          {IMPORT_SOURCES.map((s) => (
-            <span key={s}>{s}</span>
+          {SOURCES.map((s, i) => (
+            <span key={s.name} className={!reduce && i === run % SOURCES.length ? "is-on" : undefined}>
+              <BrandLogo icon={s.icon} />
+              {s.name}
+            </span>
           ))}
+          <span>A song list</span>
         </div>
       </Reveal>
 
       <Reveal className="import-stage" delay={0.1}>
         <div ref={ref} className="import-demo" aria-hidden={reduce ? undefined : "true"}>
+          <div className="import-demo-head" key={`head-${run}`}>
+            <span className="import-demo-cover">
+              {lead && <img src={lead} alt="" />}
+              <span className="import-demo-badge">
+                <BrandLogo icon={source.icon} size={16} />
+              </span>
+            </span>
+            <span className="import-demo-text">
+              <span className="import-demo-from">Importing from {source.name}</span>
+              <span className="import-demo-title">{source.playlist}</span>
+              <span className="import-demo-meta">{DEMO_SONGS.length} songs</span>
+            </span>
+          </div>
           {reduce ? (
-            <p className="import-demo-still">18 songs found · ready to play</p>
+            <p className="import-demo-still">{DEMO_SONGS.length} songs found · ready to play</p>
           ) : (
             <OrbitMerge
-              key={run}
+              key={`orbit-${run}`}
               songs={songs}
               results={results}
               onMerged={() => setMerged((n) => n + 1)}
@@ -177,7 +264,7 @@ export function ImportDemo() {
                 window.setTimeout(() => {
                   setMerged(0);
                   setRun((n) => n + 1);
-                }, 1800)
+                }, 1400)
               }
             />
           )}
