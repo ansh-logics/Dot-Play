@@ -10,7 +10,24 @@ mkdirSync(OUT, { recursive: true });
 
 // Immersive mode at a 16:10 Mac display (1440×900 points), 2000px wide like the other shots.
 const MAC = { size: [1440, 900], scale: 2000 / 1440 };
+// The app window at the size of the other app shots (2000×1256).
+const APP = { size: [1470, 923], scale: 2000 / 1470 };
+// A phone (390×844 points, like an iPhone 15) at 2×.
+const PHONE = { size: [390, 844], scale: 2 };
 const shots = [
+  { file: "app-cassette.jpg", page: "nowplaying", query: "skin=cassette&time=64&lyrics=0", ...APP },
+  { file: "remote-playing.jpg", page: "remote", query: "time=64", ...PHONE },
+  {
+    file: "remote-search.jpg",
+    page: "remote",
+    query: "time=64",
+    ...PHONE,
+    // Open Search and type a query; the stand-in answers with made-up songs.
+    steps: async (page) => {
+      await page.getByRole("button", { name: "Search" }).click();
+      await page.getByLabel("Search songs").fill("night drive");
+    },
+  },
   // The app shows this over macOS's dark popover blur; capture it on that colour.
   { file: "menubar-player.jpg", page: "tray", query: "time=84", size: [320, 580], background: "#25252c" },
   { file: "immersive-apple.jpg", page: "immersive", query: "view=stage&skin=apple&time=64", ...MAC },
@@ -29,6 +46,7 @@ for (const s of shots.filter((s) => only.length === 0 || only.some((o) => s.file
   await page.goto(`${BASE}/embed/${s.page}.html?${s.query}`, { waitUntil: "networkidle" });
   await page.waitForSelector("body[data-ready='1']", { timeout: 20_000 });
   if (s.background) await page.addStyleTag({ content: `html, body { background: ${s.background} !important; }` });
+  if (s.steps) await s.steps(page);
   // Let artwork decode, the album colours settle and entrance animations finish.
   await page.waitForTimeout(3000);
   await page.screenshot({

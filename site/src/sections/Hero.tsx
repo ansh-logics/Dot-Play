@@ -46,8 +46,9 @@ export function Hero({ info }: { info: RepoInfo }) {
         </p>
         <TypedHeadline />
         <p className="hero-sub">
-          Lyrics that move with the voice, three players in one, a record that really spins, a clock-and-song screensaver
-          across your displays, and your music one click away in the menu bar. Free and open source.
+          Lyrics that move with the voice, four players in one (a record that really spins and a cassette deck), a phone
+          remote that works anywhere, playlists imported from Spotify and more, and a clock-and-song screensaver across
+          your displays. Free.
         </p>
         <div className="hero-ctas">
           <a className="btn btn-red btn-lg" href={main.url}>

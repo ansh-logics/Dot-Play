@@ -191,7 +191,7 @@ export function Install({ info }: { info: RepoInfo }) {
 }
 
 const FAQ = [
-  { q: "Is it free?", a: "Yes. dot(.)music is free and open source. The code is on GitHub." },
+  { q: "Is it free?", a: "Yes. dot(.)music is free, and the code is on GitHub." },
   { q: "Do I need a YouTube Music account?", a: "You sign in with your own YouTube Music account inside the app, so your library, playlists and history come with you." },
   {
     q: "Why does macOS warn me when I open it?",
@@ -212,6 +212,14 @@ const FAQ = [
   {
     q: "Can it run as a screensaver?",
     a: "Yes, on Mac. In Settings → Immersive Mode, choose to start it after 2, 5 or 10 idle minutes while music plays. Any key or mouse move ends it, and it needs no extra permissions. Your Mac's display sleep still applies.",
+  },
+  {
+    q: "How does the Phone Remote work?",
+    a: "Turn it on in Settings → Phone Remote and scan the QR code with your phone's camera. The remote opens in your phone's browser; your computer asks you to allow it the first time. It works over any internet connection, Wi-Fi or mobile data, through a small relay that only passes along end-to-end encrypted messages it can't read.",
+  },
+  {
+    q: "Where can I import playlists from?",
+    a: "Paste a public playlist or album link from Spotify, Apple Music, Deezer or YouTube, or a plain list of songs, in Library → Import Playlist. Each song is matched on YouTube Music and the playlist is kept on your computer. Spotify shares the first 100 songs of a playlist.",
   },
   { q: "Found a bug or have an idea?", a: "Open an issue on GitHub. Feedback is very welcome." },
 ];

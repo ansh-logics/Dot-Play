@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion, useInView, useReducedMotion, useScroll, useTransform } from "motion/react";
 import trayIcon from "../../../src-tauri/icons/tray-template@2x.png";
+import { AlsoNew, ImportDemo, Remote } from "./NewFeatures";
 
 /** Screenshots of the app; the menu bar shot comes from `npm run capture`. */
 const SHOTS = {
@@ -8,6 +9,7 @@ const SHOTS = {
   apple: "/shots/app-apple.jpg",
   nothing: "/shots/app-nothing.jpg",
   vinyl: "/shots/app-vinyl.jpg",
+  cassette: "/shots/app-cassette.jpg",
   queue: "/shots/app-queue.jpg",
   lyrics: "/shots/app-lyrics.jpg",
   menubar: "/shots/menubar-player.jpg",
@@ -74,9 +76,10 @@ const MOODS = [
   { id: "apple", label: "Apple", src: SHOTS.apple },
   { id: "nothing", label: "Nothing", src: SHOTS.nothing },
   { id: "vinyl", label: "Vinyl", src: SHOTS.vinyl },
+  { id: "cassette", label: "Cassette", src: SHOTS.cassette },
 ] as const;
 
-/** Three styles, cross-fading on their own while the section is on screen. */
+/** The player styles, cross-fading on their own while the section is on screen. */
 function Moods() {
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { amount: 0.4 });
@@ -90,9 +93,9 @@ function Moods() {
 
   return (
     <section className="showcase" id="features">
-      <Copy kicker="Styles" title="Three moods. One player.">
-        Spin the style wheel at the edge of the screen: Apple-style frosted glass, a stark Nothing look in dot-matrix, or a
-        warm vinyl sleeve. Your album art sets the colours.
+      <Copy kicker="Styles" title="Four moods. One player.">
+        Spin the style wheel at the edge of the screen: Apple-style frosted glass, a stark Nothing look in dot-matrix, a
+        warm vinyl sleeve, or a full hi-fi cassette deck with piano keys and a tape counter. Your album art sets the colours.
       </Copy>
       <Reveal className="mood-stage" delay={0.1}>
         <div ref={ref} className="screen">
@@ -332,9 +335,12 @@ export function Showcase() {
       <Moods />
       <Lyrics />
       <Immersive />
+      <Remote />
+      <ImportDemo />
       <Vinyl />
       <MenuBar />
       <Queue />
+      <AlsoNew />
     </>
   );
 }

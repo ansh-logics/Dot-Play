@@ -19,12 +19,29 @@ function siteUrl(): Plugin {
  * pages under /embed/ that render the app's real components (from ../src) with a stand-in for
  * the Tauri bridge (src/embed/tauriMock.ts); `npm run capture` screenshots them.
  */
+/**
+ * The Phone Remote capture page renders the real remote page (../src/remote) without a relay:
+ * its connection hook is swapped for a stand-in with a song, a queue and search results.
+ */
+function remoteMock(): Plugin {
+  const mock = here("./src/embed/remoteMock.ts");
+  return {
+    name: "remote-mock",
+    enforce: "pre",
+    resolveId(source, importer) {
+      if (source === "./useRemoteState" && importer?.includes("/src/remote/")) return mock;
+      return null;
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), siteUrl()],
+  plugins: [react(), siteUrl(), remoteMock()],
   resolve: {
     alias: [
       { find: "@app", replacement: here("../src") },
       { find: /^@tauri-apps\/api\/(core|event)$/, replacement: here("./src/embed/tauriMock.ts") },
+      { find: /^@tauri-apps\/api\/window$/, replacement: here("./src/embed/tauriWindowMock.ts") },
     ],
     // App files live outside this project; make every shared package resolve to one copy here.
     dedupe: ["react", "react-dom", "motion", "lucide-react"],
