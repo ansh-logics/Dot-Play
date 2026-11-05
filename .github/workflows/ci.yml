@@ -1,0 +1,102 @@
+# Checks every push to main and every pull request: lint, types, unit tests, builds, the relay
+# end to end, and the Rust tests on both macOS and Windows (so a Windows-only break shows up
+# here, not when a release builds). Nothing is published.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: App, phone page, site and relay
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            site/package-lock.json
+            relay/package-lock.json
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Types
+        run: npx tsc -p tsconfig.app.json --noEmit
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build the app
+        run: npx vite build
+
+      - name: Build the phone page
+        run: npx vite build -c vite.remote.config.ts
+
+      - name: Build the website
+        working-directory: site
+        run: |
+          npm ci
+          npx tsc -b
+          npx vite build
+
+      - name: Relay types
+        working-directory: relay
+        run: |
+          npm ci
+          npx tsc --noEmit
+
+      - name: Relay end to end
+        working-directory: relay
+        env:
+          WRANGLER_SEND_METRICS: "false"
+        run: |
+          npx wrangler dev --port 8787 --ip 127.0.0.1 > wrangler.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:8787/ > /dev/null && break
+            sleep 1
+          done
+          npm run test:e2e || { cat wrangler.log; exit 1; }
+
+  rust:
+    name: Rust tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # The app embeds the built frontend, so it has to exist before Rust compiles.
+      - name: Build the frontend
+        run: npx vite build
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
