@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LyricsPayload } from "../lib/lyrics";
-import type { TrayCommand, TrayState } from "../lib/useTrayBridge";
+import type { RemoteTrack, TrayCommand, TrayState } from "../lib/useTrayBridge";
 import { DEVICE_INFO, PAIR_INFO, deriveKey, fromBase64Url, open, randomBytes, seal, toBase64Url, toHex } from "./crypto";
 
 /** `NowPlayingSnapshot` from media_controls.rs, plus how old its position was when sent. */
@@ -48,6 +48,37 @@ interface Pairing {
 }
 
 const STORE_KEY = "dot-music-remote";
+/** The last track and queue seen, shown instantly on reopen while the connection comes back. */
+const LAST_KEY = "dot-music-remote-last";
+/** Reconnect delays: first retry at once, then a little longer, never more than a few seconds. */
+const BACKOFF_MS = [0, 300, 1000, 2000, 4000];
+/** The relay answers "ping" with "pong" itself; silence this long means the socket is dead. */
+const PING_EVERY_MS = 15_000;
+const SILENCE_LIMIT_MS = 35_000;
+/** After coming back to the page, a socket that doesn't answer this fast is replaced. */
+const RESUME_PROBE_MS = 1500;
+export type SearchHit = RemoteTrack & { duration?: string | null };
+
+function loadLast(): { np: RemoteNowPlaying | null; state: RemoteQueueState | null } {
+  try {
+    const value = JSON.parse(localStorage.getItem(LAST_KEY) ?? "null") as {
+      np: RemoteNowPlaying | null;
+      state: RemoteQueueState | null;
+    } | null;
+    // The old position can't be trusted until the Mac answers, so show it paused.
+    return { np: value?.np ? { ...value.np, isPlaying: false, ageMs: 0, receivedAt: Date.now() } : null, state: value?.state ?? null };
+  } catch {
+    return { np: null, state: null };
+  }
+}
+
+function saveLast(np: RemoteNowPlaying | null, state: RemoteQueueState | null) {
+  try {
+    localStorage.setItem(LAST_KEY, JSON.stringify({ np, state }));
+  } catch {
+    // Storage full or private browsing: only the instant reopen is lost.
+  }
+}
 /** Closed by the relay because the Mac disconnected this phone. */
 const KICKED = 4001;
 const PAIR_TIMEOUT_MS = 100_000;
@@ -106,8 +137,12 @@ function deviceName(): string {
  */
 export function useRemoteState() {
   const [connection, setConnection] = useState<Connection>({ kind: "checking" });
-  const [np, setNp] = useState<RemoteNowPlaying | null>(null);
-  const [state, setState] = useState<RemoteQueueState | null>(null);
+  const [cached] = useState(() => (START.pairing && !START.pairKeySecret ? loadLast() : { np: null, state: null }));
+  const [np, setNp] = useState<RemoteNowPlaying | null>(cached.np);
+  const [state, setState] = useState<RemoteQueueState | null>(cached.state);
+  useEffect(() => {
+    if (connection.kind === "connected") saveLast(np, state);
+  }, [connection.kind, np, state]);
 
   const socketRef = useRef<WebSocket | null>(null);
   const keyRef = useRef<CryptoKey | null>(null);
@@ -115,6 +150,8 @@ export function useRemoteState() {
   const seqRef = useRef(0);
   const lyricsWaiters = useRef(new Map<number, (payload: LyricsPayload | null) => void>());
   const nextLyricsId = useRef(1);
+  const searchWaiters = useRef(new Map<number, (results: SearchHit[] | null) => void>());
+  const nextSearchId = useRef(1);
 
   const sendSealed = useCallback(async (message: Record<string, unknown>) => {
     const socket = socketRef.current;
@@ -131,7 +168,9 @@ export function useRemoteState() {
     let disposed = false;
     let retryTimer = 0;
     let pairTimer = 0;
-    let backoff = 1000;
+    let probeTimer = 0;
+    let attempt = 0;
+    let lastHeard = Date.now();
 
     const pairing = START.pairing;
     /** Set while this phone still has to ask the Mac. */
@@ -145,6 +184,11 @@ export function useRemoteState() {
 
     const finishUnpaired = (message: string) => {
       savePairing(null);
+      try {
+        localStorage.removeItem(LAST_KEY);
+      } catch {
+        // nothing to clear
+      }
       pairingRef.current = null;
       setNp(null);
       setState(null);
@@ -152,6 +196,8 @@ export function useRemoteState() {
     };
 
     const onMessage = async (raw: string) => {
+      lastHeard = Date.now();
+      if (raw === "pong") return;
       let frame: { host?: string; m?: string };
       try {
         frame = JSON.parse(raw);
@@ -182,7 +228,13 @@ export function useRemoteState() {
       if (typeof frame.m !== "string" || !keyRef.current) return;
       const plain = await open(keyRef.current, `${current.peer}|down`, frame.m);
       if (!plain) return;
-      const message = JSON.parse(plain) as { type: string; data?: unknown; id?: number; payload?: LyricsPayload | null };
+      const message = JSON.parse(plain) as {
+        type: string;
+        data?: unknown;
+        id?: number;
+        payload?: LyricsPayload | null;
+        results?: SearchHit[];
+      };
       switch (message.type) {
         case "paired":
           pairKeySecret = null;
@@ -212,16 +264,25 @@ export function useRemoteState() {
             lyricsWaiters.current.delete(message.id);
           }
           break;
+        case "search":
+          if (typeof message.id === "number") {
+            searchWaiters.current.get(message.id)?.(Array.isArray(message.results) ? message.results : []);
+            searchWaiters.current.delete(message.id);
+          }
+          break;
       }
     };
 
     const connect = () => {
       if (disposed) return;
+      window.clearTimeout(retryTimer);
       const scheme = window.location.protocol === "https:" ? "wss" : "ws";
       const socket = new WebSocket(`${scheme}://${window.location.host}/room/${current.room}?role=client&peer=${current.peer}`);
       socketRef.current = socket;
+      lastHeard = Date.now();
       socket.addEventListener("open", () => {
-        backoff = 1000;
+        attempt = 0;
+        lastHeard = Date.now();
       });
       socket.addEventListener("message", (e) => void onMessage(String(e.data)));
       socket.addEventListener("close", (e) => {
@@ -232,10 +293,30 @@ export function useRemoteState() {
         }
         if (!pairingRef.current) return;
         setConnection((c) => (c.kind === "macOffline" ? c : { kind: "reconnecting" }));
-        retryTimer = window.setTimeout(connect, backoff);
-        backoff = Math.min(backoff * 2, 15000);
+        retryTimer = window.setTimeout(connect, BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)]);
+        attempt++;
       });
     };
+
+    /** Drop the current socket without waiting for it to time out, and open a new one. */
+    const reconnectNow = () => {
+      if (disposed || !pairingRef.current) return;
+      const old = socketRef.current;
+      socketRef.current = null;
+      old?.close();
+      attempt = 0;
+      setConnection((c) => (c.kind === "connected" ? { kind: "reconnecting" } : c));
+      connect();
+    };
+
+    // A socket can die without closing (phone asleep, Wi-Fi to mobile data). The relay answers
+    // pings itself, so silence means it's gone.
+    const heartbeat = window.setInterval(() => {
+      const socket = socketRef.current;
+      if (!socket || socket.readyState !== WebSocket.OPEN || document.visibilityState !== "visible") return;
+      if (Date.now() - lastHeard > SILENCE_LIMIT_MS) reconnectNow();
+      else socket.send("ping");
+    }, PING_EVERY_MS);
 
     void deriveKey(fromBase64Url(current.secret), DEVICE_INFO).then((key) => {
       if (disposed) return;
@@ -243,24 +324,38 @@ export function useRemoteState() {
       connect();
     });
 
-    // Back from the background (phones suspend sockets): reconnect straight away.
-    const onVisible = () => {
-      if (document.visibilityState !== "visible" || !pairingRef.current) return;
+    // Back to the page (unlocked, tab switched back, network changed): phones suspend sockets
+    // in the background, so check at once instead of waiting for a timeout. An open socket
+    // gets a ping; if nothing comes back quickly it's replaced.
+    const onResume = () => {
+      if (document.visibilityState !== "visible" || !pairingRef.current || disposed) return;
       const socket = socketRef.current;
       if (!socket || socket.readyState === WebSocket.CLOSED || socket.readyState === WebSocket.CLOSING) {
-        window.clearTimeout(retryTimer);
-        connect();
-      } else {
-        void sendSealed({ type: "hello" });
+        reconnectNow();
+        return;
       }
+      if (socket.readyState !== WebSocket.OPEN) return;
+      const sentAt = Date.now();
+      socket.send("ping");
+      void sendSealed({ type: "hello" });
+      window.clearTimeout(probeTimer);
+      probeTimer = window.setTimeout(() => {
+        if (lastHeard < sentAt) reconnectNow();
+      }, RESUME_PROBE_MS);
     };
-    document.addEventListener("visibilitychange", onVisible);
+    document.addEventListener("visibilitychange", onResume);
+    window.addEventListener("pageshow", onResume);
+    window.addEventListener("online", reconnectNow);
 
     return () => {
       disposed = true;
       window.clearTimeout(retryTimer);
       window.clearTimeout(pairTimer);
-      document.removeEventListener("visibilitychange", onVisible);
+      window.clearTimeout(probeTimer);
+      window.clearInterval(heartbeat);
+      document.removeEventListener("visibilitychange", onResume);
+      window.removeEventListener("pageshow", onResume);
+      window.removeEventListener("online", reconnectNow);
       socketRef.current?.close();
     };
   }, [sendSealed]);
@@ -280,7 +375,21 @@ export function useRemoteState() {
     [sendSealed],
   );
 
-  return { connection, np, state, send, requestLyrics };
+  /** Songs for a search box; null if the Mac didn't answer in time. */
+  const requestSearch = useCallback(
+    (query: string) =>
+      new Promise<SearchHit[] | null>((resolve) => {
+        const id = nextSearchId.current++;
+        searchWaiters.current.set(id, resolve);
+        void sendSealed({ type: "search", id, q: query });
+        window.setTimeout(() => {
+          if (searchWaiters.current.delete(id)) resolve(null);
+        }, 10_000);
+      }),
+    [sendSealed],
+  );
+
+  return { connection, np, state, send, requestLyrics, requestSearch };
 }
 
 /** Elapsed seconds, extrapolated while playing; re-renders a few times a second. */

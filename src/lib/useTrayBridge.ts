@@ -36,6 +36,28 @@ export type TrayCommand =
   | { type: "setVolume"; volume: number }
   /** Phone Remote: move a song to position `to` in Up Next (0 is Play Next). */
   | { type: "moveQueueItem"; videoId: string; to: number }
+  /** Phone Remote search results: play now, play next, or add to the end of Up Next. */
+  | { type: "playTrack" | "playNextTrack" | "queueTrack"; track: RemoteTrack }
+
+/** A song picked from the Phone Remote's search. */
+export interface RemoteTrack {
+  videoId: string
+  title: string
+  artist: string
+  thumbnailUrl: string
+}
+
+/** Only well-formed songs from a phone reach the player. */
+function toSearchResult(track: RemoteTrack | undefined): SearchResult | null {
+  if (!track || typeof track.videoId !== "string" || !/^[\w-]{11}$/.test(track.videoId)) return null
+  return {
+    videoId: track.videoId,
+    title: String(track.title ?? "").slice(0, 300),
+    artist: String(track.artist ?? "").slice(0, 300),
+    thumbnailUrl: typeof track.thumbnailUrl === "string" ? track.thumbnailUrl : "",
+    itemType: "song",
+  }
+}
 
 /** The popover only shows the start of a long queue; this keeps each message small. */
 const MAX_UPCOMING = 50
@@ -51,6 +73,9 @@ interface TrayBridgeOptions {
   onSelectUpcoming: (track: SearchResult) => void
   onRemoveUpcoming: (index: number) => void
   onReorderUpcoming: (upcoming: SearchResult[]) => void
+  onPlayTrack: (track: SearchResult) => void
+  onPlayNext: (track: SearchResult) => void
+  onAddToQueue: (track: SearchResult) => void
   onToggleShuffle: () => void
   onCycleRepeat: () => void
   onChangeVolume: (volume: number) => void
@@ -75,6 +100,9 @@ export function useTrayBridge({
   onSelectUpcoming,
   onRemoveUpcoming,
   onReorderUpcoming,
+  onPlayTrack,
+  onPlayNext,
+  onAddToQueue,
   onToggleShuffle,
   onCycleRepeat,
   onChangeVolume,
@@ -119,6 +147,16 @@ export function useTrayBridge({
         const [track] = next.splice(from, 1)
         next.splice(Math.max(0, Math.min(command.to, next.length)), 0, track)
         onReorderUpcoming(next)
+        break
+      }
+      case "playTrack":
+      case "playNextTrack":
+      case "queueTrack": {
+        const track = toSearchResult(command.track)
+        if (!track) break
+        if (command.type === "playTrack") onPlayTrack(track)
+        else if (command.type === "playNextTrack") onPlayNext(track)
+        else onAddToQueue(track)
         break
       }
       case "toggleShuffle":

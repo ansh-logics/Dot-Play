@@ -5,12 +5,14 @@ import {
   GripVertical,
   Heart,
   ListMusic,
+  ListPlus,
   Mic2,
   Music2,
   Pause,
   Play,
   Repeat,
   Repeat1,
+  Search,
   Shuffle,
   SkipBack,
   SkipForward,
@@ -31,20 +33,28 @@ import {
   type MediaAction,
   type RemoteNowPlaying,
   type RemoteQueueState,
+  type SearchHit,
 } from "./useRemoteState";
 import type { LyricsPayload } from "../lib/lyrics";
 import type { TrayCommand } from "../lib/useTrayBridge";
 
-type Tab = "playing" | "lyrics" | "queue";
+type Tab = "playing" | "lyrics" | "queue" | "search";
 type Send = (command: TrayCommand | MediaAction) => void;
 type RequestLyrics = (q: LyricsQuery) => Promise<LyricsPayload | null>;
+type RequestSearch = (query: string) => Promise<SearchHit[] | null>;
+
+/** Wait this long after the last keystroke before asking the Mac. */
+const SEARCH_DEBOUNCE_MS = 220;
+const SEARCH_MIN_CHARS = 2;
 
 /** Volume changes are sent at most this often while dragging. */
 const VOLUME_THROTTLE_MS = 80;
 
 export function RemoteApp() {
-  const { connection, np, state, send, requestLyrics } = useRemoteState();
+  const { connection, np, state, send, requestLyrics, requestSearch } = useRemoteState();
   const [tab, setTab] = useState<Tab>("playing");
+  // Kept here so the search survives switching tabs.
+  const [query, setQuery] = useState("");
   const palette = useArtworkPalette(np?.artworkUrl ?? undefined);
 
   const tint = palette
@@ -56,7 +66,8 @@ export function RemoteApp() {
       } as CSSProperties)
     : undefined;
 
-  if (connection.kind === "checking") return <Splash text="Connecting…" />;
+  // Reopening: the last track and queue show at once while the connection comes back.
+  if (connection.kind === "checking" && !np) return <Splash text="Connecting…" />;
   if (connection.kind === "waiting") {
     return <Splash text="Waiting for your Mac" sub="Click Allow in dot(.)music on your Mac." breathing />;
   }
@@ -88,17 +99,22 @@ export function RemoteApp() {
         <span className="rm-brand">
           <span className="rm-brand-dot" /> dot(.)music
         </span>
-        {connection.kind === "reconnecting" && <span className="rm-pill">Reconnecting…</span>}
+        {(connection.kind === "reconnecting" || connection.kind === "checking") && (
+          <span className="rm-pill">{connection.kind === "checking" ? "Connecting…" : "Reconnecting…"}</span>
+        )}
       </header>
 
       <main className="rm-main">
-        {!np ? (
+        {tab === "search" ? (
+          <SearchTab query={query} onQueryChange={setQuery} requestSearch={requestSearch} send={send} />
+        ) : !np ? (
           <div className="rm-empty">
             <Music2 size={28} />
             <p>Nothing playing on your Mac.</p>
           </div>
         ) : tab === "playing" ? (
-          <PlayingTab np={np} state={state} send={send} />
+          // A new song starts fresh: no half-finished drag carried over from the last one.
+          <PlayingTab key={np.videoId ?? np.title} np={np} state={state} send={send} />
         ) : tab === "lyrics" ? (
           <LyricsTab np={np} send={send} requestLyrics={requestLyrics} />
         ) : (
@@ -112,8 +128,48 @@ export function RemoteApp() {
         <TabButton active={tab === "playing"} onClick={() => setTab("playing")} icon={<Music2 size={20} />} label="Playing" />
         <TabButton active={tab === "lyrics"} onClick={() => setTab("lyrics")} icon={<Mic2 size={20} />} label="Lyrics" />
         <TabButton active={tab === "queue"} onClick={() => setTab("queue")} icon={<ListMusic size={20} />} label="Up Next" />
+        <TabButton active={tab === "search"} onClick={() => setTab("search")} icon={<Search size={20} />} label="Search" />
       </nav>
     </div>
+  );
+}
+
+/**
+ * Artwork that shimmers until its image has loaded, then fades in. A new URL (song change)
+ * shimmers again rather than showing the old cover or a half-drawn image.
+ */
+function Art({
+  src,
+  className,
+  fallback,
+  eager,
+}: {
+  src: string | null | undefined;
+  className: string;
+  fallback?: React.ReactNode;
+  eager?: boolean;
+}) {
+  const [loaded, setLoaded] = useState<string | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const isLoaded = Boolean(src) && loaded === src;
+  const showFallback = !src || failed === src;
+  return (
+    <span className={`rm-art-frame ${className} ${isLoaded || showFallback ? "is-loaded" : "rm-shimmer"}`}>
+      {showFallback
+        ? fallback
+        : src && (
+            <img
+              key={src}
+              src={src}
+              alt=""
+              referrerPolicy="no-referrer"
+              loading={eager ? "eager" : "lazy"}
+              decoding="async"
+              onLoad={() => setLoaded(src)}
+              onError={() => setFailed(src)}
+            />
+          )}
+    </span>
   );
 }
 
@@ -145,13 +201,14 @@ function PlayingTab({ np, state, send }: { np: RemoteNowPlaying; state: RemoteQu
   const position = usePosition(np);
   const [scrub, setScrub] = useState<number | null>(null);
   const shown = scrub ?? position;
+  // Right after a song change the player hasn't reported the new length yet (0), or the
+  // position still belongs to the old song; until both make sense, show the song as loading.
+  const ready = np.duration > 0 && position <= np.duration + 2;
   const repeat = state?.repeat ?? "off";
 
   return (
     <section className="rm-playing">
-      <div className="rm-art">
-        {np.artworkUrl ? <img src={np.artworkUrl} alt="" referrerPolicy="no-referrer" /> : <Music2 size={48} />}
-      </div>
+      <Art src={np.artworkUrl} className="rm-art" eager fallback={<Music2 size={48} />} />
 
       <div className="rm-meta">
         <div className="rm-meta-text">
@@ -170,7 +227,11 @@ function PlayingTab({ np, state, send }: { np: RemoteNowPlaying; state: RemoteQu
         )}
       </div>
 
-      <div className="rm-seek">
+      <div className={`rm-seek ${ready ? "" : "is-loading"}`}>
+        {!ready ? (
+          // The new song's length isn't known yet: a loading bar instead of one that jumps.
+          <div className="rm-seek-loading" role="progressbar" aria-label="Loading song" />
+        ) : (
         <input
           type="range"
           min={0}
@@ -189,9 +250,10 @@ function PlayingTab({ np, state, send }: { np: RemoteNowPlaying; state: RemoteQu
           }}
           aria-label="Seek"
         />
+        )}
         <div className="rm-times">
-          <span>{formatTime(shown)}</span>
-          <span>-{formatTime(Math.max(0, np.duration - shown))}</span>
+          <span>{ready ? formatTime(shown) : "–:––"}</span>
+          <span>{ready ? `-${formatTime(Math.max(0, np.duration - shown))}` : "–:––"}</span>
         </div>
       </div>
 
@@ -271,7 +333,7 @@ function MiniBar({ np, send, onOpen }: { np: RemoteNowPlaying; send: Send; onOpe
   return (
     <div className="rm-mini">
       <button type="button" className="rm-mini-info" onClick={onOpen}>
-        {np.artworkUrl && <img src={np.artworkUrl} alt="" referrerPolicy="no-referrer" />}
+        <Art src={np.artworkUrl} className="rm-mini-art" />
         <span className="rm-mini-text">
           <span className="rm-mini-title">{np.title}</span>
           <span className="rm-mini-artist">{np.artist}</span>
@@ -302,7 +364,7 @@ async function loadLyrics(np: RemoteNowPlaying, requestLyrics: RequestLyrics): P
     videoId: np.videoId ?? undefined,
     duration: np.duration > 0 ? np.duration : undefined,
   });
-  const data = payload ? processLyricsPayload(payload) : null;
+  const data = payload ? processLyricsPayload(payload, np.duration > 0 ? np.duration : undefined) : null;
   const usable = data && data.lines.length > 0 ? data : null;
   // Only keep hits: a timed-out request is worth asking again.
   if (usable) lyricsCache.set(key, usable);
@@ -456,7 +518,7 @@ function QueueRow({
         <GripVertical size={18} />
       </span>
       <button type="button" className="rm-queue-main" onClick={() => send({ type: "playQueueItem", videoId: item.videoId })}>
-        {item.thumb ? <img src={item.thumb} alt="" referrerPolicy="no-referrer" /> : <span className="rm-queue-thumb" />}
+        <Art src={item.thumb} className="rm-queue-thumb" />
         <span className="rm-queue-text">
           <span className="rm-queue-title">{item.title}</span>
           <span className="rm-queue-artist">{item.artist}</span>
@@ -481,5 +543,161 @@ function QueueRow({
         <X size={17} />
       </button>
     </Reorder.Item>
+  );
+}
+
+// ---------------------------------------------------------------------------------------
+// Search
+
+/** Answers already received this visit, so retyping or deleting is instant. */
+const searchCache = new Map<string, SearchHit[]>();
+const SEARCH_CACHE_SIZE = 40;
+
+function remember(key: string, results: SearchHit[]) {
+  searchCache.delete(key);
+  searchCache.set(key, results);
+  if (searchCache.size > SEARCH_CACHE_SIZE) searchCache.delete(searchCache.keys().next().value!);
+}
+
+function SearchTab({
+  query,
+  onQueryChange,
+  requestSearch,
+  send,
+}: {
+  query: string;
+  onQueryChange: (query: string) => void;
+  requestSearch: RequestSearch;
+  send: Send;
+}) {
+  const key = query.trim().toLowerCase();
+  const [results, setResults] = useState<SearchHit[]>(() => searchCache.get(key) ?? []);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [done, setDone] = useState<{ videoId: string; label: string } | null>(null);
+  const latest = useRef(0);
+
+  useEffect(() => {
+    if (key.length < SEARCH_MIN_CHARS) {
+      latest.current++;
+      setResults([]);
+      setLoading(false);
+      setFailed(false);
+      return;
+    }
+    const hit = searchCache.get(key);
+    if (hit) {
+      // Cached: show at once, no request.
+      latest.current++;
+      setResults(hit);
+      setLoading(false);
+      setFailed(false);
+      return;
+    }
+    setLoading(true);
+    const ticket = ++latest.current;
+    const timer = window.setTimeout(() => {
+      void requestSearch(query.trim()).then((answer) => {
+        if (answer) remember(key, answer);
+        // Only the newest query may fill the list; slower, older answers are dropped.
+        if (ticket !== latest.current) return;
+        setLoading(false);
+        setFailed(answer === null);
+        if (answer) setResults(answer);
+      });
+    }, SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [key, query, requestSearch]);
+
+  useEffect(() => {
+    if (!done) return;
+    const timer = window.setTimeout(() => setDone(null), 1400);
+    return () => window.clearTimeout(timer);
+  }, [done]);
+
+  const act = (type: "playTrack" | "playNextTrack" | "queueTrack", hit: SearchHit, label: string) => {
+    send({
+      type,
+      track: { videoId: hit.videoId, title: hit.title, artist: hit.artist, thumbnailUrl: hit.thumbnailUrl },
+    });
+    setDone({ videoId: hit.videoId, label });
+  };
+
+  return (
+    <section className="rm-search">
+      <label className="rm-search-field">
+        <Search size={17} aria-hidden="true" />
+        <input
+          type="search"
+          inputMode="search"
+          enterKeyHint="search"
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+          placeholder="Songs, artists"
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          aria-label="Search songs"
+        />
+        {loading && <span className="rm-search-spinner" aria-hidden="true" />}
+        {query && !loading && (
+          <button type="button" className="rm-search-clear" onClick={() => onQueryChange("")} aria-label="Clear search">
+            <X size={15} />
+          </button>
+        )}
+      </label>
+
+      {failed && <p className="rm-note is-small">Your Mac didn't answer. Check that it's online.</p>}
+      {!failed && key.length >= SEARCH_MIN_CHARS && !loading && results.length === 0 && (
+        <p className="rm-note is-small">No songs found.</p>
+      )}
+
+      {loading && results.length === 0 && (
+        <ol className="rm-search-list" aria-hidden="true">
+          {Array.from({ length: 6 }, (_, i) => (
+            <li key={i} className="rm-queue-row is-skeleton">
+              <span className="rm-queue-thumb rm-shimmer" />
+              <span className="rm-skeleton-lines">
+                <span className="rm-shimmer" />
+                <span className="rm-shimmer" />
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      <ol className={`rm-search-list ${loading ? "is-stale" : ""}`}>
+        {results.map((hit) => (
+          <li key={hit.videoId} className="rm-queue-row">
+            <button type="button" className="rm-queue-main" onClick={() => act("playTrack", hit, "Playing")}>
+              <Art src={hit.thumbnailUrl} className="rm-queue-thumb" />
+              <span className="rm-queue-text">
+                <span className="rm-queue-title">{hit.title}</span>
+                <span className="rm-queue-artist">
+                  {done?.videoId === hit.videoId ? <strong className="rm-done">{done.label}</strong> : hit.artist}
+                  {hit.duration && done?.videoId !== hit.videoId ? ` · ${hit.duration}` : ""}
+                </span>
+              </span>
+            </button>
+            <button
+              type="button"
+              className="rm-icon-btn is-small"
+              onClick={() => act("playNextTrack", hit, "Playing next")}
+              aria-label="Play Next"
+            >
+              <CornerDownRight size={17} />
+            </button>
+            <button
+              type="button"
+              className="rm-icon-btn is-small"
+              onClick={() => act("queueTrack", hit, "Added to Up Next")}
+              aria-label="Add to Up Next"
+            >
+              <ListPlus size={18} />
+            </button>
+          </li>
+        ))}
+      </ol>
+    </section>
   );
 }

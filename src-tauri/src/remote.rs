@@ -43,8 +43,16 @@ const DEVICE_INFO: &[u8] = b"dot-music remote device v1";
 const PAIR_WAIT: Duration = Duration::from_secs(90);
 const PAIR_ATTEMPTS_PER_MINUTE: usize = 5;
 /// Keeps the relay connection (and any proxy in between) from timing out while idle.
-const PING_EVERY: Duration = Duration::from_secs(25);
-const MAX_BACKOFF_SECS: u64 = 30;
+const PING_EVERY: Duration = Duration::from_secs(15);
+/// Nothing heard (not even a pong) for this long: the connection died quietly, typically
+/// across sleep or a network switch. Drop it and reconnect.
+const SILENCE_LIMIT: Duration = Duration::from_secs(35);
+/// Reconnect delays: first retry at once, then backing off to a few seconds at most.
+const BACKOFF_MS: [u64; 6] = [0, 300, 1000, 2000, 4000, 8000];
+/// Search answers kept for a while, so going back to an earlier query is instant.
+const SEARCH_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
+const SEARCH_CACHE_SIZE: usize = 60;
+const SEARCH_RESULTS: usize = 12;
 
 // ---------------------------------------------------------------------------------------
 // Sealing
@@ -405,7 +413,7 @@ fn stop(app: &AppHandle) {
 }
 
 async fn relay_loop(app: AppHandle) {
-    let mut backoff = 1;
+    let mut attempt = 0;
     loop {
         let Some(base) = relay_base() else { return };
         let url = {
@@ -417,7 +425,7 @@ async fn relay_loop(app: AppHandle) {
         set_relay(&app, "connecting");
         match tokio_tungstenite::connect_async(url.as_str()).await {
             Ok((socket, _)) => {
-                backoff = 1;
+                attempt = 0;
                 set_relay(&app, "online");
                 session(&app, socket).await;
             }
@@ -431,8 +439,9 @@ async fn relay_loop(app: AppHandle) {
         }
         emit_clients(&app);
         set_relay(&app, "offline");
-        tokio::time::sleep(Duration::from_secs(backoff)).await;
-        backoff = (backoff * 2).min(MAX_BACKOFF_SECS);
+        let delay = BACKOFF_MS[attempt.min(BACKOFF_MS.len() - 1)];
+        attempt += 1;
+        tokio::time::sleep(Duration::from_millis(delay)).await;
     }
 }
 
@@ -446,13 +455,17 @@ async fn session(app: &AppHandle, socket: Socket) {
     hub.inner.lock().unwrap().out = Some(out.clone());
     let mut ping = tokio::time::interval(PING_EVERY);
     ping.tick().await;
+    let mut last_heard = Instant::now();
 
     loop {
         tokio::select! {
             frame = stream.next() => match frame {
-                Some(Ok(WsMessage::Text(text))) => handle_frame(app, text.as_str(), &out),
+                Some(Ok(WsMessage::Text(text))) => {
+                    last_heard = Instant::now();
+                    handle_frame(app, text.as_str(), &out);
+                }
                 Some(Ok(WsMessage::Close(_))) | Some(Err(_)) | None => break,
-                Some(Ok(_)) => {}
+                Some(Ok(_)) => last_heard = Instant::now(),
             },
             Some(text) = outgoing.recv() => {
                 if sink.send(WsMessage::Text(text.into())).await.is_err() { break; }
@@ -472,6 +485,10 @@ async fn session(app: &AppHandle, socket: Socket) {
                 Err(broadcast::error::RecvError::Closed) => break,
             },
             _ = ping.tick() => {
+                if last_heard.elapsed() > SILENCE_LIMIT {
+                    log::info!("Phone Remote: relay went quiet, reconnecting");
+                    break;
+                }
                 // The relay answers "pong" itself without waking the room.
                 if sink.send(WsMessage::Text("ping".into())).await.is_err() { break; }
             },
@@ -562,6 +579,10 @@ fn handle_frame(app: &AppHandle, text: &str, out: &mpsc::UnboundedSender<String>
             let (app, out) = (app.clone(), out.clone());
             tauri::async_runtime::spawn(async move { lyrics(&app, &out, &device, &key, message).await });
         }
+        Some("search") => {
+            let out = out.clone();
+            tauri::async_runtime::spawn(async move { search(&out, &device, &key, message).await });
+        }
         _ => {}
     }
 }
@@ -578,7 +599,10 @@ fn accept_seq(last_seq: &mut HashMap<String, u64>, peer: &str, seq: u64) -> bool
 }
 
 /// Queue commands the phone may send to the main window (the menu bar popover's set).
-const QUEUE_COMMANDS: [&str; 8] = [
+const QUEUE_COMMANDS: [&str; 11] = [
+    "playTrack",
+    "playNextTrack",
+    "queueTrack",
     "playQueueItem",
     "removeQueueItem",
     "moveQueueItem",
@@ -616,6 +640,68 @@ async fn lyrics(app: &AppHandle, out: &mpsc::UnboundedSender<String>, device: &D
     .unwrap_or(None);
     let id = message.get("id").cloned().unwrap_or(Value::Null);
     send_sealed(out, &device.id, key, &json!({ "type": "lyrics", "id": id, "payload": payload }));
+}
+
+/// A square thumbnail sharp on a 3× phone screen at the ~48 px the results show (240 px),
+/// without sending full 800 px covers that make every search slow on mobile data.
+fn small_thumbnail(url: &str) -> String {
+    if url.contains("googleusercontent.com") || url.contains("ggpht.com") {
+        if let Some(idx) = url.rfind("=w").or_else(|| url.rfind("=s")) {
+            return format!("{}=w240-h240-l90-rj", &url[..idx]);
+        }
+    }
+    url.replace("/hqdefault.jpg", "/mqdefault.jpg").replace("/maxresdefault.jpg", "/mqdefault.jpg")
+}
+
+/// Recent search answers, newest last.
+static SEARCH_CACHE: Mutex<VecDeque<(String, Instant, Value)>> = Mutex::new(VecDeque::new());
+
+fn cached_search(query: &str) -> Option<Value> {
+    let cache = SEARCH_CACHE.lock().unwrap();
+    cache.iter().rev().find(|(q, at, _)| q == query && at.elapsed() < SEARCH_CACHE_TTL).map(|(_, _, v)| v.clone())
+}
+
+fn remember_search(query: String, results: Value) {
+    let mut cache = SEARCH_CACHE.lock().unwrap();
+    cache.retain(|(q, at, _)| *q != query && at.elapsed() < SEARCH_CACHE_TTL);
+    cache.push_back((query, Instant::now(), results));
+    while cache.len() > SEARCH_CACHE_SIZE {
+        cache.pop_front();
+    }
+}
+
+/// Songs for a phone's search box, the same search the app uses.
+async fn search(out: &mpsc::UnboundedSender<String>, device: &Device, key: &Key, message: Value) {
+    let id = message.get("id").cloned().unwrap_or(Value::Null);
+    let query: String = message.get("q").and_then(Value::as_str).unwrap_or("").trim().chars().take(120).collect();
+    let normalized = query.to_lowercase();
+    let results = if normalized.is_empty() {
+        json!([])
+    } else if let Some(hit) = cached_search(&normalized) {
+        hit
+    } else {
+        let hits = crate::search::search_songs(&query).await.unwrap_or_default();
+        let results: Vec<Value> = hits
+            .into_iter()
+            .take(SEARCH_RESULTS)
+            .map(|hit| {
+                json!({
+                    "videoId": hit.result.video_id,
+                    "title": hit.result.title,
+                    "artist": hit.result.artist,
+                    "thumbnailUrl": small_thumbnail(&hit.result.thumbnail_url),
+                    "duration": hit.duration,
+                })
+            })
+            .collect();
+        let results = Value::Array(results);
+        // Empty answers may be a network blip; only keep real ones.
+        if results.as_array().is_some_and(|r| !r.is_empty()) {
+            remember_search(normalized, results.clone());
+        }
+        results
+    };
+    send_sealed(out, &device.id, key, &json!({ "type": "search", "id": id, "results": results }));
 }
 
 /// A phone sent its device secret, sealed with the current pairing secret: ask the Mac.
@@ -705,6 +791,19 @@ mod tests {
         let wrong = derive(b"another secret entirely, 32 byte", PAIR_INFO);
         assert!(open(&wrong, "peer|up", &sealed).is_none());
         assert!(open(&key, "peer|up", "not base64!").is_none());
+    }
+
+    #[test]
+    fn search_thumbnails_are_small() {
+        assert_eq!(small_thumbnail("https://lh3.googleusercontent.com/abc=w800-h800-l90-rj"), "https://lh3.googleusercontent.com/abc=w240-h240-l90-rj");
+        assert_eq!(small_thumbnail("https://i.ytimg.com/vi/x/hqdefault.jpg"), "https://i.ytimg.com/vi/x/mqdefault.jpg");
+    }
+
+    #[test]
+    fn search_cache_answers_repeat_queries() {
+        remember_search("unit test query".into(), json!([{ "videoId": "a" }]));
+        assert_eq!(cached_search("unit test query"), Some(json!([{ "videoId": "a" }])));
+        assert_eq!(cached_search("something else"), None);
     }
 
     #[test]
