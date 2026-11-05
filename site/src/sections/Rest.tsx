@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { animate, motion, useInView, useReducedMotion } from "motion/react";
-import { Check, Copy, Download, FolderInput, ShieldCheck } from "lucide-react";
+import { Check, Copy, Download, FolderInput, ShieldCheck, Terminal } from "lucide-react";
 import { ISSUES_URL, RELEASES_URL, REPO_URL, VISITOR_PLATFORM, downloadFor, type Platform, type RepoInfo } from "../lib/github";
 import { Logo, StarButton } from "./Nav";
 
@@ -58,18 +58,21 @@ export function BuiltLight() {
 }
 
 const XATTR = "xattr -dr com.apple.quarantine /Applications/dot-music.app";
+/** The one-line installer (site/public/install.sh), served from this site. */
+const INSTALL_COMMAND = `curl -fsSL ${typeof location !== "undefined" ? location.origin : "https://dot-music.anshbhatt.space"}/install.sh | sh`;
+const INSTALL_SOURCE = "https://github.com/ansh-logics/Dot-Play/blob/main/site/public/install.sh";
 
-function CopyCommand() {
+function CopyCommand({ command = XATTR }: { command?: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="command">
-      <code>{XATTR}</code>
+      <code>{command}</code>
       <button
         type="button"
         className="command-copy"
         aria-label="Copy command"
         onClick={() => {
-          void navigator.clipboard.writeText(XATTR).then(() => {
+          void navigator.clipboard.writeText(command).then(() => {
             setCopied(true);
             window.setTimeout(() => setCopied(false), 1600);
           });
@@ -166,6 +169,27 @@ export function Install({ info }: { info: RepoInfo }) {
           </button>
         ))}
       </div>
+      {platform === "mac" && (
+        <motion.div
+          className="quick-install"
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.4 }}
+          transition={{ duration: 0.6 }}
+        >
+          <div className="quick-install-text">
+            <h3>
+              <Terminal size={18} /> Fastest: one command, no security prompt
+            </h3>
+            <p>
+              Paste this into Terminal. It downloads the latest version from GitHub, checks it, puts it in Applications
+              and opens it, with no "can't be opened" warning. <a href={INSTALL_SOURCE}>Read the script</a>.
+            </p>
+          </div>
+          <CopyCommand command={INSTALL_COMMAND} />
+        </motion.div>
+      )}
+      {platform === "mac" && <p className="steps-or">Or download it yourself:</p>}
       <ol className="steps" key={platform}>
         {steps.map((s, i) => (
           <motion.li
@@ -195,7 +219,7 @@ const FAQ = [
   { q: "Do I need a YouTube Music account?", a: "You sign in with your own YouTube Music account inside the app, so your library, playlists and history come with you." },
   {
     q: "Why does macOS warn me when I open it?",
-    a: "The app is signed, but not yet with a paid Apple Developer ID, so macOS can't verify the developer. Allow it once in Privacy & Security (see Install). A notarized build is planned.",
+    a: "The app is signed, but not yet with a paid Apple Developer ID, so macOS can't verify the developer when it's downloaded in a browser. Install it with the one-line Terminal command instead (see Install) and there's no warning, or allow it once in Privacy & Security. A notarized build is planned.",
   },
   {
     q: "Which computers does it run on?",

@@ -836,6 +836,45 @@ svg {
   background: rgba(255, 255, 255, 0.16);
 }
 
+/* Mac: the one-line Terminal install, above the manual steps. */
+.quick-install {
+  min-width: 0;
+  margin-bottom: 16px;
+  padding: 24px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(215, 25, 33, 0.45);
+  background: linear-gradient(135deg, rgba(215, 25, 33, 0.1), rgba(255, 255, 255, 0.02) 60%);
+}
+
+.quick-install h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 18px;
+}
+
+.quick-install p {
+  margin: 8px 0 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--dim);
+}
+
+.quick-install a {
+  color: var(--ink);
+}
+
+.quick-install .command code {
+  font-size: 14px;
+}
+
+.steps-or {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: var(--faint);
+}
+
 .faq {
   border-top: 1px solid var(--line);
 }

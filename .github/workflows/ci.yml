@@ -34,6 +34,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Lint the Mac install script
+        run: shellcheck -S warning site/public/install.sh
+
       - name: Types
         run: npx tsc -p tsconfig.app.json --noEmit
 
@@ -100,3 +103,11 @@ jobs:
 
       - name: Rust tests
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+
+      # Downloads the latest release and checks its signature, as a visitor's Mac would;
+      # installs nothing.
+      - name: Mac install script (dry run)
+        if: runner.os == 'macOS'
+        env:
+          DOT_INSTALL_DRY_RUN: "1"
+        run: sh site/public/install.sh
