@@ -21,7 +21,7 @@ import { SearchLandingView } from "./views/SearchLandingView";
 import { SearchResultsView } from "./views/SearchResultsView";
 import type { CardClickHandler, CardContextMenuHandler, NavTab } from "./views/types";
 import { ArrowLeft } from "lucide-react";
-import { getPlaylistDetails, type PlaylistDetails, type PlaylistTrack, type SearchResult } from "./lib/search";
+import { getPlaylistDetails, loadRemainingPlaylistPages, type PlaylistDetails, type PlaylistTrack, type SearchResult } from "./lib/search";
 import {
   deleteLocalPlaylist,
   getLocalPlaylist,
@@ -227,6 +227,21 @@ function App() {
       setSelectedPlaylist(details);
       if (details.tracks && details.tracks.length > 0) {
         cacheTracks(details.tracks);
+      }
+      // Big playlists (Liked Music…) come in pages of about 100; the first shows at once and
+      // the rest fill in behind it.
+      if (details.continuation) {
+        setIsLoadingPlaylist(false);
+        await loadRemainingPlaylistPages(
+          details,
+          (more) => {
+            cacheTracks(more);
+            setSelectedPlaylist((current) =>
+              current && current.id === details.id ? { ...current, tracks: [...current.tracks, ...more] } : current,
+            );
+          },
+          () => requestId === playlistRequestRef.current,
+        );
       }
     } catch (err) {
       if (requestId !== playlistRequestRef.current) return;

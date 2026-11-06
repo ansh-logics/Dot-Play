@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core"
-import { getPlaylistDetails, type PlaylistDetails, type PlaylistTrack, type SearchResult } from "./search"
+import { getFullPlaylistDetails, type PlaylistDetails, type PlaylistTrack, type SearchResult } from "./search"
 
 /** Mirrors the structs in import.rs. */
 export interface ExternalTrack {
@@ -97,7 +97,7 @@ function durationFromMs(ms: number | undefined): string {
 export async function readExternalPlaylist(input: string): Promise<{ playlist: ExternalPlaylist; matches?: TrackMatch[] }> {
   const listId = youtubePlaylistId(input)
   if (listId) {
-    const details = await getPlaylistDetails(listId)
+    const details = await getFullPlaylistDetails(listId)
     const tracks = details.tracks.filter((t) => t.videoId)
     return {
       playlist: {

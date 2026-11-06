@@ -50,6 +50,17 @@ pub struct PlaylistDetails {
     #[serde(rename = "trackCount")]
     pub track_count: String,
     pub tracks: Vec<PlaylistTrack>,
+    /// Set when the playlist has more songs than the first page (about 100).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub continuation: Option<String>,
+}
+
+/// One more page of a playlist's songs.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PlaylistPage {
+    pub tracks: Vec<PlaylistTrack>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub continuation: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

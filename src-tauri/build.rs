@@ -9,6 +9,7 @@ fn main() {
         "get_home_feed",
         "get_home_feed_continuation",
         "get_playlist_details",
+        "get_playlist_continuation",
         "get_highres_thumbnails",
         "get_user_profile",
         "get_history",
