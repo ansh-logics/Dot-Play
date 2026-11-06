@@ -1,3 +1,4 @@
+import { activateOnKey } from "../../lib/a11y";
 import {
   ListMusic,
   Loader2,
@@ -109,8 +110,10 @@ export function SidebarPlayer({
             if (e.altKey) onOpenNowPlaying();
             else onToggleQueue();
           }}
+          onKeyDown={activateOnKey(onToggleQueue)}
           role="button"
           tabIndex={0}
+          aria-label={isQueueOpen ? "Show album artwork" : "Show upcoming queue"}
           title={isQueueOpen ? "Click to expand album artwork" : "Click to view upcoming queue"}
         >
           {isVinyl ? (

@@ -1,3 +1,4 @@
+import { activateOnKey } from "../lib/a11y";
 import { memo } from "react";
 import { ListMusic, Music, Play, SearchX, X } from "lucide-react";
 import { ArtworkImage } from "../components/ArtworkImage";
@@ -114,8 +115,10 @@ export const SearchResultsView = memo(function SearchResultsView({
                 onContextMenu={(e) =>
                   browse.onContextMenu(e, topMatch, "card", { contextList: playableOnly(results) })
                 }
+                onKeyDown={activateOnKey(() => browse.onCardClick(topMatch))}
                 role="button"
                 tabIndex={0}
+                aria-label={`${topMatch.title}${topMatch.artist ? ` by ${topMatch.artist}` : ""}`}
               >
                 <div className="top-match-cover-wrap">
                   <ArtworkImage

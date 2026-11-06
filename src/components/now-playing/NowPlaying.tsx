@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type WheelEvent } from "react";
+import { useDialogFocus } from "../../lib/a11y";
 import { flushSync } from "react-dom";
 import {
   AnimatePresence,
@@ -311,6 +312,8 @@ function NowPlayingScreen(props: NowPlayingProps) {
     rootRef.current?.focus({ preventScroll: true });
     return () => previouslyFocused?.focus?.({ preventScroll: true });
   }, []);
+  // Keeps Tab inside the player while it covers the app.
+  useDialogFocus(rootRef);
 
   useEffect(() => {
     // Capture phase so Esc is handled here before the app's global handler.

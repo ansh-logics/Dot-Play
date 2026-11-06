@@ -1,3 +1,4 @@
+import { activateOnKey } from "../../lib/a11y";
 import { memo, useEffect, useRef } from "react";
 import { LogOut, MoreVertical, User, UserPlus } from "lucide-react";
 import type { UserProfile } from "../../lib/search";
@@ -150,6 +151,11 @@ export const AccountCard = memo(function AccountCard({
           else if (authSyncError) onRetrySync();
           else onMenuOpenChange((open) => !open);
         }}
+        onKeyDown={activateOnKey(() => {
+          if (!isLoggedIn) onSignIn(false);
+          else if (authSyncError) onRetrySync();
+          else onMenuOpenChange((open) => !open);
+        })}
         role="button"
         tabIndex={0}
         aria-label="Account details"

@@ -1,3 +1,4 @@
+import { activateOnKey } from "../lib/a11y";
 import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { ChevronLeft, CornerDownRight, ListEnd, Play, Search, Shuffle, Trash2, Upload } from "lucide-react";
 import { ArtworkImage } from "../components/ArtworkImage";
@@ -313,6 +314,10 @@ export const PlaylistView = memo(function PlaylistView({
                   key={`missing-${idx}`}
                   className="tracklist-row is-missing"
                   onClick={() => onFindMissing?.(track)}
+                  onKeyDown={activateOnKey(() => onFindMissing?.(track))}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`${track.title} by ${track.artist}, not found on YouTube Music. Search for it.`}
                   title="Not found on YouTube Music. Click to search for it."
                 >
                   <span className="col-num">{idx + 1}</span>
@@ -338,6 +343,11 @@ export const PlaylistView = memo(function PlaylistView({
                 key={`${track.videoId}-${idx}`}
                 className={`tracklist-row ${isTrackActive ? "active" : ""}`}
                 onClick={() => onSelectTrack(trackItem, tracks)}
+                onKeyDown={activateOnKey(() => onSelectTrack(trackItem, tracks))}
+                role="button"
+                tabIndex={0}
+                aria-label={`Play ${track.title} by ${track.artist}`}
+                aria-current={isTrackActive ? "true" : undefined}
                 onContextMenu={(e) => onContextMenu(e, trackItem, "playlist", { contextList: tracks })}
               >
                 <span className="col-num">

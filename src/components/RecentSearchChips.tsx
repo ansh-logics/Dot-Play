@@ -15,12 +15,21 @@ export function RecentSearchChips({ searches, onSelect, onDelete }: RecentSearch
           type="button"
           className="recent-search-chip"
           onClick={() => onSelect(query)}
+          onKeyDown={(e) => {
+            // The × is a mouse target inside the chip; keyboard users remove it with Delete.
+            if (e.key === "Delete" || e.key === "Backspace") {
+              e.preventDefault();
+              onDelete(query);
+            }
+          }}
+          aria-keyshortcuts="Delete"
+          aria-label={`Search for ${query}. Press Delete to remove it.`}
           title={`Search for "${query}"`}
         >
           <Clock size={11} className="chip-clock-icon" />
           <span className="chip-query-text">{query}</span>
           <span
-            role="button"
+            aria-hidden="true"
             className="chip-remove-btn"
             onClick={(e) => {
               e.stopPropagation();
