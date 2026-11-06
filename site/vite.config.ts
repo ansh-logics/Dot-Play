@@ -14,7 +14,19 @@ function siteUrl(): Plugin {
   // Without an absolute origin, og:image would be "/og.png", which social sites reject.
   const host = process.env.SITE_URL ?? process.env.VERCEL_PROJECT_PRODUCTION_URL ?? DEFAULT_SITE;
   const origin = (host.startsWith("http") ? host : `https://${host}`).replace(/\/$/, "");
-  return { name: "site-url", transformIndexHtml: (html) => html.replaceAll("%SITE_URL%", origin) };
+  return {
+    name: "site-url",
+    transformIndexHtml: (html) => html.replaceAll("%SITE_URL%", origin),
+    // robots.txt and the sitemap need the same absolute origin.
+    generateBundle() {
+      this.emitFile({ type: "asset", fileName: "robots.txt", source: `User-agent: *\nAllow: /\n\nSitemap: ${origin}/sitemap.xml\n` });
+      this.emitFile({
+        type: "asset",
+        fileName: "sitemap.xml",
+        source: `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>${origin}/</loc></url>\n</urlset>\n`,
+      });
+    },
+  };
 }
 
 /**
@@ -49,5 +61,7 @@ export default defineConfig({
     // App files live outside this project; make every shared package resolve to one copy here.
     dedupe: ["react", "react-dom", "motion", "lucide-react"],
   },
+  // Fonts stay separate files: inlined, every unused subset would load with the CSS.
+  build: { assetsInlineLimit: (file) => (/\.woff2?$/.test(file) ? false : undefined) },
   server: { port: 5810, fs: { allow: [here("..")] } },
 });

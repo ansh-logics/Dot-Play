@@ -1,6 +1,6 @@
 //! Playlist / album detail pages.
 
-use crate::models::{PlaylistDetails, PlaylistTrack};
+use crate::models::{PlaylistDetails, PlaylistPage, PlaylistTrack};
 use crate::session::SessionState;
 use crate::ytmusic::parse::{clean_ytmusic_title_and_artist, parse_ytmusic_artist_from_runs, upscale_thumbnail_url};
 use crate::ytmusic::{attach_youtube_auth, web_remix_context, with_ytm_headers, HTTP_CLIENT};
@@ -113,65 +113,23 @@ pub(crate) async fn get_playlist_details(
         .or_else(|| json.pointer("/contents/singleColumnBrowseResultsRenderer/tabs/0/tabRenderer/content/sectionListRenderer/contents"))
         .and_then(|v| v.as_array());
 
-    let mut items_opt: Option<&Vec<serde_json::Value>> = None;
+    let mut shelf_opt: Option<&serde_json::Value> = None;
     if let Some(sections) = section_list_contents {
         for section in sections {
             if let Some(shelf) = section.get("musicPlaylistShelfRenderer").or_else(|| section.get("musicShelfRenderer")) {
-                if let Some(items) = shelf.get("contents").and_then(|c| c.as_array()) {
-                    if !items.is_empty() {
-                        items_opt = Some(items);
-                        break;
-                    }
+                if shelf.get("contents").and_then(|c| c.as_array()).is_some_and(|items| !items.is_empty()) {
+                    shelf_opt = Some(shelf);
+                    break;
                 }
             }
         }
     }
 
-    if let Some(items) = items_opt {
-        for item in items {
-            if let Some(r) = item.get("musicResponsiveListItemRenderer") {
-                let video_id = r
-                    .pointer("/playlistItemData/videoId")
-                    .or_else(|| r.pointer("/overlay/musicItemThumbnailOverlayRenderer/content/musicPlayButtonRenderer/playNavigationEndpoint/watchEndpoint/videoId"))
-                    .or_else(|| r.pointer("/flexColumns/0/musicResponsiveListItemFlexColumnRenderer/text/runs/0/navigationEndpoint/watchEndpoint/videoId"))
-                    .and_then(|v| v.as_str());
-
-                let track_title = r
-                    .pointer("/flexColumns/0/musicResponsiveListItemFlexColumnRenderer/text/runs/0/text")
-                    .and_then(|v| v.as_str());
-
-                let raw_artist = r
-                    .pointer("/flexColumns/1/musicResponsiveListItemFlexColumnRenderer/text/runs")
-                    .and_then(|v| v.as_array())
-                    .map(|runs| parse_ytmusic_artist_from_runs(runs))
-                    .unwrap_or_else(|| "Artist".to_string());
-
-                let duration = r
-                    .pointer("/fixedColumns/0/musicResponsiveListItemFixedColumnRenderer/text/runs/0/text")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-
-                let track_thumb = r
-                    .pointer("/thumbnail/musicThumbnailRenderer/thumbnail/thumbnails")
-                    .and_then(|v| v.as_array())
-                    .and_then(|arr| arr.last().or_else(|| arr.first()))
-                    .and_then(|t| t.get("url"))
-                    .and_then(|u| u.as_str())
-                    .unwrap_or(thumb);
-                let final_track_thumb = upscale_thumbnail_url(track_thumb);
-
-                if let (Some(id), Some(t)) = (video_id, track_title) {
-                    let (clean_t, clean_a) = clean_ytmusic_title_and_artist(t, &raw_artist);
-                    tracks.push(PlaylistTrack {
-                        video_id: id.to_string(),
-                        title: clean_t,
-                        artist: clean_a,
-                        duration: duration.to_string(),
-                        thumbnail_url: final_track_thumb,
-                    });
-                }
-            }
-        }
+    let mut continuation = None;
+    if let Some(shelf) = shelf_opt {
+        let items = shelf.get("contents").and_then(|c| c.as_array()).map(Vec::as_slice).unwrap_or_default();
+        tracks.extend(items.iter().filter_map(|item| parse_track(item, thumb)));
+        continuation = continuation_token(items, shelf);
     }
 
     Ok(PlaylistDetails {
@@ -185,6 +143,108 @@ pub(crate) async fn get_playlist_details(
         thumbnail_url: upscale_thumbnail_url(thumb),
         track_count,
         tracks,
+        continuation,
+    })
+}
+
+/// The next page of a playlist, from the token the previous page returned.
+#[tauri::command]
+pub(crate) async fn get_playlist_continuation(
+    state: State<'_, SessionState>,
+    continuation: String,
+) -> Result<PlaylistPage, String> {
+    let token = continuation.trim();
+    if token.is_empty() {
+        return Err("Continuation token cannot be empty".to_string());
+    }
+    let maybe_cookies = state.cookies.lock().unwrap().clone();
+    // YouTube Music has used two continuation styles; the query parameters serve the older
+    // shelf style and the body field the newer item style, so one request covers both.
+    let mut url = reqwest::Url::parse("https://music.youtube.com/youtubei/v1/browse").map_err(|e| e.to_string())?;
+    url.query_pairs_mut()
+        .append_pair("ctoken", token)
+        .append_pair("continuation", token)
+        .append_pair("type", "next");
+    let body = serde_json::json!({ "context": web_remix_context(), "continuation": token });
+    let request = attach_youtube_auth(with_ytm_headers(HTTP_CLIENT.post(url)), &maybe_cookies);
+    let json: serde_json::Value = request
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch more songs: {}", e))?
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse more songs: {}", e))?;
+    Ok(parse_continuation_page(&json))
+}
+
+fn parse_continuation_page(json: &serde_json::Value) -> PlaylistPage {
+    if let Some(shelf) = json
+        .pointer("/continuationContents/musicPlaylistShelfContinuation")
+        .or_else(|| json.pointer("/continuationContents/musicShelfContinuation"))
+    {
+        let items = shelf.get("contents").and_then(|c| c.as_array()).map(Vec::as_slice).unwrap_or_default();
+        return PlaylistPage {
+            tracks: items.iter().filter_map(|item| parse_track(item, "")).collect(),
+            continuation: continuation_token(items, shelf),
+        };
+    }
+    let items = json
+        .pointer("/onResponseReceivedActions/0/appendContinuationItemsAction/continuationItems")
+        .and_then(|v| v.as_array())
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    PlaylistPage {
+        tracks: items.iter().filter_map(|item| parse_track(item, "")).collect(),
+        continuation: continuation_token(items, &serde_json::Value::Null),
+    }
+}
+
+/// The token for the next page: a trailing `continuationItemRenderer` (newer responses) or
+/// the shelf's `nextContinuationData` (older ones).
+fn continuation_token(items: &[serde_json::Value], shelf: &serde_json::Value) -> Option<String> {
+    items
+        .last()
+        .and_then(|item| item.pointer("/continuationItemRenderer/continuationEndpoint/continuationCommand/token"))
+        .or_else(|| shelf.pointer("/continuations/0/nextContinuationData/continuation"))
+        .and_then(|v| v.as_str())
+        .filter(|t| !t.is_empty())
+        .map(str::to_string)
+}
+
+fn parse_track(item: &serde_json::Value, fallback_thumb: &str) -> Option<PlaylistTrack> {
+    let r = item.get("musicResponsiveListItemRenderer")?;
+    let video_id = r
+        .pointer("/playlistItemData/videoId")
+        .or_else(|| r.pointer("/overlay/musicItemThumbnailOverlayRenderer/content/musicPlayButtonRenderer/playNavigationEndpoint/watchEndpoint/videoId"))
+        .or_else(|| r.pointer("/flexColumns/0/musicResponsiveListItemFlexColumnRenderer/text/runs/0/navigationEndpoint/watchEndpoint/videoId"))
+        .and_then(|v| v.as_str())?;
+    let track_title = r
+        .pointer("/flexColumns/0/musicResponsiveListItemFlexColumnRenderer/text/runs/0/text")
+        .and_then(|v| v.as_str())?;
+    let raw_artist = r
+        .pointer("/flexColumns/1/musicResponsiveListItemFlexColumnRenderer/text/runs")
+        .and_then(|v| v.as_array())
+        .map(|runs| parse_ytmusic_artist_from_runs(runs))
+        .unwrap_or_else(|| "Artist".to_string());
+    let duration = r
+        .pointer("/fixedColumns/0/musicResponsiveListItemFixedColumnRenderer/text/runs/0/text")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let track_thumb = r
+        .pointer("/thumbnail/musicThumbnailRenderer/thumbnail/thumbnails")
+        .and_then(|v| v.as_array())
+        .and_then(|arr| arr.last().or_else(|| arr.first()))
+        .and_then(|t| t.get("url"))
+        .and_then(|u| u.as_str())
+        .unwrap_or(fallback_thumb);
+    let (title, artist) = clean_ytmusic_title_and_artist(track_title, &raw_artist);
+    Some(PlaylistTrack {
+        video_id: video_id.to_string(),
+        title,
+        artist,
+        duration: duration.to_string(),
+        thumbnail_url: upscale_thumbnail_url(track_thumb),
     })
 }
 
@@ -230,4 +290,45 @@ fn header_facts(header: Option<&serde_json::Value>) -> HeaderFacts {
     let artist = runs_text(header.pointer("/straplineTextOne/runs"))
         .or_else(|| (!rest.is_empty()).then(|| rest.join(" • ")));
     HeaderFacts { kind, artist, year }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn row(id: &str) -> serde_json::Value {
+        json!({ "musicResponsiveListItemRenderer": {
+            "playlistItemData": { "videoId": id },
+            "flexColumns": [
+                { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [{ "text": format!("Song {id}") }] } } },
+                { "musicResponsiveListItemFlexColumnRenderer": { "text": { "runs": [{ "text": "Artist" }] } } }
+            ]
+        }})
+    }
+
+    #[test]
+    fn newer_continuations_are_followed() {
+        let page = json!({ "onResponseReceivedActions": [{ "appendContinuationItemsAction": { "continuationItems": [
+            row("a"), row("b"),
+            { "continuationItemRenderer": { "continuationEndpoint": { "continuationCommand": { "token": "NEXT" } } } }
+        ] } }] });
+        let parsed = parse_continuation_page(&page);
+        assert_eq!(parsed.tracks.len(), 2);
+        assert_eq!(parsed.continuation.as_deref(), Some("NEXT"));
+    }
+
+    #[test]
+    fn older_continuations_are_followed_and_the_last_page_ends() {
+        let page = json!({ "continuationContents": { "musicPlaylistShelfContinuation": {
+            "contents": [row("c")],
+            "continuations": [{ "nextContinuationData": { "continuation": "OLD" } }]
+        } } });
+        let parsed = parse_continuation_page(&page);
+        assert_eq!(parsed.tracks[0].video_id, "c");
+        assert_eq!(parsed.continuation.as_deref(), Some("OLD"));
+
+        let last = json!({ "continuationContents": { "musicPlaylistShelfContinuation": { "contents": [row("d")] } } });
+        assert_eq!(parse_continuation_page(&last).continuation, None);
+    }
 }

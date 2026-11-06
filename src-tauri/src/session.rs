@@ -72,13 +72,17 @@ pub(crate) fn restore_saved_state(app: &tauri::App) {
 
 /// Builds the API cookie header from the login window's cookies once YouTube has signed the
 /// user in: YouTube must have issued LOGIN_INFO plus a SAPISID (on youtube.com or google.com).
-/// Google cookies are included, with YouTube's taking priority on a name clash.
+///
+/// Only youtube.com cookies are kept, the same ones a browser sends to music.youtube.com.
+/// The Google account cookies (google.com) stay in the login window's own store and are
+/// never written to session.json; the one exception is a SAPISID that YouTube didn't set
+/// itself, which the API needs to sign requests.
 fn authenticated_cookie_header<I>(cookies: I) -> Option<String>
 where
     I: IntoIterator<Item = (String, String, String)>, // (domain, name, value)
 {
     let mut yt_cookie_map = HashMap::new();
-    let mut google_cookie_map = HashMap::new();
+    let mut google_sapisid = HashMap::new();
     let mut has_login_info = false;
     let mut has_sapisid = false;
 
@@ -90,19 +94,21 @@ where
             }
             has_sapisid |= is_sapisid;
             yt_cookie_map.insert(name, val);
-        } else if domain.contains("google.com") {
-            has_sapisid |= is_sapisid;
-            google_cookie_map.insert(name, val);
+        } else if domain.contains("google.com") && is_sapisid {
+            has_sapisid = true;
+            google_sapisid.insert(name, val);
         }
     }
 
     if !(has_login_info && has_sapisid) {
         return None;
     }
-    let mut final_map = google_cookie_map;
+    let mut final_map = google_sapisid;
     final_map.extend(yt_cookie_map);
+    let mut pairs: Vec<_> = final_map.into_iter().collect();
+    pairs.sort();
     Some(
-        final_map
+        pairs
             .into_iter()
             .map(|(k, v)| format!("{}={}", k, v))
             .collect::<Vec<_>>()
@@ -291,29 +297,6 @@ pub(crate) async fn open_login_window(app: AppHandle, _clean: Option<bool>) -> R
 }
 
 #[tauri::command]
-pub(crate) async fn save_session(
-    app: AppHandle,
-    state: State<'_, SessionState>,
-    cookies: String,
-) -> Result<(), String> {
-    if cookies.contains("LOGIN_INFO") && (cookies.contains("SAPISID") || cookies.contains("__Secure-3PAPISID")) {
-        *state.cookies.lock().unwrap() = Some(cookies.clone());
-        let _ = persist_session(&app, &cookies);
-
-        if let Some(win) = app.get_webview_window("yt_login") {
-            let _ = win.hide();
-            let _ = win.destroy();
-        }
-
-        let _ = app.emit("login_success", ());
-        let _ = app.emit_to("main", "login_success", ());
-        Ok(())
-    } else {
-        Err("Incomplete cookies: missing LOGIN_INFO".to_string())
-    }
-}
-
-#[tauri::command]
 pub(crate) async fn get_auth_status(state: State<'_, SessionState>) -> Result<bool, String> {
     let guard = state.cookies.lock().unwrap();
     if let Some(ref cookies) = *guard {
@@ -472,4 +455,38 @@ pub(crate) async fn get_user_profile(state: State<'_, SessionState>) -> Result<O
         email: "Connected".to_string(),
         avatar_url: "".to_string(),
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::authenticated_cookie_header;
+
+    fn c(domain: &str, name: &str, value: &str) -> (String, String, String) {
+        (domain.to_string(), name.to_string(), value.to_string())
+    }
+
+    #[test]
+    fn only_youtube_cookies_are_kept() {
+        let header = authenticated_cookie_header(vec![
+            c(".youtube.com", "LOGIN_INFO", "x"),
+            c(".youtube.com", "SAPISID", "yt"),
+            c(".google.com", "SAPISID", "g"),
+            c(".google.com", "SID", "google-only"),
+            c("accounts.google.com", "__Host-GAPS", "secret"),
+        ])
+        .unwrap();
+        assert_eq!(header, "LOGIN_INFO=x; SAPISID=yt");
+    }
+
+    #[test]
+    fn a_google_sapisid_fills_in_when_youtube_has_none() {
+        let header = authenticated_cookie_header(vec![
+            c(".youtube.com", "LOGIN_INFO", "x"),
+            c(".google.com", "SAPISID", "g"),
+            c(".google.com", "HSID", "drop"),
+        ])
+        .unwrap();
+        assert_eq!(header, "LOGIN_INFO=x; SAPISID=g");
+        assert!(authenticated_cookie_header(vec![c(".google.com", "SAPISID", "g")]).is_none());
+    }
 }

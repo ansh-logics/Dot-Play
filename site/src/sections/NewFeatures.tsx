@@ -62,7 +62,7 @@ export function Remote() {
           viewport={{ once: true, amount: 0.3 }}
           transition={{ duration: 1, delay: 0.15, ease }}
         >
-          <img src="/shots/remote-search.jpg" alt="The Phone Remote's search: play now, play next or add to Up Next" width={780} height={1688} loading="lazy" />
+          <img src="/shots/remote-search.webp" alt="The Phone Remote's search: play now, play next or add to Up Next" width={780} height={1688} loading="lazy" />
         </motion.figure>
         <motion.figure
           className="phone phone--front"
@@ -71,7 +71,7 @@ export function Remote() {
           viewport={{ once: true, amount: 0.3 }}
           transition={{ duration: 1, ease }}
         >
-          <img src="/shots/remote-playing.jpg" alt="The Phone Remote showing the song that's playing" width={780} height={1688} loading="lazy" />
+          <img src="/shots/remote-playing.webp" alt="The Phone Remote showing the song that's playing" width={780} height={1688} loading="lazy" />
         </motion.figure>
       </div>
 

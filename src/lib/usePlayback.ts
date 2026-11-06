@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPlaybackClock } from "./playbackClock";
 import type {
   YouTubePlayerInstance,
   YouTubePlaybackState,
@@ -80,7 +81,8 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
   const [autoPlayOnMount, setAutoPlayOnMount] = useState(false);
   const [isPlayerReady, setIsPlayerReady] = useState(false);
   const [playerState, setPlayerState] = useState<YouTubePlaybackState>("unstarted");
-  const [currentTime, setCurrentTime] = useState(0);
+  // The position lives outside React state so App doesn't re-render 10 times a second.
+  const [clock] = useState(createPlaybackClock);
   const [duration, setDuration] = useState(0);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(false);
@@ -89,7 +91,9 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
 
   const playerRef = useRef<YouTubePlayerInstance | null>(null);
   const isScrubbingRef = useRef(false);
-  const currentTimeRef = useRef(0);
+  // Same value as the clock, under the name the callbacks below already use.
+  const currentTimeRef = useMemo(() => ({ get current() { return clock.get(); } }), [clock]);
+  const setCurrentTime = clock.set;
   const durationRef = useRef(0);
   const playerStateRef = useRef<YouTubePlaybackState>("unstarted");
   const volumeRef = useRef(volume);
@@ -107,10 +111,6 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     onPlaybackRecordedRef.current = onPlaybackRecorded;
     playlistTracksRef.current = playlistTracks;
   });
-
-  useEffect(() => {
-    currentTimeRef.current = currentTime;
-  }, [currentTime]);
 
   useEffect(() => {
     durationRef.current = duration;
@@ -440,13 +440,20 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
 
   const selectTrack = useCallback(
     (track: SearchResult, contextList?: SearchResult[]) => {
-      startTrack(track, (prev) =>
-        playTrackImmediate(prev, track, {
+      startTrack(track, (prev) => {
+        const next = playTrackImmediate(prev, track, {
           contextUpcoming: contextList,
           isAutoplay: false,
           keepUserQueuedOnly: true,
-        }),
-      );
+        });
+        if (!playbackModesRef.current.shuffle || !contextList || contextList.length === 0) return next;
+        // Shuffle stays on for the next playlist too. Songs the listener queued themselves
+        // stay first; the playlist after them is shuffled, and turning shuffle off restores it.
+        const userQueued = next.upcoming.findIndex((t) => t.queueSource !== "user");
+        const shuffled = shuffleUpcoming(next, userQueued === -1 ? next.upcoming.length : userQueued);
+        preShuffleOrderRef.current = shuffled.originalOrder;
+        return shuffled.session;
+      });
     },
     [startTrack],
   );
@@ -696,13 +703,18 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
 
   // Record the song once it has actually played long enough (not on a restored position).
   useEffect(() => {
-    if (playerState === "playing" && currentTime >= RECORD_AFTER_SECONDS) recordIfNeeded(currentTrack);
-  }, [currentTime, currentTrack, playerState, recordIfNeeded]);
+    if (playerState !== "playing") return;
+    const check = () => {
+      if (clock.get() >= RECORD_AFTER_SECONDS) recordIfNeeded(currentTrack);
+    };
+    check();
+    return clock.subscribe(check);
+  }, [clock, currentTrack, playerState, recordIfNeeded]);
 
   useSystemMediaControls({
     track: currentTrack,
     playerState,
-    currentTime,
+    clock,
     duration,
     onTogglePlayPause: togglePlayPause,
     onNext: handleNextTrack,
@@ -748,7 +760,8 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     autoPlayOnMount,
     isPlayerReady,
     playerState,
-    currentTime,
+    /** Read with useCurrentTime / WithCurrentTime, or clock.get() in callbacks. */
+    clock,
     duration,
     playbackError,
     volume,

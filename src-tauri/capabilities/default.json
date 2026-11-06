@@ -1,11 +1,9 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "enables the default permissions",
+  "description": "The main window: the full app.",
   "windows": [
-    "main",
-    "tray",
-    "immersive-*"
+    "main"
   ],
   "permissions": [
     "core:default",
@@ -15,12 +13,12 @@
     "core:window:allow-minimize",
     "allow-search-tracks",
     "allow-open-login-window",
-    "allow-save-session",
     "allow-get-auth-status",
     "allow-logout",
     "allow-get-home-feed",
     "allow-get-home-feed-continuation",
     "allow-get-playlist-details",
+    "allow-get-playlist-continuation",
     "allow-get-highres-thumbnails",
     "allow-get-user-profile",
     "allow-get-history",

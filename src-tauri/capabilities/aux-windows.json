@@ -1,0 +1,24 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "aux-windows",
+  "description": "The menu bar popover and immersive screens: playback state and immersive controls only.",
+  "windows": [
+    "tray",
+    "immersive-*"
+  ],
+  "permissions": [
+    "core:default",
+    "core:event:default",
+    "allow-get-now-playing",
+    "allow-tray-media-control",
+    "allow-show-main-window",
+    "allow-hide-tray-popover",
+    "allow-open-immersive",
+    "allow-close-immersive",
+    "allow-set-immersive-idle",
+    "allow-list-immersive-displays",
+    "allow-set-immersive-screens",
+    "allow-set-immersive-display",
+    "allow-leave-immersive-to-player"
+  ]
+}

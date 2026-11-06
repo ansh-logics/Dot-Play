@@ -21,7 +21,8 @@ import { SearchLandingView } from "./views/SearchLandingView";
 import { SearchResultsView } from "./views/SearchResultsView";
 import type { CardClickHandler, CardContextMenuHandler, NavTab } from "./views/types";
 import { ArrowLeft } from "lucide-react";
-import { getPlaylistDetails, type PlaylistDetails, type PlaylistTrack, type SearchResult } from "./lib/search";
+import { WithCurrentTime } from "./lib/playbackClock";
+import { getPlaylistDetails, loadRemainingPlaylistPages, type PlaylistDetails, type PlaylistTrack, type SearchResult } from "./lib/search";
 import {
   deleteLocalPlaylist,
   getLocalPlaylist,
@@ -227,6 +228,21 @@ function App() {
       setSelectedPlaylist(details);
       if (details.tracks && details.tracks.length > 0) {
         cacheTracks(details.tracks);
+      }
+      // Big playlists (Liked Music…) come in pages of about 100; the first shows at once and
+      // the rest fill in behind it.
+      if (details.continuation) {
+        setIsLoadingPlaylist(false);
+        await loadRemainingPlaylistPages(
+          details,
+          (more) => {
+            cacheTracks(more);
+            setSelectedPlaylist((current) =>
+              current && current.id === details.id ? { ...current, tracks: [...current.tracks, ...more] } : current,
+            );
+          },
+          () => requestId === playlistRequestRef.current,
+        );
       }
     } catch (err) {
       if (requestId !== playlistRequestRef.current) return;
@@ -672,41 +688,45 @@ function App() {
           />
 
           {currentTrack && (
-            <SidebarPlayer
-              track={currentTrack}
-              isQueueOpen={showQueue}
-              isPlayerReady={playback.isPlayerReady}
-              playerState={playback.playerState}
-              currentTime={playback.currentTime}
-              duration={playback.duration}
-              playbackError={playback.playbackError}
-              isMuted={playback.isMuted}
-              onToggleQueue={toggleQueue}
-              onOpenNowPlaying={openNowPlaying}
-              onBeginScrub={playback.beginScrub}
-              onScrub={playback.scrubTo}
-              onEndScrub={playback.endScrub}
-              onToggleMute={playback.toggleMute}
-              onPrevious={playback.handlePreviousTrack}
-              onPlayPause={playback.togglePlayPause}
-              onNext={playback.handleNextTrack}
-              canLike={isLoggedIn}
-              onToggleLike={() => void toggleLike(currentTrack)}
-              onContextMenu={(e) => handleContextMenu(e, currentTrack, "card")}
-            >
-              <SidebarQueue
-                isOpen={showQueue}
-                upcoming={playback.session.upcoming}
-                history={recentHistory}
-                onReorder={playback.handleUpcomingReorder}
-                onSelect={handleSelectUpcoming}
-                onRemove={playback.handleRemoveUpcoming}
-                onClear={playback.handleClearUpcoming}
-                onPlayNext={playback.handlePlayNext}
-                onAddToQueue={playback.handleAddToQueue}
-                onContextMenu={handleContextMenu}
-              />
-            </SidebarPlayer>
+            <WithCurrentTime clock={playback.clock}>
+              {(seconds) => (
+                <SidebarPlayer
+                  track={currentTrack}
+                  isQueueOpen={showQueue}
+                  isPlayerReady={playback.isPlayerReady}
+                  playerState={playback.playerState}
+                  currentTime={seconds}
+                  duration={playback.duration}
+                  playbackError={playback.playbackError}
+                  isMuted={playback.isMuted}
+                  onToggleQueue={toggleQueue}
+                  onOpenNowPlaying={openNowPlaying}
+                  onBeginScrub={playback.beginScrub}
+                  onScrub={playback.scrubTo}
+                  onEndScrub={playback.endScrub}
+                  onToggleMute={playback.toggleMute}
+                  onPrevious={playback.handlePreviousTrack}
+                  onPlayPause={playback.togglePlayPause}
+                  onNext={playback.handleNextTrack}
+                  canLike={isLoggedIn}
+                  onToggleLike={() => void toggleLike(currentTrack)}
+                  onContextMenu={(e) => handleContextMenu(e, currentTrack, "card")}
+                >
+                  <SidebarQueue
+                    isOpen={showQueue}
+                    upcoming={playback.session.upcoming}
+                    history={recentHistory}
+                    onReorder={playback.handleUpcomingReorder}
+                    onSelect={handleSelectUpcoming}
+                    onRemove={playback.handleRemoveUpcoming}
+                    onClear={playback.handleClearUpcoming}
+                    onPlayNext={playback.handlePlayNext}
+                    onAddToQueue={playback.handleAddToQueue}
+                    onContextMenu={handleContextMenu}
+                  />
+                </SidebarPlayer>
+              )}
+            </WithCurrentTime>
           )}
 
           <AccountCard
@@ -764,40 +784,44 @@ function App() {
 
       {showSupportModal && <SupportModal onClose={() => setShowSupportModal(false)} />}
 
-      <NowPlaying
-        isOpen={showNowPlaying}
-        onClose={closeNowPlaying}
-        session={playback.session}
-        history={recentHistory}
-        isPlaying={playback.playerState === "playing"}
-        isBuffering={playback.playerState === "buffering"}
-        isReady={playback.isPlayerReady}
-        currentTime={playback.currentTime}
-        duration={playback.duration}
-        playbackError={playback.playbackError}
-        volume={playback.volume}
-        isMuted={playback.isMuted}
-        modes={playback.playbackModes}
-        onPlayPause={playback.togglePlayPause}
-        onNext={playback.handleNextTrack}
-        onPrevious={playback.handlePreviousTrack}
-        onSeek={playback.seekTo}
-        onToggleMute={playback.toggleMute}
-        onVolumeChange={playback.changeVolume}
-        onCycleRepeat={playback.cycleRepeatMode}
-        onToggleAutoplay={playback.toggleAutoplay}
-        onToggleShuffle={playback.toggleShuffle}
-        onSelectTrack={handleSelectUpcoming}
-        onReorderUpcoming={playback.handleUpcomingReorder}
-        onRemoveUpcoming={playback.handleRemoveUpcoming}
-        onClearUpcoming={playback.handleClearUpcoming}
-        onPlayNext={playback.handlePlayNext}
-        onAddToQueue={playback.handleAddToQueue}
-        onContextMenu={handleContextMenu}
-        canLike={isLoggedIn}
-        onToggleLike={(track) => void toggleLike(track)}
-        onSaveToPlaylist={openSaveToPlaylist}
-      />
+      <WithCurrentTime clock={playback.clock}>
+        {(seconds) => (
+          <NowPlaying
+            isOpen={showNowPlaying}
+            onClose={closeNowPlaying}
+            session={playback.session}
+            history={recentHistory}
+            isPlaying={playback.playerState === "playing"}
+            isBuffering={playback.playerState === "buffering"}
+            isReady={playback.isPlayerReady}
+            currentTime={seconds}
+            duration={playback.duration}
+            playbackError={playback.playbackError}
+            volume={playback.volume}
+            isMuted={playback.isMuted}
+            modes={playback.playbackModes}
+            onPlayPause={playback.togglePlayPause}
+            onNext={playback.handleNextTrack}
+            onPrevious={playback.handlePreviousTrack}
+            onSeek={playback.seekTo}
+            onToggleMute={playback.toggleMute}
+            onVolumeChange={playback.changeVolume}
+            onCycleRepeat={playback.cycleRepeatMode}
+            onToggleAutoplay={playback.toggleAutoplay}
+            onToggleShuffle={playback.toggleShuffle}
+            onSelectTrack={handleSelectUpcoming}
+            onReorderUpcoming={playback.handleUpcomingReorder}
+            onRemoveUpcoming={playback.handleRemoveUpcoming}
+            onClearUpcoming={playback.handleClearUpcoming}
+            onPlayNext={playback.handlePlayNext}
+            onAddToQueue={playback.handleAddToQueue}
+            onContextMenu={handleContextMenu}
+            canLike={isLoggedIn}
+            onToggleLike={(track) => void toggleLike(track)}
+            onSaveToPlaylist={openSaveToPlaylist}
+          />
+        )}
+      </WithCurrentTime>
 
       <MusicContextMenu
         target={contextTarget}

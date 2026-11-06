@@ -40,7 +40,17 @@ export interface PlaylistDetails {
   tracks: PlaylistTrack[]
   /** Imported playlists: where they came from ("spotify", "apple", "deezer", "text", "youtube"). */
   source?: string
+  /** Set when YouTube Music has more songs than the first page (about 100). */
+  continuation?: string
 }
+
+export interface PlaylistPage {
+  tracks: PlaylistTrack[]
+  continuation?: string
+}
+
+/** Stops runaway paging; far beyond any real playlist the app is likely to show. */
+export const MAX_PLAYLIST_TRACKS = 5000
 
 export interface HomeSection {
   title: string
@@ -168,6 +178,52 @@ export async function getPlaylistDetails(
     })
   }
   throw new Error("Tauri environment not available")
+}
+
+export async function getPlaylistContinuation(continuation: string): Promise<PlaylistPage> {
+  if (isTauriEnvironment() && continuation) {
+    return await invoke<PlaylistPage>("get_playlist_continuation", { continuation })
+  }
+  return { tracks: [] }
+}
+
+/**
+ * Loads the pages after the first one, handing each to `onPage`. Stops when there are no
+ * more, when `shouldContinue` says so, at MAX_PLAYLIST_TRACKS, or on a repeated token.
+ * A failed page ends the paging quietly; the songs already loaded stay.
+ */
+export async function loadRemainingPlaylistPages(
+  first: PlaylistDetails,
+  onPage: (tracks: PlaylistTrack[]) => void,
+  shouldContinue: () => boolean = () => true,
+): Promise<void> {
+  let token = first.continuation
+  let total = first.tracks.length
+  const seen = new Set<string>()
+  while (token && !seen.has(token) && total < MAX_PLAYLIST_TRACKS && shouldContinue()) {
+    seen.add(token)
+    let page: PlaylistPage
+    try {
+      page = await getPlaylistContinuation(token)
+    } catch (error) {
+      console.warn("Could not load more songs", error)
+      return
+    }
+    if (!shouldContinue()) return
+    if (page.tracks.length > 0) {
+      onPage(page.tracks)
+      total += page.tracks.length
+    }
+    token = page.continuation
+  }
+}
+
+/** The whole playlist in one go, for imports. */
+export async function getFullPlaylistDetails(playlistId: string): Promise<PlaylistDetails> {
+  const details = await getPlaylistDetails(playlistId)
+  const tracks = [...details.tracks]
+  await loadRemainingPlaylistPages(details, (more) => tracks.push(...more))
+  return { ...details, tracks: tracks.slice(0, MAX_PLAYLIST_TRACKS), continuation: undefined }
 }
 
 /** Rejects when YouTube can't be reached, so callers keep their saved history. */

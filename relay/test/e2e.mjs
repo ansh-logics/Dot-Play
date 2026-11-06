@@ -99,6 +99,14 @@ mac2.send({ kick: peer });
 check((await phone.closed) === 4001, "a disconnected phone is closed with 4001");
 const leave = await mac2.next();
 check(leave.peer === peer && leave.event === "leave", "the Mac is told the phone left");
+// One network can't take every phone slot (a local relay sees every phone as one address).
+const crowd = [];
+for (let i = 0; i < 5; i++) {
+  const extra = connect(`${BASE}/room/${room}?role=client&peer=${toHex(randomBytes(8))}`);
+  crowd.push(await extra.opened.then(() => extra, () => null));
+}
+check(crowd.filter(Boolean).length === 4 && crowd[4] === null, "a fifth phone from the same network is refused");
+for (const extra of crowd) extra?.ws.close();
 mac2.ws.close();
 
 console.log(failures ? `\n${failures} relay check(s) failed` : "\nall relay checks passed");

@@ -3,22 +3,34 @@ import { AnimatePresence, motion, useInView, useReducedMotion, useScroll, useTra
 import trayIcon from "../../../src-tauri/icons/tray-template@2x.png";
 import { AlsoNew, ImportDemo, Remote } from "./NewFeatures";
 
+/**
+ * A screenshot as WebP, with a 1000px copy for phones when the original is wider.
+ * The JPEGs come from `npm run capture`; `npm run webp` makes these from them.
+ */
+function shot(name: string, fullWidth: number | null = 2000) {
+  return {
+    src: `/shots/${name}.webp`,
+    srcSet: fullWidth ? `/shots/${name}-1000.webp 1000w, /shots/${name}.webp ${fullWidth}w` : undefined,
+    sizes: fullWidth ? "(max-width: 1000px) 100vw, 1000px" : undefined,
+  };
+}
+
 /** Screenshots of the app; the menu bar shot comes from `npm run capture`. */
 const SHOTS = {
-  home: "/shots/app-home.jpg",
-  apple: "/shots/app-apple.jpg",
-  nothing: "/shots/app-nothing.jpg",
-  vinyl: "/shots/app-vinyl.jpg",
-  cassette: "/shots/app-cassette.jpg",
-  queue: "/shots/app-queue.jpg",
-  lyrics: "/shots/app-lyrics.jpg",
-  menubar: "/shots/menubar-player.jpg",
+  home: shot("app-home", 1470),
+  apple: shot("app-apple"),
+  nothing: shot("app-nothing"),
+  vinyl: shot("app-vinyl"),
+  cassette: shot("app-cassette"),
+  queue: shot("app-queue"),
+  lyrics: shot("app-lyrics"),
+  menubar: shot("menubar-player", null),
   // Immersive mode, from `npm run capture`.
-  immersiveApple: "/shots/immersive-apple.jpg",
-  immersiveNothing: "/shots/immersive-nothing.jpg",
-  immersiveVinyl: "/shots/immersive-vinyl.jpg",
-  immersiveLyrics: "/shots/immersive-lyrics.jpg",
-  immersivePortrait: "/shots/immersive-portrait.jpg",
+  immersiveApple: shot("immersive-apple"),
+  immersiveNothing: shot("immersive-nothing"),
+  immersiveVinyl: shot("immersive-vinyl"),
+  immersiveLyrics: shot("immersive-lyrics"),
+  immersivePortrait: shot("immersive-portrait", null),
 };
 const SHOT_SIZE = { width: 2000, height: 1256 };
 const ease = [0.22, 1, 0.36, 1] as const;
@@ -65,7 +77,7 @@ export function HeroShot() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 1.1, delay: 0.5, ease }}
       >
-        <img src={SHOTS.home} alt="dot(.)music home: Top Picks and Quick Picks" width={1470} height={926} fetchPriority="high" />
+        <img {...SHOTS.home} alt="dot(.)music home: Top Picks and Quick Picks" width={1470} height={926} fetchPriority="high" />
       </motion.div>
       <div className="screen-glow" aria-hidden="true" />
     </div>
@@ -73,10 +85,10 @@ export function HeroShot() {
 }
 
 const MOODS = [
-  { id: "apple", label: "Apple", src: SHOTS.apple },
-  { id: "nothing", label: "Nothing", src: SHOTS.nothing },
-  { id: "vinyl", label: "Vinyl", src: SHOTS.vinyl },
-  { id: "cassette", label: "Cassette", src: SHOTS.cassette },
+  { id: "apple", label: "Apple", shot: SHOTS.apple },
+  { id: "nothing", label: "Nothing", shot: SHOTS.nothing },
+  { id: "vinyl", label: "Vinyl", shot: SHOTS.vinyl },
+  { id: "cassette", label: "Cassette", shot: SHOTS.cassette },
 ] as const;
 
 /** The player styles, cross-fading on their own while the section is on screen. */
@@ -102,7 +114,7 @@ function Moods() {
           <AnimatePresence initial={false}>
             <motion.img
               key={MOODS[i].id}
-              src={MOODS[i].src}
+              {...MOODS[i].shot}
               alt={`The ${MOODS[i].label} style`}
               {...SHOT_SIZE}
               loading="lazy"
@@ -143,7 +155,7 @@ function Lyrics() {
       </Reveal>
       <Reveal className="lyrics-stage" delay={0.1}>
         <div className="screen kenburns kenburns--lyrics">
-          <img src={SHOTS.lyrics} alt="Synced Hindi lyrics for Ehsaas in the Apple style" {...SHOT_SIZE} loading="lazy" />
+          <img {...SHOTS.lyrics} alt="Synced Hindi lyrics for Ehsaas in the Apple style" {...SHOT_SIZE} loading="lazy" />
         </div>
       </Reveal>
     </section>
@@ -151,9 +163,9 @@ function Lyrics() {
 }
 
 const CLOCKS = [
-  { id: "apple", label: "Apple", src: SHOTS.immersiveApple },
-  { id: "nothing", label: "Nothing", src: SHOTS.immersiveNothing },
-  { id: "vinyl", label: "Vinyl", src: SHOTS.immersiveVinyl },
+  { id: "apple", label: "Apple", shot: SHOTS.immersiveApple },
+  { id: "nothing", label: "Nothing", shot: SHOTS.immersiveNothing },
+  { id: "vinyl", label: "Vinyl", shot: SHOTS.immersiveVinyl },
 ] as const;
 
 const IMMERSIVE_POINTS = [
@@ -210,7 +222,7 @@ function Immersive() {
       <div ref={ref} className="monitors">
         <motion.figure className="monitor monitor--side" {...monitor(0.15)}>
           <div className="screen">
-            <img src={SHOTS.immersiveLyrics} alt="Immersive mode: big synced lyrics on a second display" {...SHOT_SIZE} loading="lazy" />
+            <img {...SHOTS.immersiveLyrics} alt="Immersive mode: big synced lyrics on a second display" {...SHOT_SIZE} loading="lazy" />
           </div>
           <span className="monitor-stand" aria-hidden="true" />
         </motion.figure>
@@ -219,7 +231,7 @@ function Immersive() {
             <AnimatePresence initial={false}>
               <motion.img
                 key={CLOCKS[i].id}
-                src={CLOCKS[i].src}
+                {...CLOCKS[i].shot}
                 alt={`Immersive mode: the clock and song in the ${CLOCKS[i].label} style`}
                 {...SHOT_SIZE}
                 loading="lazy"
@@ -234,7 +246,7 @@ function Immersive() {
         </motion.figure>
         <motion.figure className="monitor monitor--portrait" {...monitor(0.3)}>
           <div className="screen">
-            <img src={SHOTS.immersivePortrait} alt="Immersive mode on a portrait display: the artwork as a poster" width={1100} height={1956} loading="lazy" />
+            <img {...SHOTS.immersivePortrait} alt="Immersive mode on a portrait display: the artwork as a poster" width={1100} height={1956} loading="lazy" />
           </div>
           <span className="monitor-stand" aria-hidden="true" />
         </motion.figure>
@@ -268,7 +280,7 @@ function Vinyl() {
       </Copy>
       <Reveal className="vinyl-stage" delay={0.1}>
         <div className="screen kenburns">
-          <img src={SHOTS.vinyl} alt="The Vinyl style with a spinning record" {...SHOT_SIZE} loading="lazy" />
+          <img {...SHOTS.vinyl} alt="The Vinyl style with a spinning record" {...SHOT_SIZE} loading="lazy" />
         </div>
       </Reveal>
     </section>
@@ -285,7 +297,7 @@ function Queue() {
       </Copy>
       <Reveal className="vinyl-stage" delay={0.1}>
         <div className="screen kenburns">
-          <img src={SHOTS.queue} alt="The Up Next queue over Now Playing" {...SHOT_SIZE} loading="lazy" />
+          <img {...SHOTS.queue} alt="The Up Next queue over Now Playing" {...SHOT_SIZE} loading="lazy" />
         </div>
       </Reveal>
     </section>
@@ -321,7 +333,7 @@ function MenuBar() {
             animate={open ? { opacity: 1, y: 0, scale: 1 } : undefined}
             transition={{ type: "spring", stiffness: 260, damping: 24, delay: 0.35 }}
           >
-            <img src={SHOTS.menubar} alt="The menu bar mini player" width={640} height={1160} loading="lazy" />
+            <img {...SHOTS.menubar} alt="The menu bar mini player" width={640} height={1160} loading="lazy" />
           </motion.div>
         </div>
       </Reveal>
