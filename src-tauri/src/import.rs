@@ -373,11 +373,24 @@ fn parse_apple_page(html: &str, source_url: &str) -> Result<ExternalPlaylist, St
     })
 }
 
+/// Drops a list number ("1. ", "12) ") from the start of a line, but keeps numbers that belong to
+/// the song: "50 Cent - In Da Club", "3 Doors Down - Kryptonite", "22".
+fn strip_list_number(line: &str) -> &str {
+    let digits = line.len() - line.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+    if digits == 0 || digits > 4 {
+        return line;
+    }
+    match line[digits..].strip_prefix(['.', ')']) {
+        Some(rest) if rest.is_empty() || rest.starts_with(char::is_whitespace) => rest.trim_start(),
+        _ => line,
+    }
+}
+
 /// One song per line: "Artist - Title", "Title by Artist", or just a title.
 fn parse_text_list(input: &str) -> Result<ExternalPlaylist, String> {
     let tracks: Vec<ExternalTrack> = input
         .lines()
-        .map(|line| line.trim().trim_start_matches(|c: char| c.is_ascii_digit() || c == '.' || c == ')').trim())
+        .map(|line| strip_list_number(line.trim()))
         .filter(|line| !line.is_empty())
         .take(MAX_TEXT_LINES)
         .map(|line| {
@@ -605,10 +618,18 @@ fn store_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
 fn read_store(app: &AppHandle) -> Result<Vec<LocalPlaylist>, String> {
     let path = store_path(app)?;
     match std::fs::read_to_string(&path) {
-        Ok(text) => serde_json::from_str(&text).map_err(|_| {
-            eprintln!("[DOT Music] imported_playlists.json was malformed, ignoring.");
-            "Your imported playlists couldn't be read".to_string()
-        }),
+        Ok(text) => match serde_json::from_str(&text) {
+            Ok(list) => Ok(list),
+            Err(e) => {
+                // Keep the unreadable file for recovery, and start a fresh list so imports keep
+                // working instead of failing forever.
+                let stamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+                let backup = path.with_file_name(format!("imported_playlists.corrupt-{stamp}.json"));
+                log::warn!("imported_playlists.json couldn't be read ({e}); moved it to {}", backup.display());
+                std::fs::rename(&path, &backup).map_err(|e| format!("Your imported playlists couldn't be read: {e}"))?;
+                Ok(Vec::new())
+            }
+        },
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
         Err(e) => Err(format!("Couldn't read imported playlists: {e}")),
     }
@@ -640,7 +661,12 @@ async fn keep_cover(url: &str) -> String {
     if url.is_empty() || url.starts_with("data:") {
         return url.to_string();
     }
+    const MAX_COVER_BYTES: usize = 4_000_000;
     let Ok(res) = HTTP_CLIENT.get(url).send().await else { return url.to_string() };
+    // An error page saved as a "cover" would replace a working link with a broken image.
+    if !res.status().is_success() || res.content_length().is_some_and(|n| n as usize >= MAX_COVER_BYTES) {
+        return url.to_string();
+    }
     let mime = res
         .headers()
         .get(reqwest::header::CONTENT_TYPE)
@@ -649,7 +675,7 @@ async fn keep_cover(url: &str) -> String {
         .unwrap_or("image/jpeg")
         .to_string();
     match res.bytes().await {
-        Ok(bytes) if !bytes.is_empty() && bytes.len() < 4_000_000 => format!("data:{mime};base64,{}", base64(&bytes)),
+        Ok(bytes) if !bytes.is_empty() && bytes.len() < MAX_COVER_BYTES => format!("data:{mime};base64,{}", base64(&bytes)),
         _ => url.to_string(),
     }
 }
@@ -701,6 +727,24 @@ pub(crate) async fn delete_local_playlist(app: AppHandle, id: String) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn list_numbers_are_dropped_but_song_numbers_kept() {
+        let list = parse_text_list("1. Daft Punk - One More Time\n12) Adele - Hello\n50 Cent - In Da Club\n3 Doors Down - Kryptonite\n22\n7 rings").unwrap();
+        let pairs: Vec<(&str, &str)> = list.tracks.iter().map(|t| (t.artist.as_str(), t.title.as_str())).collect();
+        assert_eq!(
+            pairs,
+            [
+                ("Daft Punk", "One More Time"),
+                ("Adele", "Hello"),
+                ("50 Cent", "In Da Club"),
+                ("3 Doors Down", "Kryptonite"),
+                ("", "22"),
+                ("", "7 rings"),
+            ]
+        );
+    }
+
     use crate::models::SearchResult;
 
     fn hit(title: &str, artist: &str, duration: &str) -> SongHit {

@@ -49,6 +49,11 @@ const PING_EVERY: Duration = Duration::from_secs(15);
 const SILENCE_LIMIT: Duration = Duration::from_secs(35);
 /// Reconnect delays: first retry at once, then backing off to a few seconds at most.
 const BACKOFF_MS: [u64; 6] = [0, 300, 1000, 2000, 4000, 8000];
+/** How long a relay connection has to stay up before a drop retries at once again. */
+const STABLE_CONNECTION: Duration = Duration::from_secs(10);
+/** Phone message numbers are microseconds since the epoch. Anything older than this is refused,
+ *  so messages captured before an app restart (when `last_seq` starts empty) can't be replayed. */
+const MAX_MESSAGE_AGE_US: u64 = 10 * 60 * 1_000_000;
 /// Search answers kept for a while, so going back to an earlier query is instant.
 const SEARCH_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
 const SEARCH_CACHE_SIZE: usize = 60;
@@ -148,6 +153,8 @@ struct Inner {
     devices: Vec<Device>,
     pending: HashMap<String, oneshot::Sender<bool>>,
     pair_attempts: VecDeque<Instant>,
+    /// Phones with a pairing prompt on screen right now.
+    pairing_peers: HashSet<String>,
     /// Phones in the room right now (paired or not), as the relay reports them.
     present: HashSet<String>,
     /// The newest message number seen from each phone, so old messages can't be replayed.
@@ -430,9 +437,14 @@ async fn relay_loop(app: AppHandle) {
         set_relay(&app, "connecting");
         match tokio_tungstenite::connect_async(url.as_str()).await {
             Ok((socket, _)) => {
-                attempt = 0;
                 set_relay(&app, "online");
+                let opened = Instant::now();
                 session(&app, socket).await;
+                // A connection that lived a while starts the backoff over; one that dropped right
+                // away (relay refusing, flapping network) keeps backing off instead of spinning.
+                if opened.elapsed() > STABLE_CONNECTION {
+                    attempt = 0;
+                }
             }
             Err(e) => log::warn!("Phone Remote: couldn't reach the relay: {e}"),
         }
@@ -594,8 +606,12 @@ fn handle_frame(app: &AppHandle, text: &str, out: &mpsc::UnboundedSender<String>
     }
 }
 
-/// Messages must arrive with ever-increasing numbers; anything else is a replay.
+/// Messages must arrive with ever-increasing numbers, and recent ones; anything else is a replay.
 fn accept_seq(last_seq: &mut HashMap<String, u64>, peer: &str, seq: u64) -> bool {
+    let now_us = now_ms().saturating_mul(1000);
+    if seq.saturating_add(MAX_MESSAGE_AGE_US) < now_us {
+        return false;
+    }
     match last_seq.get(peer) {
         Some(&last) if seq <= last => false,
         _ => {
@@ -716,16 +732,20 @@ async fn pair(app: &AppHandle, out: &mpsc::UnboundedSender<String>, peer: &str, 
     let hub = app.state::<RemoteHub>();
     let request = {
         let mut inner = hub.inner.lock().unwrap();
+        // Decrypt first: junk from someone without the code is dropped without using up the
+        // limit, so it can't lock real phones out. Only real requests (each one a prompt on the
+        // Mac) count, and a phone already waiting on a prompt doesn't get a second one.
+        let pair_key = derive(&inner.pair_secret, PAIR_INFO);
+        let plain = open(&pair_key, &format!("{peer}|pair"), sealed);
         let now = Instant::now();
         while inner.pair_attempts.front().is_some_and(|t| now.duration_since(*t) > Duration::from_secs(60)) {
             inner.pair_attempts.pop_front();
         }
-        if inner.pair_attempts.len() >= PAIR_ATTEMPTS_PER_MINUTE {
+        if plain.is_none() || inner.pair_attempts.len() >= PAIR_ATTEMPTS_PER_MINUTE || inner.pairing_peers.contains(peer) {
             None
         } else {
             inner.pair_attempts.push_back(now);
-            let pair_key = derive(&inner.pair_secret, PAIR_INFO);
-            open(&pair_key, &format!("{peer}|pair"), sealed)
+            plain
         }
     };
     // Wrong or used code, or too many tries: say nothing (the phone times out).
@@ -747,17 +767,34 @@ async fn pair(app: &AppHandle, out: &mpsc::UnboundedSender<String>, peer: &str, 
 
     let id = hex(&random_bytes::<8>());
     let (reply, answer) = oneshot::channel();
-    hub.inner.lock().unwrap().pending.insert(id.clone(), reply);
+    {
+        let mut inner = hub.inner.lock().unwrap();
+        inner.pending.insert(id.clone(), reply);
+        inner.pairing_peers.insert(peer.to_string());
+    }
     // The window may be hidden in the menu bar; the question has to be seen.
     crate::tray::show_main(app);
     let _ = app.emit_to("main", "remote-pair-request", json!({ "id": id, "name": name }));
     let allowed = matches!(tokio::time::timeout(PAIR_WAIT, answer).await, Ok(Ok(true)));
-    hub.inner.lock().unwrap().pending.remove(&id);
+    // The relay connection may have dropped and come back while the Mac was asking (sleep,
+    // Wi-Fi change); answer on the current one, not the one the request came in on.
+    let out = {
+        let mut inner = hub.inner.lock().unwrap();
+        inner.pending.remove(&id);
+        inner.pairing_peers.remove(peer);
+        inner.out.clone().unwrap_or_else(|| out.clone())
+    };
+    let out = &out;
     let _ = app.emit_to("main", "remote-pair-closed", json!({ "id": id }));
 
     if !allowed {
         send_sealed(out, peer, &key, &json!({ "type": "denied" }));
         let _ = out.send(json!({ "kick": peer }).to_string());
+        // A refused or unanswered request retires the code too, so a leaked QR can't keep
+        // raising prompts.
+        hub.inner.lock().unwrap().pair_secret = random_bytes();
+        // The settings sheet refetches its status, which shows the new code.
+        let _ = app.emit_to("main", "remote-devices-changed", ());
         return;
     }
     {
@@ -815,12 +852,23 @@ mod tests {
 
     #[test]
     fn replays_are_rejected() {
+        let now = now_ms() * 1000;
         let mut seen = HashMap::new();
-        assert!(accept_seq(&mut seen, "p", 10));
-        assert!(!accept_seq(&mut seen, "p", 10));
-        assert!(!accept_seq(&mut seen, "p", 9));
-        assert!(accept_seq(&mut seen, "p", 11));
-        assert!(accept_seq(&mut seen, "q", 1));
+        assert!(accept_seq(&mut seen, "p", now + 10));
+        assert!(!accept_seq(&mut seen, "p", now + 10));
+        assert!(!accept_seq(&mut seen, "p", now + 9));
+        assert!(accept_seq(&mut seen, "p", now + 11));
+        assert!(accept_seq(&mut seen, "q", now));
+    }
+
+    #[test]
+    fn old_messages_are_rejected_even_after_a_restart() {
+        // After a restart `last_seq` is empty; a message captured earlier must still be refused.
+        let mut seen = HashMap::new();
+        let now = now_ms() * 1000;
+        assert!(!accept_seq(&mut seen, "p", now - MAX_MESSAGE_AGE_US - 1_000_000));
+        assert!(!accept_seq(&mut seen, "p", 1));
+        assert!(accept_seq(&mut seen, "p", now - 1_000_000));
     }
 
     #[test]
