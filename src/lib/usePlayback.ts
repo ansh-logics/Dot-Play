@@ -44,6 +44,12 @@ const PLAYER_ERROR_MESSAGES: Record<number, string> = {
   153: "Embedded player origin error.",
 };
 
+/** Errors that mean this song can never play here (removed, private, or not allowed in an
+ *  embedded player); playback moves on to the next song instead of stopping. */
+const UNPLAYABLE_ERRORS = new Set([2, 100, 101, 150, 153]);
+/** Songs skipped in a row before giving up, so a queue of only blocked songs doesn't spin. */
+const MAX_SKIPS_IN_A_ROW = 5;
+
 /** Seconds of playback before a song counts as played in YouTube Music history. */
 const RECORD_AFTER_SECONDS = 10;
 
@@ -289,6 +295,8 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
 
   // Volume
   const changeVolume = useCallback((next: number) => {
+    // Commands from the menu bar or a phone arrive untyped; ignore anything that isn't a number.
+    if (!Number.isFinite(next)) return;
     const v = Math.max(0, Math.min(100, Math.round(next)));
     setVolume(v);
     volumeRef.current = v;
@@ -615,10 +623,12 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     }
   }, []);
 
+  const skipsInARowRef = useRef(0);
   const handlePlayerStateChange = useCallback(
     (state: YouTubePlaybackState) => {
       setPlayerState(state);
       if (state === "playing") {
+        skipsInARowRef.current = 0;
         setPlaybackError(null);
       } else if (state === "ended") {
         recordIfNeeded(sessionRef.current.currentTrack);
@@ -628,10 +638,20 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     [recordIfNeeded],
   );
 
-  const handlePlayerError = useCallback((code: number) => {
-    setPlayerState("paused");
-    setPlaybackError(PLAYER_ERROR_MESSAGES[code] ?? `Playback failed with error code ${code}.`);
-  }, []);
+  const handlePlayerError = useCallback(
+    (code: number) => {
+      setPlayerState("paused");
+      const message = PLAYER_ERROR_MESSAGES[code] ?? `Playback failed with error code ${code}.`;
+      setPlaybackError(message);
+      if (UNPLAYABLE_ERRORS.has(code) && skipsInARowRef.current < MAX_SKIPS_IN_A_ROW) {
+        skipsInARowRef.current += 1;
+        const title = sessionRef.current.currentTrack?.title;
+        showToast(title ? `Skipped “${title}”: it can't be played here.` : "Skipped a song that can't be played here.");
+        void handleNextTrackRef.current();
+      }
+    },
+    [showToast],
+  );
 
   // The player only fills in a missing title or artist; the React queue decides what plays.
   const handleTrackChangeFromIframe = useCallback(

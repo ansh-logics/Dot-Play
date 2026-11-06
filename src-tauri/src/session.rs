@@ -37,6 +37,12 @@ pub(crate) fn restore_saved_state(app: &tauri::App) {
     if let Ok(app_data) = app.path().app_data_dir() {
         let session_file = app_data.join("session.json");
         if session_file.exists() {
+            // Versions up to 1.0.1 wrote this file readable by everyone; tighten it.
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(&session_file, std::fs::Permissions::from_mode(0o600));
+            }
             if let Ok(contents) = std::fs::read_to_string(&session_file) {
                 if let Ok(saved) = serde_json::from_str::<serde_json::Value>(&contents) {
                     if let Some(cookies) = saved.get("cookies").and_then(|c| c.as_str()) {
@@ -331,9 +337,16 @@ pub(crate) async fn logout(app: AppHandle, state: State<'_, SessionState>) -> Re
         if session_file.exists() {
             let _ = std::fs::remove_file(&session_file);
         }
-        let tmp_file = app_data.join("session.json.tmp");
-        if tmp_file.exists() {
-            let _ = std::fs::remove_file(&tmp_file);
+        // Temp files a crash left mid-write (fsutil names them session.json.<pid>.<n>.tmp; older
+        // versions used session.json.tmp) hold cookies too.
+        if let Ok(entries) = std::fs::read_dir(&app_data) {
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                if name.starts_with("session.json.") && name.ends_with(".tmp") {
+                    let _ = std::fs::remove_file(entry.path());
+                }
+            }
         }
     }
 

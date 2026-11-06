@@ -15,6 +15,8 @@ const statuses = new Map<string, LikeStatus>()
 const inFlight = new Set<string>()
 /** Bumped per song on every change, so a slow answer can't overwrite a newer click. */
 const versions = new Map<string, number>()
+/** Bumped on sign-out, so a lookup still running for the old account is thrown away. */
+let accountEpoch = 0
 const listeners = new Set<() => void>()
 
 const notify = () => listeners.forEach((fn) => fn())
@@ -33,14 +35,15 @@ async function load(videoId: string) {
   if (!isTauriEnvironment() || statuses.has(videoId) || inFlight.has(videoId)) return
   inFlight.add(videoId)
   const version = versions.get(videoId) ?? 0
+  const epoch = accountEpoch
   try {
     const status = await invoke<LikeStatus>("get_like_status", { videoId })
-    // A click while this was loading already decided the state.
-    if ((versions.get(videoId) ?? 0) === version) set(videoId, status)
+    // A click while this was loading already decided the state; a sign-out made it stale.
+    if (epoch === accountEpoch && (versions.get(videoId) ?? 0) === version) set(videoId, status)
   } catch {
     // Unknown stays unknown; the next look at this song asks again.
   } finally {
-    inFlight.delete(videoId)
+    if (epoch === accountEpoch) inFlight.delete(videoId)
   }
 }
 
@@ -78,7 +81,9 @@ export const isLiked = (videoId: string) => statuses.get(videoId) === "LIKE"
 
 /** Forgets every song's state, on sign-out. */
 export function clearLikes() {
+  accountEpoch++
   statuses.clear()
   versions.clear()
+  inFlight.clear()
   notify()
 }

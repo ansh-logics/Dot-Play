@@ -90,6 +90,8 @@ function saveLast(np: RemoteNowPlaying | null, state: RemoteQueueState | null) {
     // Storage full or private browsing: only the instant reopen is lost.
   }
 }
+/** Closed by the relay because this phone opened a newer connection (another tab or window). */
+const REPLACED = 4000;
 /** Closed by the relay because the Mac disconnected this phone. */
 const KICKED = 4001;
 const PAIR_TIMEOUT_MS = 100_000;
@@ -317,6 +319,9 @@ export function useRemoteState() {
         }
         if (!pairingRef.current) return;
         setConnection((c) => (c.kind === "macOffline" ? c : { kind: "reconnecting" }));
+        // Another tab took over this phone's place. Reconnecting at once would evict it, and it
+        // would evict this one, forever; wait until this page is looked at again (onResume).
+        if (e.code === REPLACED) return;
         retryTimer = window.setTimeout(connect, BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)]);
         attempt++;
       });

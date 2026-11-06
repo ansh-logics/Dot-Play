@@ -402,7 +402,21 @@ export function HiddenYouTubePlayer({
               if (instance) {
                 playerRef.current = instance
                 currentVideoIdRef.current = targetVideoId
-                callbacksRef.current.onReady(instance)
+                // Like the bridge player, remember what the app itself loads, so the videoId
+                // effect below doesn't load the same song a second time when the prop catches up.
+                const tracked = new Proxy(instance, {
+                  get(target, prop) {
+                    if (prop === "loadVideoById") {
+                      return (opts: string | { videoId: string; startSeconds?: number }) => {
+                        currentVideoIdRef.current = typeof opts === "string" ? opts : opts.videoId
+                        target.loadVideoById?.(opts)
+                      }
+                    }
+                    const value = Reflect.get(target, prop)
+                    return typeof value === "function" ? value.bind(target) : value
+                  },
+                })
+                callbacksRef.current.onReady(tracked)
 
                 if (autoPlayOnMount) {
                   instance.loadVideoById?.({ videoId: targetVideoId, startSeconds: initialSeconds })

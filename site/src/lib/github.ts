@@ -9,9 +9,16 @@ export const WINDOWS_RELEASES_URL = `${REPO_URL}/releases`;
 
 export type Platform = "mac" | "windows";
 
+const UA = typeof navigator !== "undefined" ? navigator.userAgent : "";
+/** iPadOS reports itself as a Mac; a touch screen gives it away. */
+const IS_TOUCH_MAC = /Macintosh/.test(UA) && typeof navigator !== "undefined" && navigator.maxTouchPoints > 1;
+
 /** The visitor's computer, to put the matching download first. Everything else gets the Mac. */
-export const VISITOR_PLATFORM: Platform =
-  typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent) ? "windows" : "mac";
+export const VISITOR_PLATFORM: Platform = /Windows/i.test(UA) ? "windows" : "mac";
+
+/** Only a Mac or Windows PC can run the app; phones, tablets and Linux get pointed at the install
+ *  section instead of a file they can't open. Without a user agent (prerender), assume a desktop. */
+export const CAN_INSTALL_HERE = UA === "" || (/Windows|Macintosh/.test(UA) && !/iPhone|iPad|Android/.test(UA) && !IS_TOUCH_MAC);
 
 export interface RepoInfo {
   stars: number | null;
@@ -43,8 +50,15 @@ export function downloadFor(info: RepoInfo, platform: Platform) {
       };
 }
 
-const CACHE_KEY = "dm-site-github-v2";
-const CACHE_MS = 10 * 60 * 1000;
+/** The main download button: the visitor's platform, or the install section if they can't run it. */
+export function visitorDownload(info: RepoInfo) {
+  const main = downloadFor(info, VISITOR_PLATFORM);
+  return CAN_INSTALL_HERE ? main : { ...main, url: "#install", label: "Get it for Mac or Windows" };
+}
+
+const CACHE_KEY = "dm-site-github-v3";
+/** Kept across tabs and visits: the unauthenticated API allows 60 calls an hour per IP. */
+const CACHE_MS = 30 * 60 * 1000;
 const EMPTY: RepoInfo = {
   stars: null,
   version: null,
@@ -71,7 +85,7 @@ const sizeMb = (asset: Asset | undefined) => (asset ? Math.round((asset.size / 1
 
 function readCache(): RepoInfo | null {
   try {
-    const raw = sessionStorage.getItem(CACHE_KEY);
+    const raw = localStorage.getItem(CACHE_KEY);
     if (!raw) return null;
     const { at, info } = JSON.parse(raw) as { at: number; info: RepoInfo };
     return Date.now() - at < CACHE_MS ? info : null;
@@ -85,12 +99,13 @@ async function fetchInfo(): Promise<RepoInfo> {
     fetch(`https://api.github.com/repos/${REPO}${path}`, { headers: { Accept: "application/vnd.github+json" } }).then((r) =>
       r.ok ? r.json() : null,
     );
-  // Newest first. "latest" (the Mac release) never includes the Windows pre-releases.
-  const [repo, release, releases] = await Promise.all([
+  // Newest first. The Mac release is the newest full release (what /releases/latest returns);
+  // the Windows builds are windows-v* pre-releases. One list call covers both.
+  const [repo, releases] = await Promise.all([
     get("").catch(() => null),
-    get("/releases/latest").catch(() => null) as Promise<Release | null>,
     get("/releases?per_page=30").catch(() => null) as Promise<Release[] | null>,
   ]);
+  const release = Array.isArray(releases) ? releases.find((r) => !r.draft && !r.prerelease) : undefined;
   const dmg = release?.assets?.find((a) => a.name.endsWith(".dmg"));
   const windows = Array.isArray(releases)
     ? releases.find((r) => !r.draft && /^windows-v\d/.test(r.tag_name) && r.assets.some((a) => a.name.endsWith("-setup.exe")))
@@ -109,7 +124,7 @@ async function fetchInfo(): Promise<RepoInfo> {
 
 /**
  * Live star count and latest release from the GitHub API (unauthenticated, cached for the
- * session). Everything degrades to plain links if the API is unavailable or rate-limited.
+ * half an hour). Everything degrades to plain links if the API is unavailable or rate-limited.
  */
 export function useRepoInfo(): RepoInfo {
   const [info, setInfo] = useState<RepoInfo>(() => readCache() ?? EMPTY);
@@ -119,8 +134,10 @@ export function useRepoInfo(): RepoInfo {
     void fetchInfo().then((next) => {
       if (cancelled) return;
       setInfo(next);
+      // A failed or rate-limited fetch isn't cached, so the next visit tries again.
+      if (next.version === null && next.stars === null) return;
       try {
-        sessionStorage.setItem(CACHE_KEY, JSON.stringify({ at: Date.now(), info: next }));
+        localStorage.setItem(CACHE_KEY, JSON.stringify({ at: Date.now(), info: next }));
       } catch {
         // storage unavailable: fine, just refetch next time
       }

@@ -159,7 +159,9 @@ pub(super) async fn fetch_lyrics_from_providers(
                     }
                 }
 
-                if let Some(lyrics_url) = result.get("lyricsUrl").and_then(|v| v.as_str()) {
+                // The provider names this URL; only follow it to a public https host, never to
+                // localhost or a LAN address.
+                if let Some(lyrics_url) = result.get("lyricsUrl").and_then(|v| v.as_str()).filter(|u| is_public_https(u)) {
                     if let Ok(l_res) = client.get(lyrics_url).send().await {
         *reached |= answered(l_res.status());
                         if l_res.status().is_success() {
@@ -384,4 +386,29 @@ pub(super) async fn fetch_lyrics_from_providers(
     }
 
     Ok(None)
+}
+
+/// An https URL on a named public host (not an IP address or localhost).
+fn is_public_https(url: &str) -> bool {
+    reqwest::Url::parse(url).is_ok_and(|u| {
+        // `domain()` is None for IP-address hosts.
+        u.scheme() == "https"
+            && u.domain().is_some_and(|d| d != "localhost" && !d.ends_with(".localhost") && !d.ends_with(".local"))
+    })
+}
+
+#[cfg(test)]
+mod url_tests {
+    use super::is_public_https;
+
+    #[test]
+    fn only_public_https_lyrics_urls_are_followed() {
+        assert!(is_public_https("https://lyrics.example.com/a.ttml"));
+        assert!(!is_public_https("http://lyrics.example.com/a.ttml"));
+        assert!(!is_public_https("https://127.0.0.1/a"));
+        assert!(!is_public_https("https://[::1]/a"));
+        assert!(!is_public_https("https://localhost:8080/a"));
+        assert!(!is_public_https("https://router.local/a"));
+        assert!(!is_public_https("not a url"));
+    }
 }

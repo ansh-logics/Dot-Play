@@ -1,6 +1,6 @@
 import { motion, useReducedMotion } from "motion/react";
 import { Download } from "lucide-react";
-import { VISITOR_PLATFORM, downloadFor, type RepoInfo } from "../lib/github";
+import { VISITOR_PLATFORM, downloadFor, visitorDownload, type RepoInfo } from "../lib/github";
 import { StarButton } from "./Nav";
 import { HeroShot } from "./Showcase";
 
@@ -35,7 +35,7 @@ function TypedHeadline() {
 
 export function Hero({ info }: { info: RepoInfo }) {
   // The visitor's own platform goes first; the other one is a plain link under it.
-  const main = downloadFor(info, VISITOR_PLATFORM);
+  const main = visitorDownload(info);
   const other = downloadFor(info, VISITOR_PLATFORM === "windows" ? "mac" : "windows");
   return (
     <section className="hero" id="top">
