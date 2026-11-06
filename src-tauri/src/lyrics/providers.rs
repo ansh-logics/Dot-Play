@@ -1,18 +1,24 @@
-//! The lyrics providers, tried in order until one returns lyrics.
+//! The lyrics providers. They are asked at the same time, and the answer from the
+//! highest-ranked provider that has the song wins, so a slow or dead provider can't hold
+//! the lookup for long.
 
 use super::matching::{best_lyrics_candidate, clean_query_artist, clean_query_title, json_seconds, urlencoding_lite};
 use super::LyricsPayload;
 use std::sync::{LazyLock, Mutex};
+use std::time::Duration;
 
-/// Shared client for every lyrics provider request (same user agent and 3.2 s timeout as
-/// the former per-call client), so connections and TLS sessions are reused.
+/// Shared client for every lyrics provider request, so connections and TLS sessions are
+/// reused. Each request gives up after 3.2 s.
 static LYRICS_CLIENT: LazyLock<Result<reqwest::Client, String>> = LazyLock::new(|| {
     reqwest::Client::builder()
         .user_agent("DotMusic/0.1.0 (https://github.com/dot-music)")
-        .timeout(std::time::Duration::from_millis(3200))
+        .timeout(Duration::from_millis(3200))
         .build()
         .map_err(|e| e.to_string())
 });
+
+/// The whole lookup ends after this; whatever the best answer is by then is used.
+const LOOKUP_DEADLINE: Duration = Duration::from_secs(6);
 
 static LAST_LYRICS_PLUS_MIRROR: Mutex<Option<String>> = Mutex::new(None);
 
@@ -30,6 +36,44 @@ fn answered(status: reqwest::StatusCode) -> bool {
     status.is_success() || status == reqwest::StatusCode::NOT_FOUND
 }
 
+/// What one provider found, and whether it answered at all.
+#[derive(Default)]
+struct Outcome {
+    payload: Option<LyricsPayload>,
+    reached: bool,
+}
+
+#[derive(Clone)]
+struct Query {
+    video_id: Option<String>,
+    title: String,
+    artist: String,
+    album: String,
+    dur_secs: i64,
+    /// `dur_secs` as text, or empty when unknown.
+    dur_str: String,
+}
+
+fn payload(source: &str, isrc: Option<String>, ttml: Option<String>, synced: Option<String>, plain: Option<String>) -> LyricsPayload {
+    LyricsPayload {
+        source: source.to_string(),
+        isrc,
+        ttml,
+        synced_lyrics: synced,
+        plain_lyrics: plain,
+        rich_sync_json: None,
+        instrumental: None,
+    }
+}
+
+fn str_field(val: &serde_json::Value, key: &str) -> Option<String> {
+    val.get(key).and_then(|v| v.as_str()).map(str::to_string)
+}
+
+fn looks_like_ttml(body: &str) -> bool {
+    body.contains("<tt") || body.contains("<p")
+}
+
 pub(super) async fn fetch_lyrics_from_providers(
     reached: &mut bool,
     video_id: Option<String>,
@@ -38,354 +82,272 @@ pub(super) async fn fetch_lyrics_from_providers(
     album: Option<String>,
     duration: Option<f64>,
 ) -> Result<Option<LyricsPayload>, String> {
-    let client = match &*LYRICS_CLIENT {
+    let client: &'static reqwest::Client = match &*LYRICS_CLIENT {
         Ok(c) => c,
         Err(e) => return Err(e.clone()),
     };
 
-    let clean_title = clean_query_title(&title);
-    let (_clean_artist, primary_artist) = clean_query_artist(&artist);
     let dur_secs = duration.map(|d| d.round() as i64).unwrap_or(0);
-    let dur_str = if dur_secs > 0 {
-        dur_secs.to_string()
-    } else {
-        String::new()
+    let query = Query {
+        video_id: video_id.map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
+        title: clean_query_title(&title),
+        artist: clean_query_artist(&artist).1,
+        album: album.unwrap_or_default(),
+        dur_secs,
+        dur_str: if dur_secs > 0 { dur_secs.to_string() } else { String::new() },
     };
-    let album_clean = album.unwrap_or_default();
 
-    // -------------------------------------------------------------
-    // 1. SimpMusic by YouTube Video ID
-    // -------------------------------------------------------------
-    if let Some(ref vid) = video_id {
-        let clean_vid = vid.trim();
-        if !clean_vid.is_empty() {
-            let simp_url = format!("https://api-lyrics.simpmusic.org/v1/{}", clean_vid);
-            if let Ok(res) = client.get(&simp_url).send().await {
-        *reached |= answered(res.status());
-                if res.status().is_success() {
-                    if let Ok(val) = res.json::<serde_json::Value>().await {
-                        let tracks = val
-                            .get("data")
-                            .and_then(|data| data.as_array())
-                            .map(Vec::as_slice)
-                            .unwrap_or(&[]);
-                        let track = tracks
-                            .iter()
-                            .filter(|track| {
-                                dur_secs <= 0
-                                    || json_seconds(track)
-                                        .is_some_and(|seconds| (seconds - dur_secs as f64).abs() <= 10.0)
-                            })
-                            .min_by(|left, right| {
-                                let left_distance = json_seconds(left)
-                                    .map(|seconds| (seconds - dur_secs as f64).abs())
-                                    .unwrap_or(f64::MAX);
-                                let right_distance = json_seconds(right)
-                                    .map(|seconds| (seconds - dur_secs as f64).abs())
-                                    .unwrap_or(f64::MAX);
-                                left_distance.total_cmp(&right_distance)
-                            });
-                        let rich_sync = track
-                            .and_then(|value| value.get("richSyncLyrics"))
-                            .and_then(|value| value.as_str())
-                            .map(str::to_string);
-                        let synced = track
-                            .and_then(|value| value.get("syncedLyrics"))
-                            .and_then(|value| value.as_str())
-                            .map(str::to_string);
-                        let plain = track
-                            .and_then(|value| value.get("plainLyrics").or_else(|| value.get("lyrics")))
-                            .and_then(|value| value.as_str())
-                            .map(str::to_string);
+    // Ranked best first: word-synced sources before line-synced and plain ones.
+    let mut tasks = Vec::new();
+    macro_rules! start {
+        ($provider:ident) => {{
+            let q = query.clone();
+            tasks.push(tauri::async_runtime::spawn(async move { $provider(client, &q).await }));
+        }};
+    }
+    start!(simpmusic);
+    start!(binilyrics);
+    start!(lrc_red);
+    start!(better_lyrics);
+    start!(lyrics_plus);
+    start!(unison);
 
-                        if rich_sync.is_some() || synced.is_some() || plain.is_some() {
-                            return Ok(Some(LyricsPayload {
-                                source: "SimpMusic".to_string(),
-                                isrc: None,
-                                ttml: None,
-                                synced_lyrics: synced,
-                                plain_lyrics: plain,
-                                rich_sync_json: rich_sync,
-                                instrumental: None,
-                            }));
-                        }
-                    }
-                }
+    let deadline = tokio::time::Instant::now() + LOOKUP_DEADLINE;
+    let mut found = None;
+    for task in tasks.iter_mut() {
+        if found.is_some() {
+            break;
+        }
+        // A task that finished is still read after the deadline; one still running is skipped.
+        match tokio::time::timeout_at(deadline, task).await {
+            Ok(Ok(outcome)) => {
+                *reached |= outcome.reached;
+                found = outcome.payload;
             }
+            Ok(Err(_)) | Err(_) => {}
         }
     }
-
-    // -------------------------------------------------------------
-    // 2. BiniLyrics (Identification / ISRC & TTML)
-    // -------------------------------------------------------------
-    let mut detected_isrc: Option<String> = None;
-    let mut bini_req = client
-        .get("https://lyrics-api.binimum.org/")
-        .query(&[("track", &clean_title), ("artist", &primary_artist)]);
-    if !dur_str.is_empty() {
-        bini_req = bini_req.query(&[("duration", &dur_str)]);
+    for task in &tasks {
+        task.abort();
     }
-    if !album_clean.is_empty() {
-        bini_req = bini_req.query(&[("album", &album_clean)]);
+    Ok(found)
+}
+
+/// 1. SimpMusic, by YouTube video id.
+async fn simpmusic(client: &reqwest::Client, q: &Query) -> Outcome {
+    let mut out = Outcome::default();
+    let Some(vid) = &q.video_id else { return out };
+    let Ok(res) = client.get(format!("https://api-lyrics.simpmusic.org/v1/{vid}")).send().await else { return out };
+    out.reached = answered(res.status());
+    if !res.status().is_success() {
+        return out;
     }
-
-    if let Ok(res) = bini_req.send().await {
-        *reached |= answered(res.status());
-        if res.status().is_success() {
-            if let Ok(val) = res.json::<serde_json::Value>().await {
-                let results = val
-                    .get("results")
-                    .and_then(|results| results.as_array())
-                    .map(Vec::as_slice)
-                    .unwrap_or(&[]);
-                if let Some(result) = best_lyrics_candidate(results, &clean_title, &primary_artist, dur_secs) {
-                if let Some(isrc_str) = result.get("isrc").and_then(|v| v.as_str()) {
-                    if !isrc_str.trim().is_empty() {
-                        detected_isrc = Some(isrc_str.trim().to_string());
-                    }
-                }
-
-                if let Some(ttml_content) = result.get("ttml").and_then(|v| v.as_str()) {
-                    if ttml_content.contains("<tt") || ttml_content.contains("<p") {
-                        return Ok(Some(LyricsPayload {
-                            source: "BiniLyrics".to_string(),
-                            isrc: detected_isrc,
-                            ttml: Some(ttml_content.to_string()),
-                            synced_lyrics: None,
-                            plain_lyrics: None,
-                            rich_sync_json: None,
-                            instrumental: None,
-                        }));
-                    }
-                }
-
-                // The provider names this URL; only follow it to a public https host, never to
-                // localhost or a LAN address.
-                if let Some(lyrics_url) = result.get("lyricsUrl").and_then(|v| v.as_str()).filter(|u| is_public_https(u)) {
-                    if let Ok(l_res) = client.get(lyrics_url).send().await {
-        *reached |= answered(l_res.status());
-                        if l_res.status().is_success() {
-                            if let Ok(body) = l_res.text().await {
-                                if body.contains("<tt") || body.contains("<p") {
-                                    return Ok(Some(LyricsPayload {
-                                        source: "BiniLyrics".to_string(),
-                                        isrc: detected_isrc,
-                                        ttml: Some(body),
-                                        synced_lyrics: None,
-                                        plain_lyrics: None,
-                                        rich_sync_json: None,
-                                        instrumental: None,
-                                    }));
-                                }
-                            }
-                        }
-                    }
-                }
-                }
-            }
-        }
+    let Ok(val) = res.json::<serde_json::Value>().await else { return out };
+    let tracks = val.get("data").and_then(|data| data.as_array()).map(Vec::as_slice).unwrap_or(&[]);
+    let distance = |track: &serde_json::Value| {
+        json_seconds(track).map(|seconds| (seconds - q.dur_secs as f64).abs()).unwrap_or(f64::MAX)
+    };
+    let track = tracks
+        .iter()
+        .filter(|track| q.dur_secs <= 0 || json_seconds(track).is_some_and(|seconds| (seconds - q.dur_secs as f64).abs() <= 10.0))
+        .min_by(|left, right| distance(left).total_cmp(&distance(right)));
+    let Some(track) = track else { return out };
+    let rich_sync = str_field(track, "richSyncLyrics");
+    let synced = str_field(track, "syncedLyrics");
+    let plain = str_field(track, "plainLyrics").or_else(|| str_field(track, "lyrics"));
+    if rich_sync.is_some() || synced.is_some() || plain.is_some() {
+        let mut found = payload("SimpMusic", None, None, synced, plain);
+        found.rich_sync_json = rich_sync;
+        out.payload = Some(found);
     }
+    out
+}
 
-    // -------------------------------------------------------------
-    // 3. lrc.red (Apple-style TTML / Syllable timing by ISRC or search)
-    // -------------------------------------------------------------
-    let mut isrc_to_try = detected_isrc.clone();
-    if isrc_to_try.is_none() {
-        let lrc_search_url = format!(
-            "https://lrc.red/search.json?q={}%20{}",
-            urlencoding_lite(&clean_title),
-            urlencoding_lite(&primary_artist)
-        );
-        if let Ok(res) = client.get(&lrc_search_url).send().await {
-        *reached |= answered(res.status());
-            if res.status().is_success() {
-                if let Ok(val) = res.json::<serde_json::Value>().await {
-                    let items = val
-                        .get("hits")
-                        .and_then(|hits| hits.as_array())
-                        .or_else(|| val.as_array())
-                        .map(Vec::as_slice)
-                        .unwrap_or(&[]);
-                    if let Some(first_match) = best_lyrics_candidate(items, &clean_title, &primary_artist, dur_secs) {
-                        if let Some(i_val) = first_match.get("isrc").and_then(|v| v.as_str()) {
-                            isrc_to_try = Some(i_val.to_string());
-                        }
-                    }
-                }
-            }
-        }
+/// 2. BiniLyrics: TTML, inline or behind a link.
+async fn binilyrics(client: &reqwest::Client, q: &Query) -> Outcome {
+    let mut out = Outcome::default();
+    let mut req = client.get("https://lyrics-api.binimum.org/").query(&[("track", &q.title), ("artist", &q.artist)]);
+    if !q.dur_str.is_empty() {
+        req = req.query(&[("duration", &q.dur_str)]);
     }
+    if !q.album.is_empty() {
+        req = req.query(&[("album", &q.album)]);
+    }
+    let Ok(res) = req.send().await else { return out };
+    out.reached = answered(res.status());
+    if !res.status().is_success() {
+        return out;
+    }
+    let Ok(val) = res.json::<serde_json::Value>().await else { return out };
+    let results = val.get("results").and_then(|results| results.as_array()).map(Vec::as_slice).unwrap_or(&[]);
+    let Some(result) = best_lyrics_candidate(results, &q.title, &q.artist, q.dur_secs) else { return out };
+    let isrc = result.get("isrc").and_then(|v| v.as_str()).map(str::trim).filter(|i| !i.is_empty()).map(str::to_string);
 
-    if let Some(ref isrc) = isrc_to_try {
-        let ttml_url = format!("https://lrc.red/s/{}.ttml", isrc);
-        if let Ok(res) = client.get(&ttml_url).send().await {
-        *reached |= answered(res.status());
+    if let Some(ttml) = result.get("ttml").and_then(|v| v.as_str()).filter(|t| looks_like_ttml(t)) {
+        out.payload = Some(payload("BiniLyrics", isrc, Some(ttml.to_string()), None, None));
+        return out;
+    }
+    // The provider names this URL; only follow it to a public https host, never to
+    // localhost or a LAN address.
+    if let Some(lyrics_url) = result.get("lyricsUrl").and_then(|v| v.as_str()).filter(|u| is_public_https(u)) {
+        if let Ok(res) = client.get(lyrics_url).send().await {
+            out.reached |= answered(res.status());
             if res.status().is_success() {
                 if let Ok(body) = res.text().await {
-                    if body.contains("<tt") || body.contains("<p") {
-                        return Ok(Some(LyricsPayload {
-                            source: "lrc.red".to_string(),
-                            isrc: Some(isrc.clone()),
-                            ttml: Some(body),
-                            synced_lyrics: None,
-                            plain_lyrics: None,
-                            rich_sync_json: None,
-                            instrumental: None,
-                        }));
+                    if looks_like_ttml(&body) {
+                        out.payload = Some(payload("BiniLyrics", isrc, Some(body), None, None));
                     }
                 }
             }
         }
     }
+    out
+}
 
-    // -------------------------------------------------------------
-    // 4. BetterLyrics & QQ Karaoke
-    // -------------------------------------------------------------
-    let mut bl_req = client
-        .get("https://lyrics-api.boidu.dev/getLyrics")
-        .query(&[("s", &clean_title), ("a", &primary_artist)]);
-    if !dur_str.is_empty() {
-        bl_req = bl_req.query(&[("d", &dur_str)]);
+/// 3. lrc.red: Apple-style TTML with syllable timing, found by search then ISRC.
+async fn lrc_red(client: &reqwest::Client, q: &Query) -> Outcome {
+    let mut out = Outcome::default();
+    let search_url = format!(
+        "https://lrc.red/search.json?q={}%20{}",
+        urlencoding_lite(&q.title),
+        urlencoding_lite(&q.artist)
+    );
+    let Ok(res) = client.get(&search_url).send().await else { return out };
+    out.reached = answered(res.status());
+    if !res.status().is_success() {
+        return out;
     }
-    if !album_clean.is_empty() {
-        bl_req = bl_req.query(&[("al", &album_clean)]);
-    }
-
-    if let Ok(res) = bl_req.send().await {
-        *reached |= answered(res.status());
+    let Ok(val) = res.json::<serde_json::Value>().await else { return out };
+    let items = val
+        .get("hits")
+        .and_then(|hits| hits.as_array())
+        .or_else(|| val.as_array())
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let Some(isrc) = best_lyrics_candidate(items, &q.title, &q.artist, q.dur_secs)
+        .and_then(|hit| hit.get("isrc"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+    else {
+        return out;
+    };
+    if let Ok(res) = client.get(format!("https://lrc.red/s/{isrc}.ttml")).send().await {
+        out.reached |= answered(res.status());
         if res.status().is_success() {
-            if let Ok(val) = res.json::<serde_json::Value>().await {
-                let ttml = val
-                    .get("ttml")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                let synced = val
-                    .get("syncedLyrics")
-                    .or_else(|| val.get("karaoke"))
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                let plain = val
-                    .get("lyrics")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-
-                if ttml.is_some() || synced.is_some() || plain.is_some() {
-                    return Ok(Some(LyricsPayload {
-                        source: "BetterLyrics".to_string(),
-                        isrc: detected_isrc,
-                        ttml,
-                        synced_lyrics: synced,
-                        plain_lyrics: plain,
-                        rich_sync_json: None,
-                        instrumental: None,
-                    }));
+            if let Ok(body) = res.text().await {
+                if looks_like_ttml(&body) {
+                    out.payload = Some(payload("lrc.red", Some(isrc), Some(body), None, None));
                 }
             }
         }
     }
+    out
+}
 
-    // -------------------------------------------------------------
-    // 5. LyricsPlus Mirrors (with last-working-mirror cache)
-    // -------------------------------------------------------------
-    let mut mirror_candidates = Vec::new();
-    if let Ok(guard) = LAST_LYRICS_PLUS_MIRROR.lock() {
-        if let Some(ref m) = *guard {
-            mirror_candidates.push(m.clone());
-        }
+/// 4. BetterLyrics and QQ karaoke.
+async fn better_lyrics(client: &reqwest::Client, q: &Query) -> Outcome {
+    let mut out = Outcome::default();
+    let mut req = client.get("https://lyrics-api.boidu.dev/getLyrics").query(&[("s", &q.title), ("a", &q.artist)]);
+    if !q.dur_str.is_empty() {
+        req = req.query(&[("d", &q.dur_str)]);
     }
+    if !q.album.is_empty() {
+        req = req.query(&[("al", &q.album)]);
+    }
+    let Ok(res) = req.send().await else { return out };
+    out.reached = answered(res.status());
+    if !res.status().is_success() {
+        return out;
+    }
+    let Ok(val) = res.json::<serde_json::Value>().await else { return out };
+    let ttml = str_field(&val, "ttml");
+    let synced = str_field(&val, "syncedLyrics").or_else(|| str_field(&val, "karaoke"));
+    let plain = str_field(&val, "lyrics");
+    if ttml.is_some() || synced.is_some() || plain.is_some() {
+        out.payload = Some(payload("BetterLyrics", None, ttml, synced, plain));
+    }
+    out
+}
+
+/// 5. LyricsPlus. Its mirrors are asked at once and the first with lyrics wins; that
+/// mirror is remembered and listed first next time.
+async fn lyrics_plus(client: &'static reqwest::Client, q: &Query) -> Outcome {
+    let mut mirrors: Vec<String> = LAST_LYRICS_PLUS_MIRROR.lock().ok().and_then(|g| g.clone()).into_iter().collect();
     for &m in LYRICS_PLUS_MIRRORS {
-        if !mirror_candidates.iter().any(|existing| existing == m) {
-            mirror_candidates.push(m.to_string());
+        if !mirrors.iter().any(|existing| existing == m) {
+            mirrors.push(m.to_string());
         }
     }
-
-    for mirror in mirror_candidates {
-        let ep = format!("{}/v2/lyrics/get", mirror);
-        let mut lp_req = client
-            .get(&ep)
-            .query(&[("title", &clean_title), ("artist", &primary_artist)]);
-        if !dur_str.is_empty() {
-            lp_req = lp_req.query(&[("duration", &dur_str)]);
-        }
-        if let Some(ref i) = detected_isrc {
-            lp_req = lp_req.query(&[("isrc", i)]);
-        }
-
-        if let Ok(res) = lp_req.send().await {
-        *reached |= answered(res.status());
-            if res.status().is_success() {
-                if let Ok(val) = res.json::<serde_json::Value>().await {
-                    let ttml = val
-                        .get("ttml")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string());
-                    let synced = val
-                        .get("syncedLyrics")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string());
-                    let plain = val
-                        .get("lyrics")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string());
-
-                    if ttml.is_some() || synced.is_some() || plain.is_some() {
-                        if let Ok(mut guard) = LAST_LYRICS_PLUS_MIRROR.lock() {
-                            *guard = Some(mirror);
-                        }
-                        return Ok(Some(LyricsPayload {
-                            source: "LyricsPlus".to_string(),
-                            isrc: detected_isrc,
-                            ttml,
-                            synced_lyrics: synced,
-                            plain_lyrics: plain,
-                            rich_sync_json: None,
-                            instrumental: None,
-                        }));
-                    }
-                }
+    let (tx, mut rx) = tokio::sync::mpsc::channel(mirrors.len());
+    let mut tasks = Vec::new();
+    for mirror in mirrors {
+        let tx = tx.clone();
+        let q = q.clone();
+        tasks.push(tauri::async_runtime::spawn(async move {
+            let _ = tx.send(lyrics_plus_mirror(client, &q, mirror).await).await;
+        }));
+    }
+    drop(tx);
+    let mut out = Outcome::default();
+    while let Some((mirror, outcome)) = rx.recv().await {
+        out.reached |= outcome.reached;
+        if outcome.payload.is_some() {
+            if let Ok(mut guard) = LAST_LYRICS_PLUS_MIRROR.lock() {
+                *guard = Some(mirror);
             }
+            out.payload = outcome.payload;
+            break;
         }
     }
-
-    // -------------------------------------------------------------
-    // 6. Unison Fallback
-    // -------------------------------------------------------------
-    let mut uni_req = client
-        .get("https://unison.boidu.dev/lyrics")
-        .query(&[("song", &clean_title), ("artist", &primary_artist)]);
-    if !dur_str.is_empty() {
-        uni_req = uni_req.query(&[("duration", &dur_str)]);
+    for task in &tasks {
+        task.abort();
     }
+    out
+}
 
-    if let Ok(res) = uni_req.send().await {
-        *reached |= answered(res.status());
+async fn lyrics_plus_mirror(client: &reqwest::Client, q: &Query, mirror: String) -> (String, Outcome) {
+    let mut out = Outcome::default();
+    let mut req = client
+        .get(format!("{mirror}/v2/lyrics/get"))
+        .query(&[("title", &q.title), ("artist", &q.artist)]);
+    if !q.dur_str.is_empty() {
+        req = req.query(&[("duration", &q.dur_str)]);
+    }
+    if let Ok(res) = req.send().await {
+        out.reached = answered(res.status());
         if res.status().is_success() {
             if let Ok(val) = res.json::<serde_json::Value>().await {
-                let synced = val
-                    .get("syncedLyrics")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                let plain = val
-                    .get("lyrics")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-
-                if synced.is_some() || plain.is_some() {
-                    return Ok(Some(LyricsPayload {
-                        source: "Unison".to_string(),
-                        isrc: detected_isrc,
-                        ttml: None,
-                        synced_lyrics: synced,
-                        plain_lyrics: plain,
-                        rich_sync_json: None,
-                        instrumental: None,
-                    }));
+                let ttml = str_field(&val, "ttml");
+                let synced = str_field(&val, "syncedLyrics");
+                let plain = str_field(&val, "lyrics");
+                if ttml.is_some() || synced.is_some() || plain.is_some() {
+                    out.payload = Some(payload("LyricsPlus", None, ttml, synced, plain));
                 }
             }
         }
     }
+    (mirror, out)
+}
 
-    Ok(None)
+/// 6. Unison, the last resort.
+async fn unison(client: &reqwest::Client, q: &Query) -> Outcome {
+    let mut out = Outcome::default();
+    let mut req = client.get("https://unison.boidu.dev/lyrics").query(&[("song", &q.title), ("artist", &q.artist)]);
+    if !q.dur_str.is_empty() {
+        req = req.query(&[("duration", &q.dur_str)]);
+    }
+    let Ok(res) = req.send().await else { return out };
+    out.reached = answered(res.status());
+    if !res.status().is_success() {
+        return out;
+    }
+    let Ok(val) = res.json::<serde_json::Value>().await else { return out };
+    let synced = str_field(&val, "syncedLyrics");
+    let plain = str_field(&val, "lyrics");
+    if synced.is_some() || plain.is_some() {
+        out.payload = Some(payload("Unison", None, None, synced, plain));
+    }
+    out
 }
 
 /// An https URL on a named public host (not an IP address or localhost).
