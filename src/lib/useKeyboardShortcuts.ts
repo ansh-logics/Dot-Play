@@ -37,6 +37,10 @@ export function useKeyboardShortcuts(options: KeyboardShortcutOptions) {
     if (isTyping(e.target) || e.defaultPrevented) return;
 
     if (e.code === "Space") {
+      // A control reached with Tab gets Space as usual (keyboard users press buttons with it);
+      // a mouse click doesn't leave a visible focus ring, so Space still plays and pauses then.
+      const target = e.target as HTMLElement | null;
+      if (target?.matches?.("button, [role='button'], [role='switch'], [role='checkbox'], a[href]") && target.matches(":focus-visible")) return;
       e.preventDefault();
       options.onTogglePlayPause();
     } else if (e.key === "ArrowLeft") {

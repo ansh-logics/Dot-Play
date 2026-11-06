@@ -42,6 +42,17 @@ export interface LyricsPayload {
 
 // In-memory cache by key to avoid duplicate network calls
 const lyricsCache = new Map<string, TrackLyrics>();
+/** Songs kept in memory; the oldest is dropped first (Rust keeps its own on-disk cache). */
+const LYRICS_CACHE_LIMIT = 300;
+
+function rememberLyrics(key: string, lyrics: TrackLyrics) {
+  lyricsCache.delete(key);
+  lyricsCache.set(key, lyrics);
+  if (lyricsCache.size > LYRICS_CACHE_LIMIT) {
+    const oldest = lyricsCache.keys().next().value;
+    if (oldest !== undefined) lyricsCache.delete(oldest);
+  }
+}
 
 function decodeText(value: string): string {
   return value
@@ -494,6 +505,8 @@ export async function fetchLyricsMultiProvider(
   const cleanTitle = cleanTrackTitle(title);
   const { cleanArtist, primaryArtist } = cleanArtistName(artist);
 
+  // A failed lookup (offline, timeout) isn't an answer: it isn't cached, so the song tries again.
+  let failed = false;
   // 1. Native Tauri multi-provider orchestrator
   if (isTauriEnvironment()) {
     try {
@@ -508,11 +521,12 @@ export async function fetchLyricsMultiProvider(
       if (payload) {
         const parsed = processLyricsPayload(payload, duration);
         if (parsed.lines.length > 0) {
-          lyricsCache.set(cacheKey, parsed);
+          rememberLyrics(cacheKey, parsed);
           return parsed;
         }
       }
     } catch (err) {
+      failed = true;
       console.warn("[DOT Music] Tauri multi-provider get_lyrics failed:", err);
     }
   }
@@ -526,7 +540,7 @@ export async function fetchLyricsMultiProvider(
     lines: [],
     source: "unavailable",
   };
-  lyricsCache.set(cacheKey, notFound);
+  if (!failed) rememberLyrics(cacheKey, notFound);
   return notFound;
 }
 

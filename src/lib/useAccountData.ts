@@ -327,8 +327,11 @@ export function useAccountData({ showToast, isSearchActive, onSignedOut }: Accou
 
     isLoadingMoreRef.current = true;
     setIsLoadingMore(true);
+    const generation = accountGenerationRef.current;
     try {
       const res = await getHomeFeedContinuation(continuationToken);
+      // Signed in or out meanwhile: these shelves belong to the other account's feed.
+      if (generation !== accountGenerationRef.current) return;
       if (res.sections.length > 0) {
         cacheSections(res.sections);
         setHomeSections((prev) => {

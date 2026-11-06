@@ -125,6 +125,10 @@ function App() {
     showToast,
     isSearchActive,
     onSignedOut: () => {
+      // Abandon a playlist still loading, so the old account's playlist can't appear afterwards.
+      playlistRequestRef.current++;
+      setIsLoadingPlaylist(false);
+      setPlaylistError(null);
       setSelectedPlaylist(null);
       setOpenLocal(null);
       setActiveNav((current) => (current === "library" || current === "history" ? "home" : current));
@@ -234,6 +238,10 @@ function App() {
   }, []);
 
   const closePlaylist = useCallback(() => {
+    // Also abandons a playlist still loading (and its error), so it can't pop in afterwards.
+    playlistRequestRef.current++;
+    setIsLoadingPlaylist(false);
+    setPlaylistError(null);
     setSelectedPlaylist(null);
     setOpenLocal(null);
   }, []);
@@ -304,12 +312,11 @@ function App() {
         return;
       }
       setSearchQuery("");
-      setSelectedPlaylist(null);
-      setOpenLocal(null);
+      closePlaylist();
       setImportOpen(false);
       if (tab === "library" && isLoggedIn && librarySections.length === 0) void fetchLibrary();
     },
-    [setSearchQuery, isLoggedIn, librarySections.length, fetchLibrary],
+    [setSearchQuery, closePlaylist, isLoggedIn, librarySections.length, fetchLibrary],
   );
 
   // History page: opening it fetches YouTube's history when the saved copy is 5+ minutes
@@ -336,6 +343,8 @@ function App() {
       setSearchQuery(query);
       setActiveNav("search");
       setImportOpen(false);
+      // A failed playlist's error screen would otherwise hide the results.
+      setPlaylistError(null);
     },
     [setSearchQuery],
   );
@@ -440,7 +449,8 @@ function App() {
       if (pairRequest) {
         void answerPairRequest(pairRequest.id, false).catch(() => {});
         setPairRequest(null);
-      } else if (saveTarget) setSaveTarget(null);
+      } else if (contextTarget) closeContextMenu(); // the menu closes itself; nothing else should
+      else if (saveTarget) setSaveTarget(null);
       else if (showNewPlaylist) setShowNewPlaylist(false);
       else if (showSettingsModal) setShowSettingsModal(false);
       else if (showSupportModal) setShowSupportModal(false);

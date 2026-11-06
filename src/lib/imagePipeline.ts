@@ -521,6 +521,12 @@ export function useArtwork({
   const retryCountRef = useRef(0);
   // URLs that already failed to load here; a late HD upgrade must not swap them back in.
   const failedUrlsRef = useRef(new Set<string>());
+  // A new image gets its own fallback retries; long-lived players (Now Playing, sidebar) would
+  // otherwise use them up on the first couple of broken covers in a session.
+  useEffect(() => {
+    retryCountRef.current = 0;
+    failedUrlsRef.current = new Set();
+  }, [currentKey]);
   const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearWatchdog = useCallback(() => {

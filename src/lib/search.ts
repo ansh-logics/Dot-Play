@@ -193,8 +193,11 @@ export function getRecentSearches(): string[] {
   try {
     const raw = localStorage.getItem(RECENT_SEARCHES_KEY)
     if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed : []
+    const parsed: unknown = JSON.parse(raw)
+    // Only strings: anything else in a hand-edited or corrupted entry would crash rendering.
+    return Array.isArray(parsed)
+      ? parsed.filter((q): q is string => typeof q === "string" && q.trim() !== "").slice(0, MAX_RECENT_SEARCHES)
+      : []
   } catch {
     return []
   }
