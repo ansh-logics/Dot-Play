@@ -291,29 +291,6 @@ pub(crate) async fn open_login_window(app: AppHandle, _clean: Option<bool>) -> R
 }
 
 #[tauri::command]
-pub(crate) async fn save_session(
-    app: AppHandle,
-    state: State<'_, SessionState>,
-    cookies: String,
-) -> Result<(), String> {
-    if cookies.contains("LOGIN_INFO") && (cookies.contains("SAPISID") || cookies.contains("__Secure-3PAPISID")) {
-        *state.cookies.lock().unwrap() = Some(cookies.clone());
-        let _ = persist_session(&app, &cookies);
-
-        if let Some(win) = app.get_webview_window("yt_login") {
-            let _ = win.hide();
-            let _ = win.destroy();
-        }
-
-        let _ = app.emit("login_success", ());
-        let _ = app.emit_to("main", "login_success", ());
-        Ok(())
-    } else {
-        Err("Incomplete cookies: missing LOGIN_INFO".to_string())
-    }
-}
-
-#[tauri::command]
 pub(crate) async fn get_auth_status(state: State<'_, SessionState>) -> Result<bool, String> {
     let guard = state.cookies.lock().unwrap();
     if let Some(ref cookies) = *guard {

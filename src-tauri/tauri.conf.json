@@ -23,7 +23,23 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self' https://www.youtube.com https://s.ytimg.com",
+        "style-src": "'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src": "'self' https://fonts.gstatic.com",
+        "img-src": "'self' data: blob: https:",
+        "media-src": "'self' blob: https:",
+        "frame-src": "https://www.youtube.com https://www.youtube-nocookie.com http://127.0.0.1:*",
+        "connect-src": "'self' ipc: http://ipc.localhost https://www.googleapis.com",
+        "object-src": "'none'",
+        "base-uri": "'self'",
+        "form-action": "'none'"
+      },
+      "devCsp": null,
+      "dangerousDisableAssetCspModification": [
+        "style-src"
+      ]
     }
   },
   "bundle": {

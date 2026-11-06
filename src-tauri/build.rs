@@ -4,7 +4,6 @@ fn main() {
       tauri_build::AppManifest::new().commands(&[
         "search_tracks",
         "open_login_window",
-        "save_session",
         "get_auth_status",
         "logout",
         "get_home_feed",
