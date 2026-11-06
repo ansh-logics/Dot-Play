@@ -53,13 +53,16 @@ main() {
   check_mac
 
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/dot-music-install.XXXXXX")
-  trap 'rm -rf "$tmp"' EXIT INT TERM
+  trap 'rm -rf "$tmp"' EXIT
+  trap 'rm -rf "$tmp"; exit 130' INT TERM
 
   step "Finding the latest version"
   curl -fsSL --retry 3 "$LATEST_URL" -o "$tmp/latest.json" || fail "Couldn't reach GitHub. Check your internet connection."
   version=$(plutil -extract version raw -o - "$tmp/latest.json" 2>/dev/null) || fail "The release information couldn't be read."
   url=$(plutil -extract platforms.darwin-aarch64.url raw -o - "$tmp/latest.json" 2>/dev/null) || fail "No Mac download in the latest release."
   case "$url" in
+    # curl would resolve "../" segments, which could step out of this repo's releases.
+    *..*) fail "Unexpected download address: $url" ;;
     "https://github.com/$REPO/releases/download/"*) ;;
     *) fail "Unexpected download address: $url" ;;
   esac
@@ -90,10 +93,15 @@ main() {
   fi
 
   step "Installing in $dir"
+  # Copy next to the old app first and swap at the end, so a failed copy (full disk) never leaves
+  # the Mac without a working app.
+  staged="$dir/.$APP_NAME.installing"
+  rm -rf "$staged"
+  ditto "$tmp/$APP_NAME" "$staged" || { rm -rf "$staged"; fail "Couldn't copy the app to $dir."; }
   if [ -e "$target" ]; then
-    rm -rf "$target" || fail "Couldn't replace the old copy in $dir. Quit dot(.)music and try again."
+    rm -rf "$target" || { rm -rf "$staged"; fail "Couldn't replace the old copy in $dir. Quit dot(.)music and try again."; }
   fi
-  ditto "$tmp/$APP_NAME" "$target" || fail "Couldn't copy the app to $dir."
+  mv "$staged" "$target" || fail "Couldn't move the app into place in $dir."
   # In case the app was downloaded some other way before: no "from the internet" flag.
   xattr -dr com.apple.quarantine "$target" 2>/dev/null || true
 

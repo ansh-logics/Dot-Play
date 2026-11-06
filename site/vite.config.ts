@@ -8,9 +8,12 @@ const here = (p: string) => fileURLToPath(new URL(p, import.meta.url));
  * Social cards need absolute URLs. On Vercel the production domain comes from
  * VERCEL_PROJECT_PRODUCTION_URL; SITE_URL overrides it (e.g. for a custom domain).
  */
+const DEFAULT_SITE = "https://dot-music.anshbhatt.space";
+
 function siteUrl(): Plugin {
-  const host = process.env.SITE_URL ?? process.env.VERCEL_PROJECT_PRODUCTION_URL;
-  const origin = host ? (host.startsWith("http") ? host : `https://${host}`).replace(/\/$/, "") : "";
+  // Without an absolute origin, og:image would be "/og.png", which social sites reject.
+  const host = process.env.SITE_URL ?? process.env.VERCEL_PROJECT_PRODUCTION_URL ?? DEFAULT_SITE;
+  const origin = (host.startsWith("http") ? host : `https://${host}`).replace(/\/$/, "");
   return { name: "site-url", transformIndexHtml: (html) => html.replaceAll("%SITE_URL%", origin) };
 }
 

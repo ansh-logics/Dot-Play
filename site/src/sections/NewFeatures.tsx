@@ -203,6 +203,13 @@ export function ImportDemo() {
 
   const active = inView && !reduce && covers !== null;
   const results = useDemoResults(run, active);
+  // Leaving the screen mid-run unmounts the orbit (stopping its animation loop), so the next
+  // run starts its count from zero.
+  const [wasActive, setWasActive] = useState(active);
+  if (wasActive !== active) {
+    setWasActive(active);
+    setMerged(0);
+  }
   const source = SOURCES[run % SOURCES.length];
   const songs = useMemo<OrbitSong[]>(
     () => DEMO_SONGS.map(([title, artist]) => ({ title, artist, cover: covers?.[title] })),
@@ -254,6 +261,9 @@ export function ImportDemo() {
           </div>
           {reduce ? (
             <p className="import-demo-still">{DEMO_SONGS.length} songs found · ready to play</p>
+          ) : !active ? (
+            // Off screen (or covers still loading): an empty stage of the same size, no animation loop.
+            <div className="orbit-stage" />
           ) : (
             <OrbitMerge
               key={`orbit-${run}`}

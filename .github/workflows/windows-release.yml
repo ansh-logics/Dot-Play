@@ -26,8 +26,9 @@ jobs:
     defaults:
       run:
         shell: bash
+    # The write token goes only to the steps that run `gh`, never to third-party actions or the
+    # npm build.
     env:
-      GH_TOKEN: ${{ github.token }}
       REPO: ${{ github.repository }}
     steps:
       - uses: actions/checkout@v4
@@ -46,6 +47,8 @@ jobs:
       - run: npm ci
 
       - name: Version
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
@@ -82,6 +85,7 @@ jobs:
 
       - name: Publish
         env:
+          GH_TOKEN: ${{ github.token }}
           NOTES: ${{ inputs.notes }}
         run: |
           gh release create "$TAG" "$SETUP" "$SETUP.sig" --repo "$REPO" --target "$GITHUB_SHA" \

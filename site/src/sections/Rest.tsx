@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { animate, motion, useInView, useReducedMotion } from "motion/react";
 import { Check, Copy, Download, FolderInput, ShieldCheck, Terminal } from "lucide-react";
-import { ISSUES_URL, RELEASES_URL, REPO_URL, VISITOR_PLATFORM, downloadFor, type Platform, type RepoInfo } from "../lib/github";
+import { ISSUES_URL, RELEASES_URL, REPO_URL, VISITOR_PLATFORM, downloadFor, visitorDownload, type Platform, type RepoInfo } from "../lib/github";
 import { Logo, StarButton } from "./Nav";
 
 function Counter({ to, decimals = 0, suffix = "" }: { to: number; decimals?: number; suffix?: string }) {
@@ -66,16 +66,22 @@ function CopyCommand({ command = XATTR }: { command?: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="command">
-      <code>{command}</code>
+      <code tabIndex={0}>{command}</code>
       <button
         type="button"
         className="command-copy"
-        aria-label="Copy command"
+        aria-label={copied ? "Copied" : "Copy command"}
+        aria-live="polite"
         onClick={() => {
-          void navigator.clipboard.writeText(command).then(() => {
-            setCopied(true);
-            window.setTimeout(() => setCopied(false), 1600);
-          });
+          // Clipboard access can be refused (permissions, insecure context); the command stays
+          // on screen to select by hand.
+          navigator.clipboard
+            ?.writeText(command)
+            .then(() => {
+              setCopied(true);
+              window.setTimeout(() => setCopied(false), 1600);
+            })
+            .catch(() => {});
         }}
       >
         {copied ? <Check size={16} /> : <Copy size={16} />}
@@ -270,6 +276,7 @@ export function Faq() {
 }
 
 export function FinalCta({ info }: { info: RepoInfo }) {
+  const main = visitorDownload(info);
   return (
     <section className="final">
       <div className="dotgrid" aria-hidden="true" />
@@ -277,9 +284,9 @@ export function FinalCta({ info }: { info: RepoInfo }) {
         Put your music <span className="red">on</span>.
       </h2>
       <div className="hero-ctas">
-        <a className="btn btn-red btn-lg" href={downloadFor(info, VISITOR_PLATFORM).url}>
+        <a className="btn btn-red btn-lg" href={main.url}>
           <Download size={18} />
-          {downloadFor(info, VISITOR_PLATFORM).label}
+          {main.label}
         </a>
         <StarButton stars={info.stars} className="btn-lg" />
       </div>
@@ -297,7 +304,7 @@ export function Footer() {
         <a href={ISSUES_URL}>Report an issue</a>
       </nav>
       <p className="footer-note">
-        Built by Ansh Bhatt · Not affiliated with YouTube or Google · Songs and covers on this page are made up.
+        Built by Ansh Bhatt · Not affiliated with YouTube or Google · Song titles and cover art belong to their artists and labels.
       </p>
     </footer>
   );
