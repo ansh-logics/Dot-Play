@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event"
 import type { YouTubePlaybackState } from "../components/HiddenYouTubePlayer"
 import { cleanDisplayTitle } from "./displayText"
 import { useArtwork } from "./imagePipeline"
+import type { PlaybackClock } from "./playbackClock"
 import { isTauriEnvironment, type SearchResult } from "./search"
 
 type MediaControlAction =
@@ -13,7 +14,7 @@ type MediaControlAction =
 interface SystemMediaControlsOptions {
   track: SearchResult | null | undefined
   playerState: YouTubePlaybackState
-  currentTime: number
+  clock: PlaybackClock
   duration: number
   onTogglePlayPause: () => void
   onNext: () => void
@@ -33,7 +34,7 @@ const DRIFT_TOLERANCE_SECONDS = 2
 export function useSystemMediaControls({
   track,
   playerState,
-  currentTime,
+  clock,
   duration,
   onTogglePlayPause,
   onNext,
@@ -70,6 +71,7 @@ export function useSystemMediaControls({
       void invoke("set_now_playing", { info: null }).catch(() => {})
       return
     }
+    const currentTime = clock.get()
     lastSentRef.current = { position: currentTime, at: performance.now(), playing: isPlaying }
     void invoke("set_now_playing", {
       info: {
@@ -90,14 +92,18 @@ export function useSystemMediaControls({
   }, [videoId, title, artist, remoteArtworkUrl, isPlaying, knownDuration])
 
   // Catch seeks from anywhere (scrubber, arrow keys, "previous" restarting the song).
-  useEffect(() => {
-    const last = lastSentRef.current
-    if (!last) return
-    const expected = last.position + (last.playing ? (performance.now() - last.at) / 1000 : 0)
-    if (Math.abs(currentTime - expected) > DRIFT_TOLERANCE_SECONDS) {
-      publish()
-    }
-  }, [currentTime])
+  useEffect(
+    () =>
+      clock.subscribe(() => {
+        const last = lastSentRef.current
+        if (!last) return
+        const expected = last.position + (last.playing ? (performance.now() - last.at) / 1000 : 0)
+        if (Math.abs(clock.get() - expected) > DRIFT_TOLERANCE_SECONDS) {
+          publish()
+        }
+      }),
+    [clock],
+  )
 
   const handleAction = useEffectEvent((payload: MediaControlAction) => {
     switch (payload.action) {
