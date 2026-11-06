@@ -11,6 +11,7 @@ import {
   removeUpcoming,
   reorderUpcoming,
   sanitizeSession,
+  shuffleUpcoming,
   type QueueSession,
 } from "./queueManager";
 import type { SearchResult } from "./search";
@@ -126,5 +127,17 @@ describe("restoring a saved queue", () => {
 
   it("falls back to an empty queue for garbage", () => {
     expect(sanitizeSession("garbage")).toEqual(DEFAULT_QUEUE_SESSION);
+  });
+});
+
+describe("shuffle", () => {
+  it("leaves the songs before `from` in place and keeps every song", () => {
+    const upcoming = ["u1", "u2", "a", "b", "c", "d", "e", "f"].map((id) => song(id));
+    for (let run = 0; run < 20; run++) {
+      const { session: next, originalOrder } = shuffleUpcoming(session({ upcoming }), 2);
+      expect(ids(next.upcoming).slice(0, 2)).toEqual(["u1", "u2"]);
+      expect([...ids(next.upcoming)].sort()).toEqual([...ids(upcoming)].sort());
+      expect(originalOrder).toBe(upcoming);
+    }
   });
 });

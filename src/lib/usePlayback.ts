@@ -440,13 +440,20 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
 
   const selectTrack = useCallback(
     (track: SearchResult, contextList?: SearchResult[]) => {
-      startTrack(track, (prev) =>
-        playTrackImmediate(prev, track, {
+      startTrack(track, (prev) => {
+        const next = playTrackImmediate(prev, track, {
           contextUpcoming: contextList,
           isAutoplay: false,
           keepUserQueuedOnly: true,
-        }),
-      );
+        });
+        if (!playbackModesRef.current.shuffle || !contextList || contextList.length === 0) return next;
+        // Shuffle stays on for the next playlist too. Songs the listener queued themselves
+        // stay first; the playlist after them is shuffled, and turning shuffle off restores it.
+        const userQueued = next.upcoming.findIndex((t) => t.queueSource !== "user");
+        const shuffled = shuffleUpcoming(next, userQueued === -1 ? next.upcoming.length : userQueued);
+        preShuffleOrderRef.current = shuffled.originalOrder;
+        return shuffled.session;
+      });
     },
     [startTrack],
   );

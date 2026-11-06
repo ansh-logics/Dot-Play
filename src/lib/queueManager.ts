@@ -426,17 +426,18 @@ export function cycleTrackToEnd(upcoming: SearchResult[], track: SearchResult | 
 }
 
 /**
- * Shuffles Upcoming (Fisher–Yates). Returns the shuffled session and the
- * original order so shuffle can be undone later.
+ * Shuffles Upcoming (Fisher–Yates) from index `from` on; songs before it keep their place.
+ * Returns the shuffled session and the original order so shuffle can be undone later.
  */
-export function shuffleUpcoming(session: QueueSession): {
+export function shuffleUpcoming(session: QueueSession, from = 0): {
   session: QueueSession
   originalOrder: SearchResult[]
 } {
   const originalOrder = session.upcoming
   const shuffled = [...originalOrder]
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
+  const start = Math.max(0, Math.min(from, shuffled.length))
+  for (let i = shuffled.length - 1; i > start; i--) {
+    const j = start + Math.floor(Math.random() * (i - start + 1))
     ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
   }
   return { session: { ...session, upcoming: shuffled }, originalOrder }
