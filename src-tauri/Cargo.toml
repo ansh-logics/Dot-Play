@@ -23,19 +23,26 @@ serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 tauri = { version = "2.12.1", features = ["tray-icon", "macos-private-api", "image-png"] }
 tauri-plugin-log = "2"
-reqwest = { version = "0.12", features = ["json"] }
 sha1 = "0.10"
 tauri-plugin-localhost = "2"
 portpicker = "0.1"
 tokio = { version = "1", features = ["time", "macros", "net", "io-util", "sync", "rt"] }
 getrandom = "0.3"
-tokio-tungstenite = { version = "0.28", features = ["native-tls"] }
 futures-util = { version = "0.3.34", default-features = false, features = ["sink", "std"] }
 aes-gcm = "0.10"
 hkdf = "0.12"
 sha2 = "0.10"
 base64 = "0.22"
 qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
+
+# TLS: the system library on desktop, rustls on Android (no OpenSSL to link against there).
+[target.'cfg(not(target_os = "android"))'.dependencies]
+reqwest = { version = "0.12", features = ["json"] }
+tokio-tungstenite = { version = "0.28", features = ["native-tls"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "http2", "charset"] }
+tokio-tungstenite = { version = "0.28", features = ["rustls-tls-webpki-roots"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
