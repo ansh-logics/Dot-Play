@@ -9,7 +9,9 @@ use crate::ytmusic::SAFARI_USER_AGENT;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, State};
+#[cfg(desktop)]
+use tauri::{Emitter, WebviewUrl, WebviewWindowBuilder};
 
 #[derive(Default)]
 pub struct SessionState {
@@ -17,6 +19,7 @@ pub struct SessionState {
     pub image_cache: Mutex<HashMap<String, String>>,
 }
 
+#[cfg(desktop)]
 /// Set once a sign-in has been verified, until the next login window opens.
 static LOGIN_COMPLETING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
@@ -77,6 +80,7 @@ pub(crate) fn restore_saved_state(app: &tauri::App) {
 /// The Google account cookies (google.com) stay in the login window's own store and are
 /// never written to session.json; the one exception is a SAPISID that YouTube didn't set
 /// itself, which the API needs to sign requests.
+#[cfg(any(desktop, test))]
 fn authenticated_cookie_header<I>(cookies: I) -> Option<String>
 where
     I: IntoIterator<Item = (String, String, String)>, // (domain, name, value)
@@ -116,6 +120,7 @@ where
     )
 }
 
+#[cfg(desktop)]
 /// Saves the verified session, tells the main window and closes the login window.
 fn complete_login(app: &AppHandle, cookie_header: String) {
     // Cookie sync runs on every tick, navigation and page load; only the first
@@ -184,7 +189,7 @@ fn trigger_native_cookie_sync(app: &AppHandle) {
 
 /// Other platforms read the login window's cookies through Tauri. On Windows that call
 /// deadlocks on the main thread (navigation and page-load handlers), so it runs on a task.
-#[cfg(not(target_os = "macos"))]
+#[cfg(all(desktop, not(target_os = "macos")))]
 fn trigger_native_cookie_sync(app: &AppHandle) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -205,6 +210,7 @@ fn trigger_native_cookie_sync(app: &AppHandle) {
     });
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 pub(crate) async fn open_login_window(app: AppHandle, _clean: Option<bool>) -> Result<(), String> {
     if let Some(existing) = app.get_webview_window("yt_login") {

@@ -2,6 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "aux-windows",
   "description": "The menu bar popover and immersive screens: playback state and immersive controls only.",
+  "platforms": ["macOS", "windows", "linux"],
   "windows": [
     "tray",
     "immersive-*"
