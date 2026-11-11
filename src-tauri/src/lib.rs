@@ -1,10 +1,14 @@
 mod feed;
 mod fsutil;
+#[cfg(desktop)]
 mod haptics;
+#[cfg(desktop)]
 mod import;
+#[cfg(desktop)]
 mod immersive;
 mod library;
 mod lyrics;
+#[cfg(desktop)]
 mod media_controls;
 mod models;
 mod playback;
@@ -12,21 +16,28 @@ mod player_server;
 mod playlist;
 mod queue_session;
 mod recommendations;
+#[cfg(desktop)]
 mod remote;
 mod search;
 mod session;
+#[cfg(desktop)]
 mod shortcuts;
 mod thumbnails;
+#[cfg(desktop)]
 mod tray;
+#[cfg(mobile)]
+mod tv;
+#[cfg(desktop)]
 mod updater;
 mod ytmusic;
 
 use player_server::{start_player_server, PlayerServerState};
 use session::SessionState;
-#[cfg(not(debug_assertions))]
+#[cfg(all(desktop, not(debug_assertions)))]
 use tauri::{ipc::CapabilityBuilder, Manager, Url};
 
 /// Mirrors capabilities/default.json (a test keeps them in sync).
+#[cfg(desktop)]
 #[cfg_attr(debug_assertions, allow(dead_code))]
 const MAIN_WINDOW_PERMISSIONS: &[&str] = &[
     "core:default",
@@ -86,6 +97,7 @@ const MAIN_WINDOW_PERMISSIONS: &[&str] = &[
 ];
 
 /// Mirrors capabilities/aux-windows.json (a test keeps them in sync).
+#[cfg(desktop)]
 #[cfg_attr(debug_assertions, allow(dead_code))]
 const AUX_WINDOW_PERMISSIONS: &[&str] = &[
     "core:default",
@@ -103,7 +115,14 @@ const AUX_WINDOW_PERMISSIONS: &[&str] = &[
     "allow-leave-immersive-to-player",
 ];
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// The TV app (Android): its own, much smaller set of commands. See `tv.rs`.
+#[cfg(mobile)]
+#[tauri::mobile_entry_point]
+pub fn run() {
+    tv::run();
+}
+
+#[cfg(desktop)]
 pub fn run() {
     let player_port = start_player_server();
     let local_app_port = if cfg!(debug_assertions) {
@@ -262,7 +281,7 @@ pub fn run() {
         });
 }
 
-#[cfg(test)]
+#[cfg(all(test, desktop))]
 mod tests {
     use super::{AUX_WINDOW_PERMISSIONS, MAIN_WINDOW_PERMISSIONS};
 

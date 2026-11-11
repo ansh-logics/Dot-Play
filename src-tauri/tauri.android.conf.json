@@ -1,0 +1,15 @@
+{
+  "productName": "dot(.)play",
+  "build": {
+    "frontendDist": "../dist-tv",
+    "devUrl": "http://localhost:5745",
+    "beforeDevCommand": "npm run dev:tv",
+    "beforeBuildCommand": "npm run build:tv"
+  },
+  "app": {
+    "windows": [{ "title": "dot(.)play", "url": "index.html" }]
+  },
+  "bundle": {
+    "createUpdaterArtifacts": false
+  }
+}

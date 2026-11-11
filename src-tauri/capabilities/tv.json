@@ -1,0 +1,33 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "tv",
+  "description": "The TV app: browsing and playback, no desktop windows.",
+  "platforms": ["android"],
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:event:default",
+    "allow-search-tracks",
+    "allow-get-auth-status",
+    "allow-logout",
+    "allow-get-user-profile",
+    "allow-get-home-feed",
+    "allow-get-home-feed-continuation",
+    "allow-get-history",
+    "allow-get-library-playlists",
+    "allow-get-playlist-details",
+    "allow-get-playlist-continuation",
+    "allow-get-highres-thumbnails",
+    "allow-record-playback",
+    "allow-save-queue-session",
+    "allow-get-queue-session",
+    "allow-get-related-recommendations",
+    "allow-get-player-server-url",
+    "allow-get-lyrics",
+    "allow-get-like-status",
+    "allow-rate-song",
+    "allow-get-playlists-for-song",
+    "allow-set-song-in-playlist",
+    "allow-create-playlist"
+  ]
+}
