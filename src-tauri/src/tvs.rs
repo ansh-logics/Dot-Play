@@ -439,6 +439,14 @@ pub async fn pair_tv(app: AppHandle, address: String, code: String) -> Result<Tv
     Ok(status)
 }
 
+/// Sends a playback message to a connected TV.
+#[tauri::command]
+pub fn send_to_tv(hub: State<'_, TvHub>, id: String, message: Value) -> Result<(), String> {
+    let inner = hub.inner.lock().unwrap();
+    let sender = inner.sessions.get(&id).ok_or("That TV isn't connected.")?;
+    sender.send(message).map_err(|_| "That TV isn't connected.".to_string())
+}
+
 /// Unlinks a TV. If it is on, it is told, and signs out when this was its last computer.
 #[tauri::command]
 pub fn forget_tv(app: AppHandle, hub: State<'_, TvHub>, id: String) -> TvStatus {

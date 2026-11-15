@@ -63,6 +63,7 @@
     "allow-set-remote-state",
     "allow-get-tvs",
     "allow-pair-tv",
-    "allow-forget-tv"
+    "allow-forget-tv",
+    "allow-send-to-tv"
   ]
 }

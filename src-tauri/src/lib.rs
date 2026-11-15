@@ -102,6 +102,7 @@ const MAIN_WINDOW_PERMISSIONS: &[&str] = &[
     "allow-get-tvs",
     "allow-pair-tv",
     "allow-forget-tv",
+    "allow-send-to-tv",
 ];
 
 /// Mirrors capabilities/aux-windows.json (a test keeps them in sync).
@@ -266,7 +267,8 @@ pub fn run() {
             remote::set_remote_state,
             tvs::get_tvs,
             tvs::pair_tv,
-            tvs::forget_tv
+            tvs::forget_tv,
+            tvs::send_to_tv
         ])
         // Closing the main window keeps the music playing; the menu bar icon controls it.
         // Quit from the tray menu or with Cmd+Q.

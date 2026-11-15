@@ -54,6 +54,8 @@ fn main() {
         "get_tvs",
         "pair_tv",
         "forget_tv",
+        "send_to_tv",
+        "tv_report",
         "tv_link_state",
         "tv_sign_out",
       ]),
