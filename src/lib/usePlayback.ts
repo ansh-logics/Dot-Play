@@ -34,6 +34,12 @@ import { useSystemMediaControls } from "./useSystemMediaControls";
 import { useTrayBridge } from "./useTrayBridge";
 import { useImmersiveBridge } from "./useImmersiveBridge";
 import { usePlayerSkin } from "./usePlayerSkin";
+import { listen } from "@tauri-apps/api/event";
+import { cleanDisplayTitle } from "./displayText";
+import { optimizeThumbnailUrl } from "./imagePipeline";
+import { isTauriEnvironment } from "./search";
+import { createTvPlayer, type TvPlayer } from "./tvOutput";
+import { getTvs, sendToTv } from "./tvs";
 
 const PLAYER_ERROR_MESSAGES: Record<number, string> = {
   [-1]: "Could not load YouTube Player API.",
@@ -89,7 +95,15 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
   const [volume, setVolume] = useState(loadVolume);
   const [playbackModes, setPlaybackModes] = useState<PlaybackModes>(loadPlaybackModes);
 
+  // The engine in use: the hidden YouTube player here, or a linked TV (see tvOutput.ts).
   const playerRef = useRef<YouTubePlayerInstance | null>(null);
+  const localPlayerRef = useRef<YouTubePlayerInstance | null>(null);
+  const tvPlayerRef = useRef<TvPlayer | null>(null);
+  /** The TV playing instead of this computer, by id; null plays here. */
+  const [output, setOutput] = useState<string | null>(null);
+  const outputRef = useRef<string | null>(null);
+  /** What the local player last held: it must not follow the queue while a TV is playing. */
+  const [parkedVideoId, setParkedVideoId] = useState<string | undefined>(undefined);
   const isScrubbingRef = useRef(false);
   // Same value as the clock, under the name the callbacks below already use.
   const currentTimeRef = useMemo(() => ({ get current() { return clock.get(); } }), [clock]);
@@ -617,7 +631,8 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
   }, [handleTrackCompleted, handleNextTrack]);
 
   const handlePlayerReady = useCallback((player: YouTubePlayerInstance) => {
-    playerRef.current = player;
+    localPlayerRef.current = player;
+    if (!outputRef.current) playerRef.current = player;
     setIsPlayerReady(true);
     player.setVolume?.(volumeRef.current);
     const initialDuration = player.getDuration();
@@ -631,7 +646,7 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
   }, []);
 
   const skipsInARowRef = useRef(0);
-  const handlePlayerStateChange = useCallback(
+  const engineStateChange = useCallback(
     (state: YouTubePlaybackState) => {
       setPlayerState(state);
       if (state === "playing") {
@@ -645,7 +660,7 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     [recordIfNeeded],
   );
 
-  const handlePlayerError = useCallback(
+  const engineError = useCallback(
     (code: number) => {
       setPlayerState("paused");
       const message = PLAYER_ERROR_MESSAGES[code] ?? `Playback failed with error code ${code}.`;
@@ -659,6 +674,117 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     },
     [showToast],
   );
+
+  // The local player's own events are noise while a TV is the one playing.
+  const handlePlayerStateChange = useCallback(
+    (state: YouTubePlaybackState) => {
+      if (!outputRef.current) engineStateChange(state);
+    },
+    [engineStateChange],
+  );
+  const handlePlayerError = useCallback(
+    (code: number) => {
+      if (!outputRef.current) engineError(code);
+    },
+    [engineError],
+  );
+
+  // Latest versions for the TV engine, which outlives any one render.
+  const engineRef = useRef({ engineStateChange, engineError, handlePreviousTrack });
+  useEffect(() => {
+    engineRef.current = { engineStateChange, engineError, handlePreviousTrack };
+  });
+
+  /**
+   * Moves playback to a linked TV (by id) or back to this computer (null). The song and
+   * position carry over. `resume: false` lands paused: used when a TV drops out, so the
+   * computer doesn't suddenly start playing out loud.
+   */
+  const selectOutput = useCallback((id: string | null, resume = true) => {
+    const previous = outputRef.current;
+    if (id === previous) return;
+    const track = sessionRef.current.currentTrack;
+    const at = currentTimeRef.current;
+    const wasPlaying = resume && (playerStateRef.current === "playing" || playerStateRef.current === "buffering");
+
+    if (previous) {
+      void sendToTv(previous, { t: "stop" });
+      tvPlayerRef.current = null;
+    } else {
+      localPlayerRef.current?.pauseVideo();
+      setParkedVideoId(track?.videoId);
+    }
+
+    outputRef.current = id;
+    setOutput(id);
+    if (id) {
+      tvPlayerRef.current = createTvPlayer(id, {
+        onStateChange: (state) => engineRef.current.engineStateChange(state),
+        onError: (code) => engineRef.current.engineError(code),
+        onKey: (key) => {
+          if (key === "next") void handleNextTrackRef.current();
+          else engineRef.current.handlePreviousTrack();
+        },
+      });
+    }
+    const player = id ? (tvPlayerRef.current?.player ?? null) : localPlayerRef.current;
+    playerRef.current = player;
+    if (!player) return;
+
+    player.setVolume?.(volumeRef.current);
+    if (isMutedRef.current) player.mute?.();
+    else player.unMute?.();
+    if (!track?.videoId) return;
+    if (wasPlaying) {
+      player.loadVideoById?.({ videoId: track.videoId, startSeconds: at });
+      setPlayerState("buffering");
+    } else {
+      player.cueVideoById?.({ videoId: track.videoId, startSeconds: at });
+      setPlayerState("paused");
+    }
+  }, []);
+
+  // What the TV reports, and the TV going away.
+  useEffect(() => {
+    if (!isTauriEnvironment()) return;
+    let disposed = false;
+    const unlisteners: Array<() => void> = [];
+    const keep = (fn: () => void) => (disposed ? fn() : unlisteners.push(fn));
+    void listen<{ id: string; message: unknown }>("tv-message", ({ payload }) => {
+      if (payload.id === outputRef.current) tvPlayerRef.current?.handleMessage(payload.message);
+    }).then(keep);
+    void listen("tvs-changed", () => {
+      const playingOn = outputRef.current;
+      if (!playingOn) return;
+      void getTvs().then((status) => {
+        if (outputRef.current !== playingOn) return;
+        if (status.linked.some((tv) => tv.id === playingOn && tv.online)) return;
+        selectOutput(null, false);
+        showToast("The TV disconnected. Playback is back on this computer, paused.");
+      }, () => {});
+    }).then(keep);
+    return () => {
+      disposed = true;
+      unlisteners.forEach((fn) => fn());
+    };
+  }, [selectOutput, showToast]);
+
+  // The TV's screen: what's playing and what's next.
+  const upNext = session.upcoming;
+  useEffect(() => {
+    if (!output) return;
+    const describe = (track: SearchResult) => ({
+      videoId: track.videoId,
+      title: cleanDisplayTitle(track.title),
+      artist: track.artist,
+      thumb: optimizeThumbnailUrl(track.thumbnailUrl, track.videoId, "hero"),
+    });
+    void sendToTv(output, {
+      t: "now",
+      track: currentTrack ? describe(currentTrack) : null,
+      upcoming: upNext.slice(0, 5).map(describe),
+    });
+  }, [output, currentTrack, upNext]);
 
   // The player only fills in a missing title or artist; the React queue decides what plays.
   const handleTrackChangeFromIframe = useCallback(
@@ -792,6 +918,11 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     cycleRepeatMode,
     toggleAutoplay,
     toggleShuffle,
+    // where it plays
+    output,
+    selectOutput,
+    /** The song the hidden local player should hold: frozen while a TV is playing. */
+    hiddenPlayerVideoId: output ? parkedVideoId : currentTrack?.videoId,
     // hidden player
     handlePlayerReady,
     handlePlayerStateChange,
