@@ -65,6 +65,9 @@ const RECORD_AFTER_SECONDS = 10;
 const TV_UPCOMING = 50;
 /** How often a TV that is only showing what plays here is told the position. */
 const TV_POSITION_EVERY_MS = 2000;
+/** A TV that connects becomes the speaker after this long, unless it turned out to be playing
+ *  music of its own that this computer joined instead (see joinTv). */
+const TV_AUTO_SWITCH_MS = 1200;
 const TV_STATES = new Set<YouTubePlaybackState>(["buffering", "cued", "ended", "paused", "playing", "unstarted"]);
 
 /** Songs as a TV sends them (src/tv/data.ts), as the queue holds them. */
@@ -129,6 +132,7 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
   const [parkedVideoId, setParkedVideoId] = useState<string | undefined>(undefined);
   /** Linked TVs connected right now: each one shows what is playing, wherever it plays. */
   const [onlineTvs, setOnlineTvs] = useState<string[]>([]);
+  const onlineTvsRef = useRef<string[]>([]);
   /** Tells the TVs that only show this computer's music where the song is (set further down). */
   const mirrorPositionRef = useRef<() => void>(() => {});
   const isScrubbingRef = useRef(false);
@@ -907,15 +911,33 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     let disposed = false;
     const unlisteners: Array<() => void> = [];
     const keep = (fn: () => void) => (disposed ? fn() : unlisteners.push(fn));
+    const timers: number[] = [];
+    let known: string[] = [];
     const refresh = () =>
       void getTvs().then((status) => {
         if (disposed) return;
         const online = status.linked.filter((tv) => tv.online).map((tv) => tv.id);
+        const arrived = online.filter((id) => !known.includes(id));
+        known = online;
+        onlineTvsRef.current = online;
         setOnlineTvs((was) => (was.join() === online.join() ? was : online));
         const playingOn = outputRef.current;
-        if (!playingOn || online.includes(playingOn)) return;
-        selectOutput(null, false);
-        showToast("The TV disconnected. Playback is back on this computer, paused.");
+        if (playingOn && !online.includes(playingOn)) {
+          selectOutput(null, false);
+          showToast("The TV disconnected. Playback is back on this computer, paused.");
+        }
+        // A TV that connects becomes the speaker: the song and position move to it. Moving
+        // back to this computer by hand holds until the TV next connects.
+        for (const id of arrived) {
+          const name = status.linked.find((tv) => tv.id === id)?.name ?? "the TV";
+          timers.push(
+            window.setTimeout(() => {
+              if (disposed || outputRef.current || !onlineTvsRef.current.includes(id)) return;
+              selectOutput(id);
+              showToast(`Playing on ${name}.`);
+            }, TV_AUTO_SWITCH_MS),
+          );
+        }
       }, () => {});
     refresh();
     void listen<{ id: string; message: unknown }>("tv-message", ({ payload }) => {
@@ -925,12 +947,14 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     void listen("tvs-changed", refresh).then(keep);
     return () => {
       disposed = true;
+      timers.forEach((timer) => window.clearTimeout(timer));
       unlisteners.forEach((fn) => fn());
     };
   }, [handleTvRequest, selectOutput, showToast]);
 
-  // Every connected TV shows what is playing and what's next, and whether the sound is
-  // coming out of it ("tv") or out of this computer ("desktop").
+  // Every connected TV shows what is playing and what's next, in the player style chosen
+  // here, and whether the sound is coming out of it ("tv") or out of this computer ("desktop").
+  const skin = usePlayerSkin();
   const upNext = session.upcoming;
   useEffect(() => {
     if (onlineTvs.length === 0) return;
@@ -943,9 +967,9 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     const track = currentTrack ? describe(currentTrack) : null;
     const upcoming = upNext.slice(0, TV_UPCOMING).map(describe);
     for (const id of onlineTvs) {
-      void sendToTv(id, { t: "now", on: id === output ? "tv" : "desktop", track, upcoming });
+      void sendToTv(id, { t: "now", on: id === output ? "tv" : "desktop", skin, track, upcoming });
     }
-  }, [onlineTvs, output, currentTrack, upNext]);
+  }, [onlineTvs, output, currentTrack, upNext, skin]);
 
   // A TV that isn't the speaker can't see the player: it is told where the song is.
   const currentVideoId = currentTrack?.videoId;
@@ -1034,7 +1058,6 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     onSeek: seekTo,
   });
 
-  const skin = usePlayerSkin();
   useTrayBridge({
     upcoming: session.upcoming,
     playbackModes,

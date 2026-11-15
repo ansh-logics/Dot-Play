@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Browse } from "./Browse"
 import { loadShelves, type Shelf, type Track } from "./data"
 import { PlaylistScreen } from "./PlaylistScreen"
-import { LinkScreen, NowPlayingScreen } from "./screens"
+import { NowPlayingTv } from "./NowPlayingTv"
+import { LinkScreen } from "./screens"
 import { useDpad } from "./useDpad"
 import { useLink } from "./useLink"
 import { useLocalQueue } from "./useLocalQueue"
@@ -57,7 +58,6 @@ export function TvApp() {
   // own queue only exists while no desktop is deciding.
   const following = ownQueue ? null : now
   const track: Track | null = local.track ?? now?.track ?? null
-  const next = ownQueue ? local.upcoming[0] : now?.upcoming[0]
   const hasTrack = track !== null
   const soundHere = ownQueue || following?.on === "tv"
   const remoteTime = useRemoteTime(receiver.remote)
@@ -186,7 +186,11 @@ export function TvApp() {
       if (soundHere) seek(target)
       else command({ cmd: "seek", seconds: target })
     }
-    return { toggle, setPlaying, skip, seekBy }
+    const seekTo = (seconds: number) => {
+      if (soundHere) seek(seconds)
+      else command({ cmd: "seek", seconds })
+    }
+    return { toggle, setPlaying, skip, seekBy, seekTo }
   }, [soundHere, ownQueue, command, play, pause, seek, nextInQueue, previousInQueue])
 
   // Media keys work on every screen. (On now playing the arrows move between its buttons.)
@@ -248,15 +252,16 @@ export function TvApp() {
       ) : showing === "link" ? (
         <LinkScreen name={link.name} code={link.code} />
       ) : showing === "now" && track ? (
-        <NowPlayingScreen
+        <NowPlayingTv
           track={track}
-          next={next}
           playback={playback}
+          skin={now?.skin}
           where={where}
           move={move}
           onToggle={controls.toggle}
           onPrevious={() => controls.skip("previous")}
           onNext={() => controls.skip("next")}
+          onSeek={controls.seekTo}
         />
       ) : showing === "playlist" && screen.name === "playlist" ? (
         <PlaylistScreen

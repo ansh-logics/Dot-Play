@@ -528,18 +528,85 @@ body {
   pointer-events: none;
 }
 
-/* Now playing's buttons: Left and Right move between them, OK presses. */
-.tv-controls {
-  display: flex;
-  align-items: center;
-  gap: 1.4vw;
-  margin-top: 3.5vh;
+/* Now playing: the desktop's full-screen player (NowPlaying.css), with what a TV needs. */
+.tv-np {
+  /* The names the desktop's styles expect. */
+  --font-body: system-ui, "Roboto", sans-serif;
+  --font-dot: "Doto", monospace;
+  --font-serif: "Young Serif", Georgia, serif;
+  --accent-red: #d71921;
+  --np-sheet-peek: 190px;
+  /* TVs crop the edges (overscan). */
+  --np-gutter: 6vw;
+  z-index: 1;
 }
 
-.tv-control-main {
-  min-width: 14vw;
+/* The desktop sizes the cover for a window; a TV's page is small (about 960 x 540). */
+.tv-np .np-stage {
+  --np-art: 38vh;
+  padding-top: 5vh;
+  will-change: auto;
 }
 
-.tv-control-move {
-  margin-left: auto;
+/* Three effects cost a TV chip most of its processor for little that shows at ten feet: the
+   film grain, the backdrop's slow drift, and the fade mask over the lyrics. */
+.tv-np .np-grain {
+  display: none;
+}
+
+.tv-np .np-backdrop-colour {
+  animation: none;
+}
+
+.tv-np .np-lyrics,
+.tv-np .np-lyrics.is-plain {
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+
+/* Blurring what is behind the card every frame is too much for a TV chip: darker glass instead. */
+.tv-np .np-card {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background-color: rgba(20, 20, 24, 0.5);
+  cursor: default;
+}
+
+.tv-np .np-card-peek {
+  padding-top: 18px;
+  padding-bottom: 5vh;
+}
+
+.tv-np-where {
+  justify-self: start;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--np-text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tv-np-move {
+  padding: 0 20px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  color: #fff;
+}
+
+/* Focus is the only cursor a TV has: make it unmistakable. */
+.tv-np button {
+  outline: none;
+}
+
+/* !important: each player style colours these buttons its own way. */
+.tv-np button:focus {
+  background: #fff !important;
+  color: #0b0b0d !important;
+  border-color: #fff !important;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.28);
+  transform: scale(1.08);
 }

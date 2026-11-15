@@ -19,6 +19,8 @@ export interface NowShowing {
   upcoming: TrackInfo[]
   /** Where the sound comes out: this TV, or the desktop itself. */
   on: "tv" | "desktop"
+  /** The player style chosen on the desktop. */
+  skin?: string
 }
 
 /** Where the desktop's own player is, for when this TV only shows it. */
@@ -32,7 +34,7 @@ export interface RemotePosition {
 }
 
 type Command =
-  | { t: "now"; track: TrackInfo | null; upcoming?: TrackInfo[]; on?: "tv" | "desktop" }
+  | { t: "now"; track: TrackInfo | null; upcoming?: TrackInfo[]; on?: "tv" | "desktop"; skin?: string }
   | { t: "pos"; videoId: string; state: PlayerState; time: number; duration: number }
   | { t: "load"; videoId: string; start?: number; autoplay?: boolean }
   | { t: "play" | "pause" | "stop" }
@@ -78,7 +80,7 @@ export function useReceiver(player: ReturnType<typeof usePlayer>, options: Recei
         case "now":
           setNow(
             payload.track?.videoId
-              ? { track: payload.track, upcoming: payload.upcoming ?? [], on: payload.on === "desktop" ? "desktop" : "tv" }
+              ? { track: payload.track, upcoming: payload.upcoming ?? [], on: payload.on === "desktop" ? "desktop" : "tv", skin: typeof payload.skin === "string" ? payload.skin : undefined }
               : null,
           )
           break
