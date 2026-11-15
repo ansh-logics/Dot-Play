@@ -14,12 +14,14 @@ function setup() {
   const states: string[] = []
   const errors: number[] = []
   const keys: string[] = []
+  let released = 0
   const tv = createTvPlayer("tv-1", {
     onStateChange: (state) => states.push(state),
     onError: (code) => errors.push(code),
     onKey: (key) => keys.push(key),
+    onReleased: () => released++,
   })
-  return { tv, states, errors, keys }
+  return { tv, states, errors, keys, released: () => released }
 }
 
 describe("a TV as the playback engine", () => {
@@ -89,5 +91,12 @@ describe("a TV as the playback engine", () => {
     tv.handleMessage({ t: "state", videoId: "abc", state: "dancing", time: 1, duration: 1 })
     expect(errors).toEqual([150])
     expect(keys).toEqual(["next"])
+  })
+
+  it("says so when the TV starts playing something of its own", () => {
+    const { tv, released } = setup()
+    tv.player.loadVideoById?.("abc")
+    tv.handleMessage({ t: "local" })
+    expect(released()).toBe(1)
   })
 })

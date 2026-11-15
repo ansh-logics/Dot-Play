@@ -13,6 +13,8 @@ interface TvPlayerCallbacks {
   onError: (code: number) => void
   /** Next / Previous pressed on the TV's remote. */
   onKey: (key: "next" | "previous") => void
+  /** Someone started other music on the TV itself: it is no longer playing for us. */
+  onReleased: () => void
 }
 
 /** Mirrors what the TV app sends (src/tv/useReceiver.ts). */
@@ -20,6 +22,7 @@ type TvMessage =
   | { t: "state"; videoId: string; state: YouTubePlaybackState; time: number; duration: number }
   | { t: "error"; videoId: string; code: number }
   | { t: "key"; key: "next" | "previous" }
+  | { t: "local" }
 
 const STATES = new Set<YouTubePlaybackState>(["buffering", "cued", "ended", "paused", "playing", "unstarted"])
 
@@ -92,6 +95,10 @@ export function createTvPlayer(tvId: string, callbacks: TvPlayerCallbacks): TvPl
   const handleMessage = (raw: unknown) => {
     const message = raw as TvMessage | null
     if (!message || typeof message !== "object") return
+    if (message.t === "local") {
+      callbacks.onReleased()
+      return
+    }
     if (message.t === "key") {
       if (message.key === "next" || message.key === "previous") callbacks.onKey(message.key)
       return

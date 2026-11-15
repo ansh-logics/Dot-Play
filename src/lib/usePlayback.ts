@@ -725,6 +725,11 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
           if (key === "next") void handleNextTrackRef.current();
           else engineRef.current.handlePreviousTrack();
         },
+        onReleased: () => {
+          if (outputRef.current !== id) return;
+          selectOutputRef.current(null, false);
+          showToastRef.current("The TV started playing something else. Playback is back on this computer, paused.");
+        },
       });
     }
     const player = id ? (tvPlayerRef.current?.player ?? null) : localPlayerRef.current;
@@ -743,6 +748,13 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
       setPlayerState("paused");
     }
   }, []);
+
+  const selectOutputRef = useRef(selectOutput);
+  const showToastRef = useRef(showToast);
+  useEffect(() => {
+    selectOutputRef.current = selectOutput;
+    showToastRef.current = showToast;
+  });
 
   // What the TV reports, and the TV going away.
   useEffect(() => {
