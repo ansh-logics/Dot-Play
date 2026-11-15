@@ -12,6 +12,7 @@ import { AccountCard } from "./components/sidebar/AccountCard";
 import { SettingsModal } from "./components/modals/SettingsModal";
 import { SupportModal } from "./components/modals/SupportModal";
 import { NowPlaying } from "./components/now-playing/NowPlaying";
+import { OutputContext } from "./components/now-playing/OutputPicker";
 import { HomeView } from "./views/HomeView";
 import { HistoryView } from "./views/HistoryView";
 import { LibraryView } from "./views/LibraryView";
@@ -176,6 +177,8 @@ function App() {
     onToggleLike: toggleLike,
   });
   const { currentTrack, selectTrack } = playback;
+  const { output, selectOutput } = playback;
+  const outputContext = useMemo(() => ({ output, selectOutput }), [output, selectOutput]);
 
   const currentVideoId = currentTrack?.videoId;
   const currentPlaylistId = currentTrack?.playlistId;
@@ -760,7 +763,7 @@ function App() {
       {/* Hidden audio engine */}
       <HiddenYouTubePlayer
         key="global-audio-engine"
-        videoId={currentVideoId}
+        videoId={playback.hiddenPlayerVideoId}
         initialSeconds={playback.initialPlaybackSeconds}
         autoPlayOnMount={playback.autoPlayOnMount}
         onReady={playback.handlePlayerReady}
@@ -784,6 +787,7 @@ function App() {
 
       {showSupportModal && <SupportModal onClose={() => setShowSupportModal(false)} />}
 
+      <OutputContext.Provider value={outputContext}>
       <WithCurrentTime clock={playback.clock}>
         {(seconds) => (
           <NowPlaying
@@ -822,6 +826,7 @@ function App() {
           />
         )}
       </WithCurrentTime>
+      </OutputContext.Provider>
 
       <MusicContextMenu
         target={contextTarget}
