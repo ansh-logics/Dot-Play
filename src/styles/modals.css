@@ -690,3 +690,9 @@
 .remote-relay-status.is-online .remote-relay-dot { background: #30d158; box-shadow: 0 0 8px rgba(48, 209, 88, 0.5); }
 .remote-relay-status.is-connecting .remote-relay-dot { background: #ffd60a; }
 .remote-relay-status.is-offline .remote-relay-dot { background: var(--accent-red); }
+
+/* Settings → TVs */
+.tv-nearby-row { flex-wrap: wrap; gap: 8px; }
+.tv-pair-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.tv-pair-form .new-playlist-input { width: 220px; margin: 0; }
+.tv-pair-form .tv-pair-code { width: 130px; font-variant-numeric: tabular-nums; letter-spacing: 0.12em; }

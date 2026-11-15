@@ -4,6 +4,7 @@ import type { FeedbackPrefs } from "../../lib/feedback";
 import { IDLE_CHOICES, IS_MAC, openImmersive, type IdleMinutes } from "../../lib/immersive";
 import { ImmersiveDisplays } from "./ImmersiveDisplays";
 import { PhoneRemoteSettings } from "./PhoneRemoteSettings";
+import { TvSettings } from "./TvSettings";
 
 interface SettingsModalProps {
   feedbackPrefs: FeedbackPrefs;
@@ -136,6 +137,8 @@ export function SettingsModal({
       </div>
 
       <PhoneRemoteSettings />
+
+      <TvSettings />
 
       <div className="settings-section">
         <span className="settings-section-title">DATA & STORAGE</span>
