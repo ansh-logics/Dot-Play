@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-tvs"
+description = "Enables the get_tvs command without any pre-configured scope."
+commands.allow = ["get_tvs"]
+
+[[permission]]
+identifier = "deny-get-tvs"
+description = "Denies the get_tvs command without any pre-configured scope."
+commands.deny = ["get_tvs"]

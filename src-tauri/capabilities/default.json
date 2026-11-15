@@ -60,6 +60,9 @@
     "allow-set-remote-enabled",
     "allow-answer-pair-request",
     "allow-forget-remote-device",
-    "allow-set-remote-state"
+    "allow-set-remote-state",
+    "allow-get-tvs",
+    "allow-pair-tv",
+    "allow-forget-tv"
   ]
 }

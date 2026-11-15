@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pair-tv"
+description = "Enables the pair_tv command without any pre-configured scope."
+commands.allow = ["pair_tv"]
+
+[[permission]]
+identifier = "deny-pair-tv"
+description = "Denies the pair_tv command without any pre-configured scope."
+commands.deny = ["pair_tv"]

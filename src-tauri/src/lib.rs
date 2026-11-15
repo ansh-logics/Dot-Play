@@ -7,6 +7,9 @@ mod import;
 #[cfg(desktop)]
 mod immersive;
 mod library;
+// The desktop uses the client half and the TV the host half; tests use both.
+#[allow(dead_code)]
+mod link;
 mod lyrics;
 #[cfg(desktop)]
 mod media_controls;
@@ -27,6 +30,8 @@ mod thumbnails;
 mod tray;
 #[cfg(mobile)]
 mod tv;
+#[cfg(desktop)]
+mod tvs;
 #[cfg(desktop)]
 mod updater;
 mod ytmusic;
@@ -94,6 +99,9 @@ const MAIN_WINDOW_PERMISSIONS: &[&str] = &[
     "allow-answer-pair-request",
     "allow-forget-remote-device",
     "allow-set-remote-state",
+    "allow-get-tvs",
+    "allow-pair-tv",
+    "allow-forget-tv",
 ];
 
 /// Mirrors capabilities/aux-windows.json (a test keeps them in sync).
@@ -137,6 +145,7 @@ pub fn run() {
         .manage(media_controls::LastNowPlaying::default())
         .manage(updater::PendingUpdate::default())
         .manage(remote::RemoteHub::default())
+        .manage(tvs::TvHub::default())
         .plugin(tauri_plugin_log::Builder::default().build())
         .plugin(tauri_plugin_updater::Builder::new().build());
 
@@ -202,6 +211,7 @@ pub fn run() {
 
             session::restore_saved_state(app);
             remote::init(app.handle());
+            tvs::init(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -253,7 +263,10 @@ pub fn run() {
             remote::set_remote_enabled,
             remote::answer_pair_request,
             remote::forget_remote_device,
-            remote::set_remote_state
+            remote::set_remote_state,
+            tvs::get_tvs,
+            tvs::pair_tv,
+            tvs::forget_tv
         ])
         // Closing the main window keeps the music playing; the menu bar icon controls it.
         // Quit from the tray menu or with Cmd+Q.
