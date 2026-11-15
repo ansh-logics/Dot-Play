@@ -101,6 +101,12 @@ fn tv_sign_out(app: AppHandle, link: State<'_, TvLink>) -> LinkState {
     link_state(&app, &link.0)
 }
 
+/// What the TV's player is doing, for every connected desktop.
+#[tauri::command]
+fn tv_report(link: State<'_, TvLink>, message: serde_json::Value) {
+    link.0.send(message);
+}
+
 fn start_link(app: &AppHandle) {
     let saved = load(app);
     // The Android side advertises this id on the network, so it decides it when it can.
@@ -167,6 +173,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             tv_link_state,
             tv_sign_out,
+            tv_report,
             search::search_tracks,
             session::get_auth_status,
             session::logout,

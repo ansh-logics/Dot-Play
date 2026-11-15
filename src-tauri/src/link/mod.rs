@@ -309,6 +309,54 @@ mod tests {
         assert!(matches!(client::resume(addr, &me.id, &link).await, Err(ConnectError::Unknown)), "the TV forgot the link");
     }
 
+    /// Plays a song on a real TV at low volume, the way the desktop app does, then unlinks:
+    /// `DOTPLAY_TV=192.168.1.20:47873 DOTPLAY_CODE=123456 cargo test plays_on_a_real_tv -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore = "needs a TV running dot(.)play and the code on its screen"]
+    async fn plays_on_a_real_tv_then_unlinks() {
+        let addr: SocketAddr = std::env::var("DOTPLAY_TV").expect("DOTPLAY_TV").parse().expect("ip:port");
+        let code = std::env::var("DOTPLAY_CODE").expect("DOTPLAY_CODE");
+        let video = std::env::var("DOTPLAY_VIDEO").unwrap_or("M7lc1UVf-VE".into());
+        let me = Peer { id: "play-test".into(), name: "Play test".into() };
+        let (_link, mut session) = client::pair(addr, &me, &code, None).await.expect("pairing");
+
+        // Waits for a state report matching `want`, printing what the TV says meanwhile.
+        async fn until(session: &mut client::Session, what: &str, want: impl Fn(&Value) -> bool) -> Value {
+            let wait = async {
+                loop {
+                    let message = session.recv().await.expect("the TV stayed connected");
+                    println!("tv: {message}");
+                    if message["t"] == "state" && want(&message) {
+                        return message;
+                    }
+                }
+            };
+            tokio::time::timeout(Duration::from_secs(40), wait).await.unwrap_or_else(|_| panic!("timed out waiting for: {what}"))
+        }
+
+        session.send(json!({ "t": "volume", "volume": 5 }));
+        session.send(json!({ "t": "now", "track": { "videoId": video, "title": "Link test song", "artist": "dot(.)play", "thumb": "" }, "upcoming": [] }));
+        session.send(json!({ "t": "load", "videoId": video, "start": 30, "autoplay": true }));
+        let playing = until(&mut session, "playing from 0:30", |m| m["state"] == "playing").await;
+        assert!(playing["time"].as_f64().unwrap() >= 29.0, "started where it was asked to");
+
+        session.send(json!({ "t": "pause" }));
+        until(&mut session, "paused", |m| m["state"] == "paused").await;
+
+        session.send(json!({ "t": "seek", "seconds": 120 }));
+        session.send(json!({ "t": "play" }));
+        until(&mut session, "playing from 2:00", |m| m["state"] == "playing" && m["time"].as_f64().unwrap_or(0.0) >= 119.0).await;
+        let later = until(&mut session, "a duration and a moving position", |m| {
+            m["duration"].as_f64().unwrap_or(0.0) > 0.0 && m["time"].as_f64().unwrap_or(0.0) >= 121.0
+        })
+        .await;
+        println!("position {} of {}", later["time"], later["duration"]);
+
+        session.send(json!({ "t": "stop" }));
+        session.send(json!({ "t": "unlink" }));
+        tokio::time::sleep(Duration::from_millis(800)).await;
+    }
+
     #[test]
     fn frames_only_open_in_order_and_in_their_own_direction() {
         let key = [3u8; 32];

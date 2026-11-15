@@ -60,7 +60,9 @@ export function usePlayer() {
         setSnapshot((s) => ({ ...s, state: "ready" }))
         for (const action of pendingRef.current.splice(0)) post(action)
       } else if (msg.type === "stateChange") {
-        setSnapshot((s) => ({ ...s, state: STATES[msg.stateCode ?? -1] ?? "unstarted", errorCode: null }))
+        const state = STATES[msg.stateCode ?? -1] ?? "unstarted"
+        // A song that ended is at its end, whatever the last progress tick said.
+        setSnapshot((s) => ({ ...s, state, errorCode: null, currentTime: state === "ended" && s.duration > 0 ? s.duration : s.currentTime }))
       } else if (msg.type === "timeUpdate") {
         setSnapshot((s) => ({
           ...s,
@@ -93,6 +95,7 @@ export function usePlayer() {
   const pause = useCallback(() => post({ action: "pause" }), [])
   const seek = useCallback((seconds: number) => post({ action: "seekTo", seconds: Math.max(0, seconds) }), [])
   const setVolume = useCallback((volume: number) => post({ action: "setVolume", volume }), [])
+  const setMuted = useCallback((muted: boolean) => post({ action: muted ? "mute" : "unMute" }), [])
 
-  return { iframeRef, src, snapshot, load, play, pause, seek, setVolume }
+  return { iframeRef, src, snapshot, load, play, pause, seek, setVolume, setMuted }
 }

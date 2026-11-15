@@ -9,6 +9,7 @@
     "core:event:default",
     "allow-tv-link-state",
     "allow-tv-sign-out",
+    "allow-tv-report",
     "allow-search-tracks",
     "allow-get-auth-status",
     "allow-logout",

@@ -1,18 +1,86 @@
 import { useEffect, useState } from "react"
 import { useLink } from "./useLink"
+import { usePlayer, type PlayerSnapshot } from "./usePlayer"
+import { useReceiver, type NowShowing } from "./useReceiver"
 
 /**
- * The TV's two screens so far: "link this TV" (the code a desktop app needs) and the home
- * screen once it is linked. Playback from the desktop comes next and lands on the home screen.
+ * The TV's screens: "link this TV" (the code a desktop app needs), the home screen once it is
+ * linked, and now playing while a desktop plays here. The player itself is always mounted.
  */
 export function TvApp() {
   const { link, profile, signOut } = useLink()
+  const player = usePlayer()
+  const { now } = useReceiver(player)
 
-  if (!link) return <main className="tv" />
-  return link.linked.length === 0 ? (
-    <LinkScreen name={link.name} code={link.code} />
-  ) : (
-    <HomeScreen link={link} profile={profile} onSignOut={signOut} />
+  return (
+    <>
+      {!link ? (
+        <main className="tv" />
+      ) : link.linked.length === 0 ? (
+        <LinkScreen name={link.name} code={link.code} />
+      ) : now?.track ? (
+        <NowPlayingScreen now={now} snapshot={player.snapshot} />
+      ) : (
+        <HomeScreen link={link} profile={profile} onSignOut={signOut} />
+      )}
+      {player.src && (
+        <iframe
+          ref={player.iframeRef}
+          className="tv-engine"
+          src={player.src}
+          title="Audio engine"
+          allow="autoplay; encrypted-media"
+          tabIndex={-1}
+        />
+      )}
+    </>
+  )
+}
+
+function clock(seconds: number) {
+  const s = Math.max(0, Math.floor(seconds))
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
+}
+
+function NowPlayingScreen({ now, snapshot }: { now: NowShowing; snapshot: PlayerSnapshot }) {
+  const track = now.track!
+  const progress = snapshot.duration > 0 ? Math.min(1, snapshot.currentTime / snapshot.duration) : 0
+  const status =
+    snapshot.state === "paused" || snapshot.state === "cued"
+      ? "Paused"
+      : snapshot.state === "playing"
+        ? null
+        : snapshot.state === "ended"
+          ? null
+          : "Loading…"
+
+  return (
+    <main className="tv tv-now">
+      <div className="tv-now-main">
+        {track.thumb ? <img className="tv-art" src={track.thumb} alt="" referrerPolicy="no-referrer" /> : <div className="tv-art" />}
+        <div className="tv-now-text">
+          <Wordmark />
+          <h2>{track.title}</h2>
+          <p className="tv-artist">{track.artist}</p>
+          {status && <p className="tv-now-status">{status}</p>}
+        </div>
+      </div>
+
+      <div className="tv-progress">
+        <span>{clock(snapshot.currentTime)}</span>
+        <div className="tv-progress-track">
+          <div className="tv-progress-fill" style={{ width: `${progress * 100}%` }} />
+        </div>
+        <span>{snapshot.duration > 0 ? clock(snapshot.duration) : "–:––"}</span>
+      </div>
+
+      {now.upcoming.length > 0 && (
+        <p className="tv-next">
+          <span>Next</span>
+          {now.upcoming[0].title} · {now.upcoming[0].artist}
+        </p>
+      )}
+    </main>
   )
 }
 
