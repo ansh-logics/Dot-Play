@@ -527,3 +527,19 @@ body {
   opacity: 0.01;
   pointer-events: none;
 }
+
+/* Now playing's buttons: Left and Right move between them, OK presses. */
+.tv-controls {
+  display: flex;
+  align-items: center;
+  gap: 1.4vw;
+  margin-top: 3.5vh;
+}
+
+.tv-control-main {
+  min-width: 14vw;
+}
+
+.tv-control-move {
+  margin-left: auto;
+}

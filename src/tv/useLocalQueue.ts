@@ -3,9 +3,12 @@ import { recordPlay, type Track } from "./data"
 import type { usePlayer } from "./usePlayer"
 
 /**
- * Playback started from the TV itself: a list of songs and where it is in it. (When a
- * desktop plays here instead, the desktop holds the queue and this stays empty.)
+ * The TV playing by itself, with no desktop connected: a list of songs and where it is in
+ * it. (While a desktop is connected, the desktop holds the queue and this stays empty.)
  */
+
+/** Songs after the current one that are handed to a desktop that connects. */
+const HANDED_ON = 50
 
 interface Queue {
   tracks: Track[]
@@ -74,6 +77,20 @@ export function useLocalQueue(player: ReturnType<typeof usePlayer>) {
   /** A desktop took over the player. */
   const clear = useCallback(() => set(null), [set])
 
+  /** Carries on a queue a desktop was playing here before it went away: the first song is
+   *  already in the player, so nothing is loaded. */
+  const adopt = useCallback(
+    (tracks: Track[]) => {
+      if (!tracks[0]) return
+      startedRef.current = true
+      skipsRef.current = 0
+      // The desktop counted this play.
+      recordedRef.current = tracks[0].videoId
+      set({ tracks, index: 0 })
+    },
+    [set],
+  )
+
   const skip = useCallback(() => {
     if (skipsRef.current >= MAX_SKIPS_IN_A_ROW) return
     skipsRef.current += 1
@@ -114,9 +131,12 @@ export function useLocalQueue(player: ReturnType<typeof usePlayer>) {
   return {
     track: queue ? queue.tracks[queue.index] : null,
     upcoming: queue ? queue.tracks.slice(queue.index + 1, queue.index + 2) : [],
+    /** The current song and what follows, for a desktop to carry on with. */
+    handOn: queue ? queue.tracks.slice(queue.index, queue.index + 1 + HANDED_ON) : [],
     play,
     next,
     previous,
     clear,
+    adopt,
   }
 }

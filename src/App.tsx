@@ -766,6 +766,7 @@ function App() {
         videoId={playback.hiddenPlayerVideoId}
         initialSeconds={playback.initialPlaybackSeconds}
         autoPlayOnMount={playback.autoPlayOnMount}
+        suspended={playback.output !== null}
         onReady={playback.handlePlayerReady}
         onStateChange={playback.handlePlayerStateChange}
         onError={playback.handlePlayerError}

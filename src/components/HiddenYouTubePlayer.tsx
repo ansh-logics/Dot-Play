@@ -111,6 +111,8 @@ export interface HiddenYouTubePlayerProps {
   videoId?: string
   initialSeconds?: number
   autoPlayOnMount?: boolean
+  /** Something else is the speaker (a linked TV): this player holds its song and stays silent. */
+  suspended?: boolean
 }
 
 function getPlaybackState(stateCode: number): YouTubePlaybackState {
@@ -130,6 +132,7 @@ export function HiddenYouTubePlayer({
   videoId,
   initialSeconds = 0,
   autoPlayOnMount = true,
+  suspended = false,
 }: HiddenYouTubePlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
@@ -154,6 +157,8 @@ export function HiddenYouTubePlayer({
   const bridgeOriginRef = useRef<string | null>(null)
 
   const callbacksRef = useRef({ onError, onReady, onStateChange, onTrackChange })
+  const suspendedRef = useRef(suspended)
+  suspendedRef.current = suspended
   useEffect(() => {
     callbacksRef.current = { onError, onReady, onStateChange, onTrackChange }
   })
@@ -341,7 +346,7 @@ export function HiddenYouTubePlayer({
     const cleanId = videoId?.trim()
     if (!cleanId) return
 
-    if (cleanId === currentVideoIdRef.current) return
+    if (suspendedRef.current || cleanId === currentVideoIdRef.current) return
     currentVideoIdRef.current = cleanId
 
     if (!isFirstMountPlaybackHandled.current) return
@@ -406,10 +411,10 @@ export function HiddenYouTubePlayer({
                 // effect below doesn't load the same song a second time when the prop catches up.
                 const tracked = new Proxy(instance, {
                   get(target, prop) {
-                    if (prop === "loadVideoById") {
+                    if (prop === "loadVideoById" || prop === "cueVideoById") {
                       return (opts: string | { videoId: string; startSeconds?: number }) => {
                         currentVideoIdRef.current = typeof opts === "string" ? opts : opts.videoId
-                        target.loadVideoById?.(opts)
+                        target[prop]?.(opts)
                       }
                     }
                     const value = Reflect.get(target, prop)
@@ -453,7 +458,7 @@ export function HiddenYouTubePlayer({
     if (!playerRef.current) {
       initDirectPlayer(cleanId)
     } else {
-      if (cleanId === currentVideoIdRef.current) return
+      if (suspendedRef.current || cleanId === currentVideoIdRef.current) return
       currentVideoIdRef.current = cleanId
       playerRef.current.loadVideoById?.({ videoId: cleanId, startSeconds: 0 })
       playerRef.current.playVideo?.()
@@ -461,12 +466,13 @@ export function HiddenYouTubePlayer({
   }, [useFallbackDirect, videoId, initDirectPlayer])
 
   // Watchdog: ensure track doesn't freeze in unstarted/paused state when auto-advancing.
-  // Once the song has started, any pause is the listener's, so it is left alone.
+  // Once the song has started, any pause is the listener's, so it is left alone. Never while
+  // suspended: the queue moving on then is the TV's music, and this player must stay silent.
   useEffect(() => {
     startedSinceLoadRef.current = false
-    if (!videoId || !autoPlayOnMount || !isFirstMountPlaybackHandled.current) return
+    if (!videoId || !autoPlayOnMount || !isFirstMountPlaybackHandled.current || suspendedRef.current) return
     const timer = setTimeout(() => {
-      if (startedSinceLoadRef.current) return
+      if (startedSinceLoadRef.current || suspendedRef.current) return
       const instance = playerRef.current
       if (instance && typeof instance.playVideo === "function") {
         instance.playVideo()

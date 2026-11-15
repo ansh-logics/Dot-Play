@@ -44,19 +44,26 @@ export function clock(seconds: number) {
 interface NowPlayingProps {
   track: Track
   next: Track | undefined
-  snapshot: PlayerSnapshot
-  /** The computer playing here, when it isn't the TV's own choice. */
-  from: string | null
+  /** The song's state and position, wherever it is playing. */
+  playback: Pick<PlayerSnapshot, "state" | "currentTime" | "duration">
+  /** "Playing on this TV" / "Playing on <computer>"; null when the TV plays by itself. */
+  where: string | null
+  /** Moves the sound between this TV and the computer; null when there is no computer. */
+  move: { label: string; run: () => void } | null
+  onToggle: () => void
+  onPrevious: () => void
+  onNext: () => void
 }
 
-export function NowPlayingScreen({ track, next, snapshot, from }: NowPlayingProps) {
-  const progress = snapshot.duration > 0 ? Math.min(1, snapshot.currentTime / snapshot.duration) : 0
+export function NowPlayingScreen({ track, next, playback, where, move, onToggle, onPrevious, onNext }: NowPlayingProps) {
+  const progress = playback.duration > 0 ? Math.min(1, playback.currentTime / playback.duration) : 0
+  const playing = playback.state === "playing" || playback.state === "buffering"
   const status =
-    snapshot.state === "paused" || snapshot.state === "cued"
+    playback.state === "paused" || playback.state === "cued"
       ? "Paused"
-      : snapshot.state === "playing" || snapshot.state === "ended"
+      : playback.state === "playing" || playback.state === "ended"
         ? null
-        : snapshot.state === "error"
+        : playback.state === "error"
           ? "This song can't be played here"
           : "Loading…"
 
@@ -69,16 +76,33 @@ export function NowPlayingScreen({ track, next, snapshot, from }: NowPlayingProp
           <h2>{track.title}</h2>
           <p className="tv-artist">{track.artist}</p>
           {status && <p className="tv-now-status">{status}</p>}
-          {from && <p className="tv-now-from">Playing from {from}</p>}
+          {where && <p className="tv-now-from">{where}</p>}
         </div>
       </div>
 
       <div className="tv-progress">
-        <span>{clock(snapshot.currentTime)}</span>
+        <span>{clock(playback.currentTime)}</span>
         <div className="tv-progress-track">
           <div className="tv-progress-fill" style={{ width: `${progress * 100}%` }} />
         </div>
-        <span>{snapshot.duration > 0 ? clock(snapshot.duration) : "–:––"}</span>
+        <span>{playback.duration > 0 ? clock(playback.duration) : "–:––"}</span>
+      </div>
+
+      <div className="tv-controls" data-nav-row>
+        <button type="button" className="tv-button" data-nav-id="previous" onClick={onPrevious}>
+          Previous
+        </button>
+        <button type="button" className="tv-button tv-control-main" data-nav-id="toggle" data-nav-default="" onClick={onToggle}>
+          {playing ? "Pause" : "Play"}
+        </button>
+        <button type="button" className="tv-button" data-nav-id="next" onClick={onNext}>
+          Next
+        </button>
+        {move && (
+          <button type="button" className="tv-button tv-control-move" data-nav-id="move" onClick={move.run}>
+            {move.label}
+          </button>
+        )}
       </div>
 
       <p className="tv-next">
@@ -88,7 +112,7 @@ export function NowPlayingScreen({ track, next, snapshot, from }: NowPlayingProp
             {next.title} · {next.artist}
           </>
         ) : (
-          <span>OK pause · ◀ ▶ seek · ▲ ▼ next / previous · Back to browse</span>
+          <span>Back to browse</span>
         )}
       </p>
     </main>

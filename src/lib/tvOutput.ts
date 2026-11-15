@@ -32,13 +32,21 @@ export interface TvPlayer {
   handleMessage: (message: unknown) => void
 }
 
-export function createTvPlayer(tvId: string, callbacks: TvPlayerCallbacks): TvPlayer {
-  let videoId = ""
+/** What a TV is already playing, when this computer joins it instead of starting it. */
+export interface TvPlayerStart {
+  videoId: string
+  time: number
+  duration: number
+  playing: boolean
+}
+
+export function createTvPlayer(tvId: string, callbacks: TvPlayerCallbacks, start?: TvPlayerStart): TvPlayer {
+  let videoId = start?.videoId ?? ""
   // The TV reports its position about once a second; in between, the clock runs here.
-  let time = 0
+  let time = start?.time ?? 0
   let at = performance.now()
-  let playing = false
-  let duration = 0
+  let playing = start?.playing ?? false
+  let duration = start?.duration ?? 0
   let volume = 100
   let muted = false
   let lastState: YouTubePlaybackState | null = null

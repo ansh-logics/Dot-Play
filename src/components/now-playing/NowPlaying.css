@@ -1455,6 +1455,9 @@
 /* "Play on": this computer or a linked TV. */
 .np-output { position: relative; }
 .np-output .np-round-btn.is-on { background: rgba(255, 255, 255, 0.2); }
+/* While a TV is the speaker the button says which one. */
+.np-output .np-round-btn.is-on { width: auto; max-width: 220px; gap: 8px; padding: 0 16px 0 14px; }
+.np-output-on { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .np-output-menu {
   position: absolute;
   right: 0;

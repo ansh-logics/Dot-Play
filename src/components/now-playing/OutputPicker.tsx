@@ -59,7 +59,7 @@ export function OutputPicker() {
     <div className="np-output" ref={rootRef}>
       <button
         type="button"
-        className={`np-pill np-round-btn ${output ? "is-on" : ""}`}
+        className={`np-pill np-round-btn ${playingOn ? "is-on" : ""}`}
         onClick={() => setOpen((was) => !was)}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -67,6 +67,7 @@ export function OutputPicker() {
         title={playingOn ? `Playing on ${playingOn.name}` : "Play on a TV"}
       >
         <MonitorSpeaker size={19} />
+        {playingOn && <span className="np-output-on">{playingOn.name}</span>}
       </button>
       {open && (
         <div className="np-output-menu" role="menu" aria-label="Play on">

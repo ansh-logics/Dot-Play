@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Browse } from "./Browse"
 import { loadShelves, type Shelf, type Track } from "./data"
 import { PlaylistScreen } from "./PlaylistScreen"
@@ -7,13 +7,14 @@ import { useDpad } from "./useDpad"
 import { useLink } from "./useLink"
 import { useLocalQueue } from "./useLocalQueue"
 import { usePlayer } from "./usePlayer"
-import { useReceiver } from "./useReceiver"
+import { useReceiver, useRemoteTime } from "./useReceiver"
 
 /**
- * The TV app. Until a desktop links it, it shows the code to link with. After that it is two
- * things at once: a receiver a desktop can play on, and a player in its own right (browse
- * your playlists and YouTube Music's shelves with the remote). Whoever started the music
- * last holds the queue: the desktop, or the TV.
+ * The TV app. Until a desktop links it, it shows the code to link with. After that it is
+ * one half of a pair, like any two devices on one music account: while a desktop is
+ * connected there is one queue (the desktop's), both show it and both control it, and the
+ * sound comes out of one of them. With no desktop connected the TV plays by itself, and
+ * hands what it is playing to the next desktop that connects.
  *
  * Screens stack through the page history, so the remote's Back button walks back.
  */
@@ -26,8 +27,10 @@ export function TvApp() {
   const { link, profile, signOut } = useLink()
   const player = usePlayer()
   const local = useLocalQueue(player)
-  const { play: playQueue, next: nextInQueue, previous: previousInQueue } = local
-  const receiver = useReceiver(player, local.clear)
+  const { play: playQueue, next: nextInQueue, previous: previousInQueue, clear: clearQueue, adopt: adoptQueue } = local
+  const ownQueue = local.track !== null
+  const receiver = useReceiver(player, { ownQueue, onTakeover: clearQueue })
+  const { now, command, take, give, pick, offer, forget } = receiver
   const { snapshot, play, pause, seek } = player
   const snapshotRef = useRef(snapshot)
   snapshotRef.current = snapshot
@@ -50,31 +53,90 @@ export function TvApp() {
     setScreen(next)
   }, [])
 
-  // What is playing, and who decides what comes next.
-  const fromDesktop = receiver.now?.track ?? null
-  const track: Track | null = fromDesktop ?? local.track
-  const next = fromDesktop ? receiver.now?.upcoming[0] : local.upcoming[0]
+  // What is playing, who decides what comes next, and where the sound comes out. The TV's
+  // own queue only exists while no desktop is deciding.
+  const following = ownQueue ? null : now
+  const track: Track | null = local.track ?? now?.track ?? null
+  const next = ownQueue ? local.upcoming[0] : now?.upcoming[0]
   const hasTrack = track !== null
+  const soundHere = ownQueue || following?.on === "tv"
+  const remoteTime = useRemoteTime(receiver.remote)
+  /** The song's state and position: this TV's player, or the desktop's when it is the speaker. */
+  const playback = soundHere
+    ? { state: snapshot.state, currentTime: snapshot.currentTime, duration: snapshot.duration }
+    : receiver.remote && receiver.remote.videoId === track?.videoId
+      ? { state: receiver.remote.state, currentTime: remoteTime, duration: receiver.remote.duration }
+      : { state: "paused" as const, currentTime: 0, duration: 0 }
+  const playbackRef = useRef(playback)
+  playbackRef.current = playback
 
-  // A desktop starting to play here brings up now playing; music stopping leaves it.
-  const desktopPlaying = fromDesktop !== null
+  const anyDesktop = (link?.online.length ?? 0) > 0
+  const desktopName = link?.linked.find((desktop) => link.online.includes(desktop.id))?.name ?? "your computer"
+
+  // Desktops coming and going. When the last one leaves while this TV is its speaker, the TV
+  // carries on alone with the rest of that queue; music that was playing on the desktop left
+  // with it. A connected desktop is offered what the TV is playing by itself, at every song,
+  // so it joins in as soon as it isn't playing something of its own.
+  const handOnRef = useRef(local.handOn)
+  handOnRef.current = local.handOn
+  const nowRef = useRef(now)
+  nowRef.current = now
+  const linkKnown = link !== null
   useEffect(() => {
-    if (desktopPlaying) open({ name: "now" })
-  }, [desktopPlaying, open])
+    if (!linkKnown || anyDesktop) return
+    const was = nowRef.current
+    if (was?.on === "tv" && snapshotRef.current.videoId === was.track.videoId) adoptQueue([was.track, ...was.upcoming])
+    forget()
+  }, [linkKnown, anyDesktop, adoptQueue, forget])
+  const playingAlone = ownQueue && snapshot.state === "playing"
+  useEffect(() => {
+    if (anyDesktop && playingAlone) offer(handOnRef.current)
+  }, [anyDesktop, playingAlone, offer])
+
+  // The desktop says this TV is its speaker while the TV still holds a queue of its own:
+  // either the desktop just picked that queue up (same song: let go of it, the music plays
+  // on), or the two disagree and the desktop is told again what is really playing here.
+  const nowOn = now?.on
+  const nowVideoId = now?.track.videoId
+  const ownVideoId = local.track?.videoId
+  useEffect(() => {
+    if (!ownVideoId || nowOn !== "tv") return
+    if (nowVideoId === ownVideoId) clearQueue()
+    else offer(handOnRef.current)
+  }, [nowOn, nowVideoId, ownVideoId, clearQueue, offer])
+
+  // The sound moving to this TV brings up now playing, and so does the song asked for from
+  // this TV's own shelves; music stopping leaves it.
+  const pickedRef = useRef<string | null>(null)
+  const speakerForDesktop = following?.on === "tv"
+  useEffect(() => {
+    if (speakerForDesktop) open({ name: "now" })
+  }, [speakerForDesktop, open])
+  useEffect(() => {
+    if (nowVideoId && pickedRef.current === nowVideoId) {
+      pickedRef.current = null
+      open({ name: "now" })
+    }
+  }, [nowVideoId, open])
   useEffect(() => {
     if (!hasTrack && screen.name === "now") history.back()
   }, [hasTrack, screen.name])
 
-  const { release } = receiver
   const playHere = useCallback(
     (tracks: Track[], index: number) => {
-      if (!tracks[index]) return
-      // The TV's own choice: any desktop playing here is told it no longer is.
-      release()
+      const chosen = tracks[index]
+      if (!chosen) return
+      if (anyDesktop) {
+        // One queue: the desktop's. It plays the song on this TV.
+        pickedRef.current = chosen.videoId
+        pick(tracks.slice(index, index + 100), 0)
+        if (nowRef.current?.track.videoId === chosen.videoId) open({ name: "now" })
+        return
+      }
       playQueue(tracks, index)
       open({ name: "now" })
     },
-    [release, playQueue, open],
+    [anyDesktop, pick, playQueue, open],
   )
 
   // Home's shelves, kept while other screens are open.
@@ -101,64 +163,58 @@ export function TvApp() {
     }
   }, [linked, signedIn, attempt])
 
-  // The remote. Media keys work everywhere; on now playing the arrows and OK drive the
-  // song (elsewhere they move between buttons, see useDpad).
-  const { sendKey } = receiver
-  useEffect(() => {
-    if (!hasTrack) return
+  // What the remote does to the music. When this TV is the speaker, play, pause and seek act
+  // on its own player (the desktop hears about it); everything else is the queue's business.
+  const controls = useMemo(() => {
+    const toggle = () => {
+      if (!soundHere) command({ cmd: "toggle" })
+      else if (snapshotRef.current.state === "playing") pause()
+      else play()
+    }
+    const setPlaying = (playing: boolean) => {
+      if (!soundHere) command({ cmd: playing ? "play" : "pause" })
+      else if (playing) play()
+      else pause()
+    }
     const skip = (key: "next" | "previous") => {
-      if (desktopPlaying) sendKey(key)
+      if (!ownQueue) command({ cmd: key })
       else if (key === "next") nextInQueue()
       else previousInQueue()
     }
+    const seekBy = (delta: number) => {
+      const target = Math.max(0, playbackRef.current.currentTime + delta)
+      if (soundHere) seek(target)
+      else command({ cmd: "seek", seconds: target })
+    }
+    return { toggle, setPlaying, skip, seekBy }
+  }, [soundHere, ownQueue, command, play, pause, seek, nextInQueue, previousInQueue])
+
+  // Media keys work on every screen. (On now playing the arrows move between its buttons.)
+  useEffect(() => {
+    if (!hasTrack) return
     function onKey(event: KeyboardEvent) {
-      const s = snapshotRef.current
-      const onNow = screenRef.current.name === "now"
       switch (event.key) {
         case "MediaPlayPause":
-          if (s.state === "playing") pause()
-          else play()
+          controls.toggle()
           break
         case "MediaPlay":
-          play()
+          controls.setPlaying(true)
           break
         case "MediaPause":
         case "MediaStop":
-          pause()
+          controls.setPlaying(false)
           break
         case "MediaTrackNext":
-          skip("next")
+          controls.skip("next")
           break
         case "MediaTrackPrevious":
-          skip("previous")
+          controls.skip("previous")
           break
         case "MediaFastForward":
-          seek(s.currentTime + 10)
+          controls.seekBy(10)
           break
         case "MediaRewind":
-          seek(s.currentTime - 10)
-          break
-        case "Enter":
-        case " ":
-          if (!onNow) return
-          if (s.state === "playing") pause()
-          else play()
-          break
-        case "ArrowRight":
-          if (!onNow) return
-          seek(s.currentTime + 10)
-          break
-        case "ArrowLeft":
-          if (!onNow) return
-          seek(s.currentTime - 10)
-          break
-        case "ArrowUp":
-          if (!onNow) return
-          skip("next")
-          break
-        case "ArrowDown":
-          if (!onNow) return
-          skip("previous")
+          controls.seekBy(-10)
           break
         default:
           return
@@ -167,15 +223,23 @@ export function TvApp() {
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [hasTrack, desktopPlaying, play, pause, seek, sendKey, nextInQueue, previousInQueue])
+  }, [hasTrack, controls])
 
   const showing = !link ? "blank" : !linked ? "link" : screen.name === "now" && track ? "now" : screen.name === "playlist" ? "playlist" : "browse"
   const [playlistReady, setPlaylistReady] = useState(0)
   const navKey = showing === "playlist" && screen.name === "playlist" ? `playlist:${screen.id}` : showing
-  useDpad(navKey, showing === "browse" ? shelves !== null || shelvesError : showing === "playlist" ? playlistReady > 0 : false)
+  useDpad(
+    navKey,
+    showing === "browse" ? shelves !== null || shelvesError : showing === "playlist" ? playlistReady > 0 : showing === "now",
+  )
 
-  const fromName =
-    fromDesktop && link ? (link.linked.find((desktop) => link.online.includes(desktop.id))?.name ?? "your computer") : null
+  // Where the sound is, in words, and the button that moves it (only with a desktop to move it to or from).
+  const where = !following ? null : following.on === "tv" ? "Playing on this TV" : `Playing on ${desktopName}`
+  const move = !following
+    ? null
+    : following.on === "tv"
+      ? { label: `Play on ${desktopName}`, run: give }
+      : { label: "Play on this TV", run: take }
 
   return (
     <>
@@ -184,7 +248,16 @@ export function TvApp() {
       ) : showing === "link" ? (
         <LinkScreen name={link.name} code={link.code} />
       ) : showing === "now" && track ? (
-        <NowPlayingScreen track={track} next={next} snapshot={snapshot} from={fromName} />
+        <NowPlayingScreen
+          track={track}
+          next={next}
+          playback={playback}
+          where={where}
+          move={move}
+          onToggle={controls.toggle}
+          onPrevious={() => controls.skip("previous")}
+          onNext={() => controls.skip("next")}
+        />
       ) : showing === "playlist" && screen.name === "playlist" ? (
         <PlaylistScreen
           key={screen.id}
@@ -205,6 +278,7 @@ export function TvApp() {
             setAttempt((n) => n + 1)
           }}
           playing={track}
+          where={where}
           onOpenNow={() => open({ name: "now" })}
           onOpenPlaylist={(item) => {
             if (!item.playlistId) return

@@ -11,6 +11,8 @@ interface BrowseProps {
   onRetry: () => void
   /** What is playing, for the way back to it. */
   playing: Track | null
+  /** Where it is playing ("Playing on this TV" / "Playing on <computer>"), when a computer is connected. */
+  where: string | null
   onOpenNow: () => void
   onOpenPlaylist: (item: ShelfItem) => void
   onPlay: (tracks: Track[], index: number) => void
@@ -44,7 +46,7 @@ export function Browse(props: BrowseProps) {
         {props.playing && (
           <div className="tv-row" data-nav-row>
             <button type="button" className="tv-now-pill" data-nav-id="now" onClick={props.onOpenNow}>
-              <span className="tv-now-pill-label">Now playing</span>
+              <span className="tv-now-pill-label">{props.where ?? "Now playing"}</span>
               {props.playing.title} · {props.playing.artist}
             </button>
           </div>

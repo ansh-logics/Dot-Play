@@ -38,7 +38,7 @@ import { listen } from "@tauri-apps/api/event";
 import { cleanDisplayTitle } from "./displayText";
 import { optimizeThumbnailUrl } from "./imagePipeline";
 import { isTauriEnvironment } from "./search";
-import { createTvPlayer, type TvPlayer } from "./tvOutput";
+import { createTvPlayer, type TvPlayer, type TvPlayerStart } from "./tvOutput";
 import { getTvs, sendToTv } from "./tvs";
 
 const PLAYER_ERROR_MESSAGES: Record<number, string> = {
@@ -59,6 +59,29 @@ const MAX_SKIPS_IN_A_ROW = 5;
 
 /** Seconds of playback before a song counts as played in YouTube Music history. */
 const RECORD_AFTER_SECONDS = 10;
+
+/** Songs of the upcoming queue a connected TV is told about: what it shows as next, and what
+ *  it carries on with by itself if this computer goes away. */
+const TV_UPCOMING = 50;
+/** How often a TV that is only showing what plays here is told the position. */
+const TV_POSITION_EVERY_MS = 2000;
+const TV_STATES = new Set<YouTubePlaybackState>(["buffering", "cued", "ended", "paused", "playing", "unstarted"]);
+
+/** Songs as a TV sends them (src/tv/data.ts), as the queue holds them. */
+function tracksFromTv(raw: unknown): SearchResult[] {
+  if (!Array.isArray(raw)) return [];
+  const text = (value: unknown) => (typeof value === "string" ? value : "");
+  return raw
+    .slice(0, 200)
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+    .map((item) => ({
+      videoId: text(item.videoId).trim(),
+      title: text(item.title),
+      artist: text(item.artist),
+      thumbnailUrl: text(item.thumb),
+    }))
+    .filter((track) => track.videoId);
+}
 
 interface PlaybackOptions {
   showToast: (message: string) => void;
@@ -104,6 +127,10 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
   const outputRef = useRef<string | null>(null);
   /** What the local player last held: it must not follow the queue while a TV is playing. */
   const [parkedVideoId, setParkedVideoId] = useState<string | undefined>(undefined);
+  /** Linked TVs connected right now: each one shows what is playing, wherever it plays. */
+  const [onlineTvs, setOnlineTvs] = useState<string[]>([]);
+  /** Tells the TVs that only show this computer's music where the song is (set further down). */
+  const mirrorPositionRef = useRef<() => void>(() => {});
   const isScrubbingRef = useRef(false);
   // Same value as the clock, under the name the callbacks below already use.
   const currentTimeRef = useMemo(() => ({ get current() { return clock.get(); } }), [clock]);
@@ -351,6 +378,7 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
       playerRef.current.seekTo(target, true);
       setCurrentTime(target);
       persistCurrentPosition(target);
+      mirrorPositionRef.current();
     },
     [persistCurrentPosition],
   );
@@ -366,6 +394,7 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
       playerRef.current.seekTo(target, true);
       setCurrentTime(target);
       persistCurrentPosition(target);
+      mirrorPositionRef.current();
     },
     [isPlayerReady, persistCurrentPosition],
   );
@@ -401,6 +430,7 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
       isScrubbingRef.current = false;
       playerRef.current?.seekTo(seconds, true);
       persistCurrentPosition(seconds);
+      mirrorPositionRef.current();
     },
     [persistCurrentPosition],
   );
@@ -675,10 +705,12 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     [showToast],
   );
 
-  // The local player's own events are noise while a TV is the one playing.
+  // The local player's own events are noise while a TV is the one playing, and it must not
+  // make a sound: one speaker at a time.
   const handlePlayerStateChange = useCallback(
     (state: YouTubePlaybackState) => {
       if (!outputRef.current) engineStateChange(state);
+      else if (state === "playing") localPlayerRef.current?.pauseVideo();
     },
     [engineStateChange],
   );
@@ -695,30 +727,18 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     engineRef.current = { engineStateChange, engineError, handlePreviousTrack };
   });
 
-  /**
-   * Moves playback to a linked TV (by id) or back to this computer (null). The song and
-   * position carry over. `resume: false` lands paused: used when a TV drops out, so the
-   * computer doesn't suddenly start playing out loud.
-   */
-  const selectOutput = useCallback((id: string | null, resume = true) => {
+  /** Makes `id` the speaker: stops whatever was, and points the queue's player at the TV. */
+  const switchToTv = useCallback((id: string, start?: TvPlayerStart) => {
     const previous = outputRef.current;
-    if (id === previous) return;
-    const track = sessionRef.current.currentTrack;
-    const at = currentTimeRef.current;
-    const wasPlaying = resume && (playerStateRef.current === "playing" || playerStateRef.current === "buffering");
-
     if (previous) {
-      void sendToTv(previous, { t: "stop" });
-      tvPlayerRef.current = null;
+      if (previous !== id) void sendToTv(previous, { t: "stop" });
     } else {
       localPlayerRef.current?.pauseVideo();
-      setParkedVideoId(track?.videoId);
+      setParkedVideoId(sessionRef.current.currentTrack?.videoId);
     }
-
-    outputRef.current = id;
-    setOutput(id);
-    if (id) {
-      tvPlayerRef.current = createTvPlayer(id, {
+    const tv = createTvPlayer(
+      id,
+      {
         onStateChange: (state) => engineRef.current.engineStateChange(state),
         onError: (code) => engineRef.current.engineError(code),
         onKey: (key) => {
@@ -730,73 +750,227 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
           selectOutputRef.current(null, false);
           showToastRef.current("The TV started playing something else. Playback is back on this computer, paused.");
         },
-      });
-    }
-    const player = id ? (tvPlayerRef.current?.player ?? null) : localPlayerRef.current;
-    playerRef.current = player;
-    if (!player) return;
-
-    player.setVolume?.(volumeRef.current);
-    if (isMutedRef.current) player.mute?.();
-    else player.unMute?.();
-    if (!track?.videoId) return;
-    if (wasPlaying) {
-      player.loadVideoById?.({ videoId: track.videoId, startSeconds: at });
-      setPlayerState("buffering");
-    } else {
-      player.cueVideoById?.({ videoId: track.videoId, startSeconds: at });
-      setPlayerState("paused");
-    }
+      },
+      start,
+    );
+    tvPlayerRef.current = tv;
+    outputRef.current = id;
+    setOutput(id);
+    playerRef.current = tv.player;
+    tv.player.setVolume?.(volumeRef.current);
+    if (isMutedRef.current) tv.player.mute?.();
+    else tv.player.unMute?.();
+    return tv.player;
   }, []);
+
+  /**
+   * Moves playback to a linked TV (by id) or back to this computer (null). The song and
+   * position carry over. `resume: false` lands paused: used when a TV drops out, so the
+   * computer doesn't suddenly start playing out loud. `carry: false` moves without loading
+   * the current song, for when another one is about to start there.
+   */
+  const selectOutput = useCallback(
+    (id: string | null, resume = true, carry = true) => {
+      const previous = outputRef.current;
+      if (id === previous) return;
+      const track = sessionRef.current.currentTrack;
+      const at = currentTimeRef.current;
+      const wasPlaying = resume && (playerStateRef.current === "playing" || playerStateRef.current === "buffering");
+
+      let player: YouTubePlayerInstance | null;
+      if (id) {
+        player = switchToTv(id);
+      } else {
+        if (previous) void sendToTv(previous, { t: "stop" });
+        tvPlayerRef.current = null;
+        outputRef.current = null;
+        setOutput(null);
+        player = localPlayerRef.current;
+        playerRef.current = player;
+        // Landing paused must stay paused: the local player's "did it start?" check is for
+        // songs the queue starts, not for one handed back.
+        if (!wasPlaying) setAutoPlayOnMount(false);
+        if (player) {
+          player.setVolume?.(volumeRef.current);
+          if (isMutedRef.current) player.mute?.();
+          else player.unMute?.();
+        }
+      }
+      if (!player || !carry || !track?.videoId) return;
+      if (wasPlaying) {
+        player.loadVideoById?.({ videoId: track.videoId, startSeconds: at });
+        setPlayerState("buffering");
+      } else {
+        player.cueVideoById?.({ videoId: track.videoId, startSeconds: at });
+        setPlayerState("paused");
+      }
+    },
+    [switchToTv],
+  );
+
+  /**
+   * A TV that is playing by itself (this computer was away, or it carried on after this
+   * computer left) offers what it has. Taken unless music is playing here: then both keep
+   * their own, and neither interrupts the other. A TV that is only sitting paused on old
+   * music doesn't pull this computer's queue over to it either.
+   */
+  const joinTv = useCallback(
+    (id: string, offer: { tracks?: unknown; time?: unknown; duration?: unknown; state?: unknown }) => {
+      const tracks = tracksFromTv(offer.tracks);
+      const track = tracks[0];
+      if (!track) return;
+      const state = TV_STATES.has(offer.state as YouTubePlaybackState) ? (offer.state as YouTubePlaybackState) : "paused";
+      if (outputRef.current !== id) {
+        const busy = playerStateRef.current === "playing" || playerStateRef.current === "buffering";
+        if (busy || (state !== "playing" && state !== "buffering")) return;
+      }
+      const time = typeof offer.time === "number" && Number.isFinite(offer.time) ? Math.max(0, offer.time) : 0;
+      const length = typeof offer.duration === "number" && Number.isFinite(offer.duration) ? Math.max(0, offer.duration) : 0;
+      switchToTv(id, { videoId: track.videoId, time, duration: length, playing: state === "playing" });
+      // The TV counted this play itself.
+      recordedTrackIdRef.current = track.videoId;
+      cacheTracks(tracks);
+      setCurrentTime(time);
+      setDuration(length);
+      setPlaybackError(null);
+      setPlayerState(state);
+      commitSession((prev) =>
+        prev.currentTrack?.videoId === track.videoId
+          ? { ...prev, upcoming: tracks.slice(1), currentTime: time }
+          : { ...playTrackImmediate(prev, track, { contextUpcoming: tracks, isAutoplay: false }), currentTime: time },
+      );
+    },
+    [commitSession, switchToTv],
+  );
 
   const selectOutputRef = useRef(selectOutput);
   const showToastRef = useRef(showToast);
+  // Latest versions for requests from a TV's remote.
+  const controlsRef = useRef({ togglePlayPause, seekTo, selectTrack });
   useEffect(() => {
     selectOutputRef.current = selectOutput;
     showToastRef.current = showToast;
+    controlsRef.current = { togglePlayPause, seekTo, selectTrack };
   });
 
-  // What the TV reports, and the TV going away.
+  /**
+   * What someone asks for from a connected TV with its remote. The TV is a second set of
+   * controls for the one queue here, whichever of the two is the speaker. Returns false for
+   * anything else (the TV's reports about its own player).
+   */
+  const handleTvRequest = useCallback(
+    (id: string, raw: unknown): boolean => {
+      if (!raw || typeof raw !== "object") return true;
+      const message = raw as { t?: unknown; cmd?: unknown; seconds?: unknown; tracks?: unknown; index?: unknown };
+      const controls = controlsRef.current;
+      switch (message.t) {
+        case "cmd": {
+          const playing = playerStateRef.current === "playing" || playerStateRef.current === "buffering";
+          if (message.cmd === "toggle") controls.togglePlayPause();
+          else if (message.cmd === "play" && !playing) controls.togglePlayPause();
+          else if (message.cmd === "pause" && playing) controls.togglePlayPause();
+          else if (message.cmd === "next") void handleNextTrackRef.current();
+          else if (message.cmd === "previous") engineRef.current.handlePreviousTrack();
+          else if (message.cmd === "seek" && typeof message.seconds === "number" && Number.isFinite(message.seconds)) {
+            controls.seekTo(message.seconds);
+          }
+          return true;
+        }
+        case "take":
+          selectOutput(id);
+          return true;
+        case "give":
+          if (outputRef.current === id) selectOutput(null);
+          return true;
+        case "pick": {
+          // Music chosen on the TV plays on the TV, through the queue here.
+          const tracks = tracksFromTv(message.tracks);
+          const track = tracks[typeof message.index === "number" ? message.index : 0];
+          if (!track) return true;
+          selectOutput(id, false, false);
+          controls.selectTrack(track, tracks);
+          return true;
+        }
+        case "adopt":
+          joinTv(id, message as Parameters<typeof joinTv>[1]);
+          return true;
+        default:
+          return false;
+      }
+    },
+    [joinTv, selectOutput],
+  );
+
+  // What the TVs say, and TVs coming and going.
   useEffect(() => {
     if (!isTauriEnvironment()) return;
     let disposed = false;
     const unlisteners: Array<() => void> = [];
     const keep = (fn: () => void) => (disposed ? fn() : unlisteners.push(fn));
-    void listen<{ id: string; message: unknown }>("tv-message", ({ payload }) => {
-      if (payload.id === outputRef.current) tvPlayerRef.current?.handleMessage(payload.message);
-    }).then(keep);
-    void listen("tvs-changed", () => {
-      const playingOn = outputRef.current;
-      if (!playingOn) return;
+    const refresh = () =>
       void getTvs().then((status) => {
-        if (outputRef.current !== playingOn) return;
-        if (status.linked.some((tv) => tv.id === playingOn && tv.online)) return;
+        if (disposed) return;
+        const online = status.linked.filter((tv) => tv.online).map((tv) => tv.id);
+        setOnlineTvs((was) => (was.join() === online.join() ? was : online));
+        const playingOn = outputRef.current;
+        if (!playingOn || online.includes(playingOn)) return;
         selectOutput(null, false);
         showToast("The TV disconnected. Playback is back on this computer, paused.");
       }, () => {});
+    refresh();
+    void listen<{ id: string; message: unknown }>("tv-message", ({ payload }) => {
+      if (handleTvRequest(payload.id, payload.message)) return;
+      if (payload.id === outputRef.current) tvPlayerRef.current?.handleMessage(payload.message);
     }).then(keep);
+    void listen("tvs-changed", refresh).then(keep);
     return () => {
       disposed = true;
       unlisteners.forEach((fn) => fn());
     };
-  }, [selectOutput, showToast]);
+  }, [handleTvRequest, selectOutput, showToast]);
 
-  // The TV's screen: what's playing and what's next.
+  // Every connected TV shows what is playing and what's next, and whether the sound is
+  // coming out of it ("tv") or out of this computer ("desktop").
   const upNext = session.upcoming;
   useEffect(() => {
-    if (!output) return;
+    if (onlineTvs.length === 0) return;
     const describe = (track: SearchResult) => ({
       videoId: track.videoId,
       title: cleanDisplayTitle(track.title),
       artist: track.artist,
       thumb: optimizeThumbnailUrl(track.thumbnailUrl, track.videoId, "hero"),
     });
-    void sendToTv(output, {
-      t: "now",
-      track: currentTrack ? describe(currentTrack) : null,
-      upcoming: upNext.slice(0, 5).map(describe),
-    });
-  }, [output, currentTrack, upNext]);
+    const track = currentTrack ? describe(currentTrack) : null;
+    const upcoming = upNext.slice(0, TV_UPCOMING).map(describe);
+    for (const id of onlineTvs) {
+      void sendToTv(id, { t: "now", on: id === output ? "tv" : "desktop", track, upcoming });
+    }
+  }, [onlineTvs, output, currentTrack, upNext]);
+
+  // A TV that isn't the speaker can't see the player: it is told where the song is.
+  const currentVideoId = currentTrack?.videoId;
+  useEffect(() => {
+    const watching = onlineTvs.filter((id) => id !== output);
+    if (watching.length === 0 || !currentVideoId) {
+      mirrorPositionRef.current = () => {};
+      return;
+    }
+    const send = () => {
+      const message = {
+        t: "pos",
+        videoId: currentVideoId,
+        state: playerStateRef.current,
+        time: currentTimeRef.current,
+        duration: durationRef.current,
+      };
+      for (const id of watching) void sendToTv(id, message);
+    };
+    mirrorPositionRef.current = send;
+    send();
+    if (playerState !== "playing") return;
+    const timer = window.setInterval(send, TV_POSITION_EVERY_MS);
+    return () => window.clearInterval(timer);
+  }, [onlineTvs, output, currentVideoId, playerState, duration, currentTimeRef]);
 
   // The player only fills in a missing title or artist; the React queue decides what plays.
   const handleTrackChangeFromIframe = useCallback(

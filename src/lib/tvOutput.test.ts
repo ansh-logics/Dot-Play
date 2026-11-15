@@ -99,4 +99,19 @@ describe("a TV as the playback engine", () => {
     tv.handleMessage({ t: "local" })
     expect(released()).toBe(1)
   })
+
+  it("joins a TV that is already playing without loading anything on it", () => {
+    const states: string[] = []
+    const tv = createTvPlayer(
+      "tv-1",
+      { onStateChange: (state) => states.push(state), onError: () => {}, onKey: () => {}, onReleased: () => {} },
+      { videoId: "abc", time: 61, duration: 200, playing: false },
+    )
+    expect(sent).toEqual([])
+    expect(tv.player.getCurrentTime()).toBe(61)
+    expect(tv.player.getDuration()).toBe(200)
+    // Its reports are about the song it was already playing, so they count.
+    tv.handleMessage({ t: "state", videoId: "abc", state: "playing", time: 62, duration: 200 })
+    expect(states).toEqual(["playing"])
+  })
 })
