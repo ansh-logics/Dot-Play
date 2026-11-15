@@ -34,11 +34,16 @@ hkdf = "0.12"
 sha2 = "0.10"
 base64 = "0.22"
 qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
+spake2 = "0.4"
 
 # TLS: the system library on desktop, rustls on Android (no OpenSSL to link against there).
 [target.'cfg(not(target_os = "android"))'.dependencies]
 reqwest = { version = "0.12", features = ["json"] }
 tokio-tungstenite = { version = "0.28", features = ["native-tls"] }
+
+# Finding TVs on the network. macOS asks the system's Bonjour instead (see tvs.rs).
+[target.'cfg(not(any(target_os = "android", target_os = "macos")))'.dependencies]
+mdns-sd = "0.21.7"
 
 [target.'cfg(target_os = "android")'.dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "http2", "charset"] }
