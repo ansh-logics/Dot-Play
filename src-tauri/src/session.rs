@@ -139,6 +139,7 @@ fn complete_login(app: &AppHandle, cookie_header: String) {
 
         let _ = app.emit("login_success", ());
         let _ = app.emit_to("main", "login_success", ());
+        crate::tvs::push_session(&app);
 
         // Only now close and destroy the login window
         if let Some(win) = app.get_webview_window("yt_login") {
@@ -314,6 +315,15 @@ pub(crate) async fn get_auth_status(state: State<'_, SessionState>) -> Result<bo
 
 #[tauri::command]
 pub(crate) async fn logout(app: AppHandle, state: State<'_, SessionState>) -> Result<(), String> {
+    clear_session(&app, &state);
+    // Linked TVs follow the desktop: signing out here signs them out too.
+    #[cfg(desktop)]
+    crate::tvs::push_session(&app);
+    Ok(())
+}
+
+/// Forgets the signed-in session, in memory and on disk.
+pub(crate) fn clear_session(app: &AppHandle, state: &SessionState) {
     {
         let mut guard = state.cookies.lock().unwrap();
         *guard = None;
@@ -338,8 +348,19 @@ pub(crate) async fn logout(app: AppHandle, state: State<'_, SessionState>) -> Re
             }
         }
     }
+}
 
-    Ok(())
+/// The TV's way in: the session a linked desktop handed over (or took back, with `None`).
+#[cfg(mobile)]
+pub(crate) fn adopt_session(app: &AppHandle, cookies: Option<String>) {
+    let state = app.state::<SessionState>();
+    match cookies {
+        Some(cookies) => {
+            *state.cookies.lock().unwrap() = Some(cookies.clone());
+            let _ = persist_session(app, &cookies);
+        }
+        None => clear_session(app, &state),
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

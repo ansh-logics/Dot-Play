@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-tv-link-state"
+description = "Enables the tv_link_state command without any pre-configured scope."
+commands.allow = ["tv_link_state"]
+
+[[permission]]
+identifier = "deny-tv-link-state"
+description = "Denies the tv_link_state command without any pre-configured scope."
+commands.deny = ["tv_link_state"]

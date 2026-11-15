@@ -51,6 +51,11 @@ fn main() {
         "answer_pair_request",
         "forget_remote_device",
         "set_remote_state",
+        "get_tvs",
+        "pair_tv",
+        "forget_tv",
+        "tv_link_state",
+        "tv_sign_out",
       ]),
     ),
   )
