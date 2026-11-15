@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core"
 import { listen } from "@tauri-apps/api/event"
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import type { usePlayer } from "./usePlayer"
 
 /**
@@ -36,8 +36,13 @@ const REPORTED_STATES = new Set(["unstarted", "buffering", "playing", "paused", 
 
 const report = (message: Record<string, unknown>) => void invoke("tv_report", { message }).catch(() => {})
 
-export function useReceiver(player: ReturnType<typeof usePlayer>) {
+/** `onTakeover` runs when a desktop starts playing here (whatever the TV was playing stops). */
+export function useReceiver(player: ReturnType<typeof usePlayer>, onTakeover: () => void) {
   const [now, setNow] = useState<NowShowing | null>(null)
+  const onTakeoverRef = useRef(onTakeover)
+  onTakeoverRef.current = onTakeover
+  const nowRef = useRef(now)
+  nowRef.current = now
   const { snapshot, load, play, pause, seek, setVolume, setMuted } = player
   const snapshotRef = useRef(snapshot)
   snapshotRef.current = snapshot
@@ -55,6 +60,7 @@ export function useReceiver(player: ReturnType<typeof usePlayer>) {
         case "load":
           if (typeof payload.videoId !== "string" || !payload.videoId) break
           awaitingStartRef.current = payload.autoplay !== false
+          onTakeoverRef.current()
           load(payload.videoId, payload.start ?? 0, payload.autoplay !== false)
           break
         case "play":
@@ -73,7 +79,9 @@ export function useReceiver(player: ReturnType<typeof usePlayer>) {
           setMuted(Boolean(payload.muted))
           break
         case "stop":
-          // The desktop took playback back.
+          // The desktop took playback back. (Ignored when the TV is playing its own music,
+          // which is what made the desktop let go in the first place.)
+          if (!nowRef.current) break
           awaitingStartRef.current = false
           pause()
           setNow(null)
@@ -129,48 +137,17 @@ export function useReceiver(player: ReturnType<typeof usePlayer>) {
     return () => clearTimeout(timer)
   }, [snapshot.videoId])
 
-  // The TV's own remote: play/pause and seek happen here, next/previous are the queue's call.
-  useEffect(() => {
-    if (!now?.track) return
-    function onKey(event: KeyboardEvent) {
-      const s = snapshotRef.current
-      switch (event.key) {
-        case "Enter":
-        case " ":
-        case "MediaPlayPause":
-          if (s.state === "playing") pause()
-          else play()
-          break
-        case "MediaPlay":
-          play()
-          break
-        case "MediaPause":
-          pause()
-          break
-        case "ArrowRight":
-        case "MediaFastForward":
-          seek(s.currentTime + 10)
-          break
-        case "ArrowLeft":
-        case "MediaRewind":
-          seek(s.currentTime - 10)
-          break
-        case "MediaTrackNext":
-        case "ArrowUp":
-          report({ t: "key", key: "next" })
-          break
-        case "MediaTrackPrevious":
-        case "ArrowDown":
-          report({ t: "key", key: "previous" })
-          break
-        default:
-          return
-      }
-      event.preventDefault()
-    }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [now?.track, play, pause, seek])
+  /** Next / Previous on the TV's remote: the desktop's queue decides what that means. */
+  const sendKey = useCallback((key: "next" | "previous") => report({ t: "key", key }), [])
 
-  return { now }
+  /** The TV started playing something of its own: tell the desktops and stop following them. */
+  const release = useCallback(() => {
+    awaitingStartRef.current = false
+    setNow((was) => {
+      if (was) report({ t: "local" })
+      return null
+    })
+  }, [])
+
+  return { now, sendKey, release }
 }

@@ -334,9 +334,17 @@ mod tests {
             tokio::time::timeout(Duration::from_secs(40), wait).await.unwrap_or_else(|_| panic!("timed out waiting for: {what}"))
         }
 
-        session.send(json!({ "t": "volume", "volume": 5 }));
+        // The same messages, in the same order, as the desktop sends when the TV is picked.
+        let autoplay = std::env::var("DOTPLAY_CUE").is_err();
+        session.send(json!({ "t": "volume", "volume": 8 }));
+        session.send(json!({ "t": "mute", "muted": false }));
+        session.send(json!({ "t": "load", "videoId": video, "start": 30, "autoplay": autoplay }));
         session.send(json!({ "t": "now", "track": { "videoId": video, "title": "Link test song", "artist": "dot(.)play", "thumb": "" }, "upcoming": [] }));
-        session.send(json!({ "t": "load", "videoId": video, "start": 30, "autoplay": true }));
+        if !autoplay {
+            // Picked while paused, then Play pressed on the desktop.
+            until(&mut session, "cued", |m| m["state"] == "cued" || m["state"] == "paused").await;
+            session.send(json!({ "t": "play" }));
+        }
         let playing = until(&mut session, "playing from 0:30", |m| m["state"] == "playing").await;
         assert!(playing["time"].as_f64().unwrap() >= 29.0, "started where it was asked to");
 

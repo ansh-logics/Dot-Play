@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useLink } from "./useLink"
 import { usePlayer, type PlayerSnapshot } from "./usePlayer"
 import { useReceiver, type NowShowing } from "./useReceiver"
@@ -10,7 +10,55 @@ import { useReceiver, type NowShowing } from "./useReceiver"
 export function TvApp() {
   const { link, profile, signOut } = useLink()
   const player = usePlayer()
-  const { now } = useReceiver(player)
+  const { now, sendKey } = useReceiver(player, () => {})
+  const { snapshot, play, pause, seek } = player
+  const snapshotRef = useRef(snapshot)
+  snapshotRef.current = snapshot
+  const showingTrack = Boolean(now?.track)
+
+  // The TV's own remote while a song shows: play/pause and seek happen here, next and
+  // previous are for the desktop's queue to decide.
+  useEffect(() => {
+    if (!showingTrack) return
+    function onKey(event: KeyboardEvent) {
+      const s = snapshotRef.current
+      switch (event.key) {
+        case "Enter":
+        case " ":
+        case "MediaPlayPause":
+          if (s.state === "playing") pause()
+          else play()
+          break
+        case "MediaPlay":
+          play()
+          break
+        case "MediaPause":
+          pause()
+          break
+        case "ArrowRight":
+        case "MediaFastForward":
+          seek(s.currentTime + 10)
+          break
+        case "ArrowLeft":
+        case "MediaRewind":
+          seek(s.currentTime - 10)
+          break
+        case "MediaTrackNext":
+        case "ArrowUp":
+          sendKey("next")
+          break
+        case "MediaTrackPrevious":
+        case "ArrowDown":
+          sendKey("previous")
+          break
+        default:
+          return
+      }
+      event.preventDefault()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [showingTrack, play, pause, seek, sendKey])
 
   return (
     <>
@@ -23,16 +71,7 @@ export function TvApp() {
       ) : (
         <HomeScreen link={link} profile={profile} onSignOut={signOut} />
       )}
-      {player.src && (
-        <iframe
-          ref={player.iframeRef}
-          className="tv-engine"
-          src={player.src}
-          title="Audio engine"
-          allow="autoplay; encrypted-media"
-          tabIndex={-1}
-        />
-      )}
+      <div ref={player.containerRef} className="tv-engine" aria-hidden="true" />
     </>
   )
 }
