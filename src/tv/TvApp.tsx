@@ -1,30 +1,120 @@
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { Browse } from "./Browse"
+import { loadShelves, type Shelf, type Track } from "./data"
+import { PlaylistScreen } from "./PlaylistScreen"
+import { LinkScreen, NowPlayingScreen } from "./screens"
+import { useDpad } from "./useDpad"
 import { useLink } from "./useLink"
-import { usePlayer, type PlayerSnapshot } from "./usePlayer"
-import { useReceiver, type NowShowing } from "./useReceiver"
+import { useLocalQueue } from "./useLocalQueue"
+import { usePlayer } from "./usePlayer"
+import { useReceiver } from "./useReceiver"
 
 /**
- * The TV's screens: "link this TV" (the code a desktop app needs), the home screen once it is
- * linked, and now playing while a desktop plays here. The player itself is always mounted.
+ * The TV app. Until a desktop links it, it shows the code to link with. After that it is two
+ * things at once: a receiver a desktop can play on, and a player in its own right (browse
+ * your playlists and YouTube Music's shelves with the remote). Whoever started the music
+ * last holds the queue: the desktop, or the TV.
+ *
+ * Screens stack through the page history, so the remote's Back button walks back.
  */
+
+type Screen = { name: "browse" } | { name: "playlist"; id: string; title: string; thumb: string } | { name: "now" }
+
+const BROWSE: Screen = { name: "browse" }
+
 export function TvApp() {
   const { link, profile, signOut } = useLink()
   const player = usePlayer()
-  const { now, sendKey } = useReceiver(player, () => {})
+  const local = useLocalQueue(player)
+  const { play: playQueue, next: nextInQueue, previous: previousInQueue } = local
+  const receiver = useReceiver(player, local.clear)
   const { snapshot, play, pause, seek } = player
   const snapshotRef = useRef(snapshot)
   snapshotRef.current = snapshot
-  const showingTrack = Boolean(now?.track)
 
-  // The TV's own remote while a song shows: play/pause and seek happen here, next and
-  // previous are for the desktop's queue to decide.
+  const [screen, setScreen] = useState<Screen>(BROWSE)
+  const screenRef = useRef(screen)
+  screenRef.current = screen
+
   useEffect(() => {
-    if (!showingTrack) return
+    history.replaceState(BROWSE, "")
+    const onPop = (event: PopStateEvent) => setScreen((event.state as Screen | null) ?? BROWSE)
+    window.addEventListener("popstate", onPop)
+    return () => window.removeEventListener("popstate", onPop)
+  }, [])
+
+  const open = useCallback((next: Screen) => {
+    // Now playing is never stacked on itself.
+    if (next.name === "now" && screenRef.current.name === "now") return
+    history.pushState(next, "")
+    setScreen(next)
+  }, [])
+
+  // What is playing, and who decides what comes next.
+  const fromDesktop = receiver.now?.track ?? null
+  const track: Track | null = fromDesktop ?? local.track
+  const next = fromDesktop ? receiver.now?.upcoming[0] : local.upcoming[0]
+  const hasTrack = track !== null
+
+  // A desktop starting to play here brings up now playing; music stopping leaves it.
+  const desktopPlaying = fromDesktop !== null
+  useEffect(() => {
+    if (desktopPlaying) open({ name: "now" })
+  }, [desktopPlaying, open])
+  useEffect(() => {
+    if (!hasTrack && screen.name === "now") history.back()
+  }, [hasTrack, screen.name])
+
+  const { release } = receiver
+  const playHere = useCallback(
+    (tracks: Track[], index: number) => {
+      if (!tracks[index]) return
+      // The TV's own choice: any desktop playing here is told it no longer is.
+      release()
+      playQueue(tracks, index)
+      open({ name: "now" })
+    },
+    [release, playQueue, open],
+  )
+
+  // Home's shelves, kept while other screens are open.
+  const signedIn = link?.signedIn ?? false
+  const linked = (link?.linked.length ?? 0) > 0
+  const [shelves, setShelves] = useState<Shelf[] | null>(null)
+  const [shelvesError, setShelvesError] = useState(false)
+  const [attempt, setAttempt] = useState(0)
+  useEffect(() => {
+    if (!linked) return
+    let cancelled = false
+    loadShelves(signedIn).then(
+      (loaded) => {
+        if (cancelled) return
+        setShelves(loaded)
+        setShelvesError(false)
+      },
+      () => {
+        if (!cancelled) setShelvesError(true)
+      },
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [linked, signedIn, attempt])
+
+  // The remote. Media keys work everywhere; on now playing the arrows and OK drive the
+  // song (elsewhere they move between buttons, see useDpad).
+  const { sendKey } = receiver
+  useEffect(() => {
+    if (!hasTrack) return
+    const skip = (key: "next" | "previous") => {
+      if (desktopPlaying) sendKey(key)
+      else if (key === "next") nextInQueue()
+      else previousInQueue()
+    }
     function onKey(event: KeyboardEvent) {
       const s = snapshotRef.current
+      const onNow = screenRef.current.name === "now"
       switch (event.key) {
-        case "Enter":
-        case " ":
         case "MediaPlayPause":
           if (s.state === "playing") pause()
           else play()
@@ -33,23 +123,42 @@ export function TvApp() {
           play()
           break
         case "MediaPause":
+        case "MediaStop":
           pause()
           break
-        case "ArrowRight":
+        case "MediaTrackNext":
+          skip("next")
+          break
+        case "MediaTrackPrevious":
+          skip("previous")
+          break
         case "MediaFastForward":
           seek(s.currentTime + 10)
           break
-        case "ArrowLeft":
         case "MediaRewind":
           seek(s.currentTime - 10)
           break
-        case "MediaTrackNext":
-        case "ArrowUp":
-          sendKey("next")
+        case "Enter":
+        case " ":
+          if (!onNow) return
+          if (s.state === "playing") pause()
+          else play()
           break
-        case "MediaTrackPrevious":
+        case "ArrowRight":
+          if (!onNow) return
+          seek(s.currentTime + 10)
+          break
+        case "ArrowLeft":
+          if (!onNow) return
+          seek(s.currentTime - 10)
+          break
+        case "ArrowUp":
+          if (!onNow) return
+          skip("next")
+          break
         case "ArrowDown":
-          sendKey("previous")
+          if (!onNow) return
+          skip("previous")
           break
         default:
           return
@@ -58,160 +167,55 @@ export function TvApp() {
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [showingTrack, play, pause, seek, sendKey])
+  }, [hasTrack, desktopPlaying, play, pause, seek, sendKey, nextInQueue, previousInQueue])
+
+  const showing = !link ? "blank" : !linked ? "link" : screen.name === "now" && track ? "now" : screen.name === "playlist" ? "playlist" : "browse"
+  const [playlistReady, setPlaylistReady] = useState(0)
+  const navKey = showing === "playlist" && screen.name === "playlist" ? `playlist:${screen.id}` : showing
+  useDpad(navKey, showing === "browse" ? shelves !== null || shelvesError : showing === "playlist" ? playlistReady > 0 : false)
+
+  const fromName =
+    fromDesktop && link ? (link.linked.find((desktop) => link.online.includes(desktop.id))?.name ?? "your computer") : null
 
   return (
     <>
-      {!link ? (
+      {showing === "blank" || !link ? (
         <main className="tv" />
-      ) : link.linked.length === 0 ? (
+      ) : showing === "link" ? (
         <LinkScreen name={link.name} code={link.code} />
-      ) : now?.track ? (
-        <NowPlayingScreen now={now} snapshot={player.snapshot} />
+      ) : showing === "now" && track ? (
+        <NowPlayingScreen track={track} next={next} snapshot={snapshot} from={fromName} />
+      ) : showing === "playlist" && screen.name === "playlist" ? (
+        <PlaylistScreen
+          key={screen.id}
+          playlistId={screen.id}
+          cardTitle={screen.title}
+          cardThumb={screen.thumb}
+          onPlay={playHere}
+          onReady={() => setPlaylistReady((n) => n + 1)}
+        />
       ) : (
-        <HomeScreen link={link} profile={profile} onSignOut={signOut} />
+        <Browse
+          link={link}
+          profile={profile}
+          shelves={shelves}
+          error={shelvesError}
+          onRetry={() => {
+            setShelvesError(false)
+            setAttempt((n) => n + 1)
+          }}
+          playing={track}
+          onOpenNow={() => open({ name: "now" })}
+          onOpenPlaylist={(item) => {
+            if (!item.playlistId) return
+            setPlaylistReady(0)
+            open({ name: "playlist", id: item.playlistId, title: item.title, thumb: item.thumb })
+          }}
+          onPlay={playHere}
+          onSignOut={signOut}
+        />
       )}
       <div ref={player.containerRef} className="tv-engine" aria-hidden="true" />
     </>
-  )
-}
-
-function clock(seconds: number) {
-  const s = Math.max(0, Math.floor(seconds))
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
-}
-
-function NowPlayingScreen({ now, snapshot }: { now: NowShowing; snapshot: PlayerSnapshot }) {
-  const track = now.track!
-  const progress = snapshot.duration > 0 ? Math.min(1, snapshot.currentTime / snapshot.duration) : 0
-  const status =
-    snapshot.state === "paused" || snapshot.state === "cued"
-      ? "Paused"
-      : snapshot.state === "playing"
-        ? null
-        : snapshot.state === "ended"
-          ? null
-          : "Loading…"
-
-  return (
-    <main className="tv tv-now">
-      <div className="tv-now-main">
-        {track.thumb ? <img className="tv-art" src={track.thumb} alt="" referrerPolicy="no-referrer" /> : <div className="tv-art" />}
-        <div className="tv-now-text">
-          <Wordmark />
-          <h2>{track.title}</h2>
-          <p className="tv-artist">{track.artist}</p>
-          {status && <p className="tv-now-status">{status}</p>}
-        </div>
-      </div>
-
-      <div className="tv-progress">
-        <span>{clock(snapshot.currentTime)}</span>
-        <div className="tv-progress-track">
-          <div className="tv-progress-fill" style={{ width: `${progress * 100}%` }} />
-        </div>
-        <span>{snapshot.duration > 0 ? clock(snapshot.duration) : "–:––"}</span>
-      </div>
-
-      {now.upcoming.length > 0 && (
-        <p className="tv-next">
-          <span>Next</span>
-          {now.upcoming[0].title} · {now.upcoming[0].artist}
-        </p>
-      )}
-    </main>
-  )
-}
-
-function Wordmark() {
-  return (
-    <h1 className="tv-wordmark">
-      dot<span>(.)</span>play
-    </h1>
-  )
-}
-
-function LinkScreen({ name, code }: { name: string; code: string }) {
-  return (
-    <main className="tv tv-link">
-      <Wordmark />
-      <div className="tv-link-body">
-        <div className="tv-link-steps">
-          <h2>Link this TV</h2>
-          <ol>
-            <li>Open dot(.)music on your computer, on the same Wi-Fi as this TV.</li>
-            <li>
-              Go to Settings, then TVs, and choose <strong>{name}</strong>.
-            </li>
-            <li>Type this code.</li>
-          </ol>
-        </div>
-        <div className="tv-code" aria-label={`Code ${code.split("").join(" ")}`}>
-          {code.split("").map((digit, index) => (
-            <span key={index}>{digit}</span>
-          ))}
-        </div>
-      </div>
-      <p className="tv-footnote">Your account is sent from your computer, encrypted. Nothing is typed on the TV.</p>
-    </main>
-  )
-}
-
-interface HomeProps {
-  link: { name: string; linked: Array<{ id: string; name: string }>; online: string[]; signedIn: boolean }
-  profile: { name: string; avatarUrl: string } | null
-  onSignOut: () => void
-}
-
-function HomeScreen({ link, profile, onSignOut }: HomeProps) {
-  // Signing out takes two presses of OK, so a stray press doesn't do it.
-  const [confirming, setConfirming] = useState(false)
-
-  useEffect(() => {
-    if (!confirming) return
-    const timer = setTimeout(() => setConfirming(false), 5000)
-    return () => clearTimeout(timer)
-  }, [confirming])
-
-  const connected = link.linked.filter((desktop) => link.online.includes(desktop.id))
-  const status =
-    connected.length > 0
-      ? `Connected to ${connected.map((d) => d.name).join(", ")}`
-      : `Linked to ${link.linked.map((d) => d.name).join(", ")} · not connected right now`
-
-  return (
-    <main className="tv tv-home">
-      <header className="tv-home-top">
-        <Wordmark />
-        <div className="tv-account">
-          {profile?.avatarUrl && <img src={profile.avatarUrl} alt="" referrerPolicy="no-referrer" />}
-          <span>{link.signedIn ? (profile?.name ?? "Signed in") : "Not signed in"}</span>
-        </div>
-      </header>
-
-      <section className="tv-ready">
-        <h2>Ready to play</h2>
-        <p>Choose {link.name} in dot(.)music on your computer to play here.</p>
-        <p className={`tv-status ${connected.length > 0 ? "is-on" : ""}`}>
-          <span className="tv-status-dot" />
-          {status}
-        </p>
-        {!link.signedIn && (
-          <p className="tv-note">Sign in to dot(.)music on your computer and this TV signs in with it.</p>
-        )}
-      </section>
-
-      <button
-        type="button"
-        className="tv-button"
-        autoFocus
-        onClick={() => {
-          if (confirming) onSignOut()
-          else setConfirming(true)
-        }}
-      >
-        {confirming ? "Press OK again to sign out" : "Sign out of this TV"}
-      </button>
-    </main>
   )
 }

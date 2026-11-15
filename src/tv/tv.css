@@ -267,6 +267,255 @@ body {
   font-size: 2.1vh;
 }
 
+/* Browse */
+
+.tv-browse {
+  padding-bottom: 0;
+}
+
+.tv-browse-scroll,
+.tv-tracks {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* Room for the focus ring of whatever sits at the edge. */
+  padding: 2vh 1vw 6vh;
+  margin: 2vh -1vw 0;
+  scrollbar-width: none;
+}
+
+.tv-browse-scroll::-webkit-scrollbar,
+.tv-tracks::-webkit-scrollbar,
+.tv-shelf-row::-webkit-scrollbar {
+  display: none;
+}
+
+.tv-row {
+  display: flex;
+  align-items: center;
+  gap: 1.4vw;
+  margin-bottom: 3vh;
+}
+
+.tv-loading {
+  margin: 6vh 0;
+  font-size: 3.2vh;
+  color: #a1a1aa;
+}
+
+.tv-note {
+  margin: 0 0 3vh;
+  font-size: 2.8vh;
+  color: #f5b942;
+}
+
+.tv-now-pill {
+  max-width: 70vw;
+  padding: 1.6vh 2vw;
+  font: inherit;
+  font-size: 2.8vh;
+  color: #f4f4f5;
+  background: #1c1c21;
+  border: 0.4vh solid transparent;
+  border-radius: 99vh;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tv-now-pill-label {
+  margin-right: 1.2vw;
+  color: #ff5a3c;
+  font-weight: 700;
+}
+
+.tv-shelf h3 {
+  margin: 0 0 1.6vh;
+  font-size: 3.4vh;
+  font-weight: 700;
+}
+
+.tv-shelf-row {
+  display: flex;
+  gap: 1.6vw;
+  overflow-x: auto;
+  padding: 1vh 1vw 3.4vh;
+  margin: 0 -1vw;
+  scrollbar-width: none;
+}
+
+.tv-card {
+  flex: none;
+  width: 24vh;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  background: none;
+  border: 0;
+}
+
+.tv-card img,
+.tv-card-blank {
+  display: block;
+  width: 24vh;
+  height: 24vh;
+  object-fit: cover;
+  border-radius: 1.4vh;
+  background: #1c1c21;
+  border: 0.5vh solid transparent;
+  box-sizing: border-box;
+}
+
+.tv-card-title,
+.tv-card-sub {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tv-card-title {
+  margin-top: 1.2vh;
+  font-size: 2.5vh;
+}
+
+.tv-card-sub {
+  font-size: 2.1vh;
+  color: #a1a1aa;
+}
+
+.tv-browse-foot {
+  margin-top: 2vh;
+  justify-content: space-between;
+  font-size: 2.4vh;
+  color: #a1a1aa;
+}
+
+/* Focus is the only cursor a TV has: make it unmistakable. */
+.tv-card:focus,
+.tv-now-pill:focus,
+.tv-track:focus {
+  outline: none;
+}
+
+.tv-card:focus img,
+.tv-card:focus .tv-card-blank {
+  border-color: #ff5a3c;
+}
+
+.tv-card:focus .tv-card-title {
+  color: #fff;
+  font-weight: 700;
+}
+
+.tv-now-pill:focus {
+  border-color: #ff5a3c;
+  background: #2a2a31;
+}
+
+/* Playlist */
+
+.tv-playlist {
+  padding-bottom: 0;
+}
+
+.tv-playlist-head {
+  display: flex;
+  align-items: center;
+  gap: 3vw;
+}
+
+.tv-playlist-head img,
+.tv-playlist-head .tv-card-blank {
+  width: 26vh;
+  height: 26vh;
+  flex: none;
+  object-fit: cover;
+  border-radius: 1.6vh;
+}
+
+.tv-playlist-head h2 {
+  margin-bottom: 1vh;
+  font-size: 5.4vh;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tv-playlist-head p {
+  margin: 0 0 2.6vh;
+  font-size: 2.6vh;
+  color: #a1a1aa;
+}
+
+.tv-playlist-head .tv-row {
+  margin-bottom: 0;
+}
+
+.tv-track {
+  display: flex;
+  align-items: center;
+  gap: 1.6vw;
+  width: 100%;
+  padding: 1.6vh 1.4vw;
+  font: inherit;
+  font-size: 2.7vh;
+  text-align: left;
+  color: #d4d4d8;
+  background: none;
+  border: 0;
+  border-radius: 1.2vh;
+}
+
+.tv-track:focus {
+  color: #0b0b0d;
+  background: #f4f4f5;
+}
+
+.tv-track-index {
+  width: 3vw;
+  color: #71717a;
+  font-variant-numeric: tabular-nums;
+}
+
+.tv-track-title {
+  flex: 3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tv-track-artist {
+  flex: 2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #a1a1aa;
+}
+
+.tv-track:focus .tv-track-artist,
+.tv-track:focus .tv-track-index,
+.tv-track:focus .tv-track-time {
+  color: #3f3f46;
+}
+
+.tv-track-time {
+  color: #a1a1aa;
+  font-variant-numeric: tabular-nums;
+}
+
+.tv-button:disabled {
+  opacity: 0.4;
+}
+
+.tv-now-from {
+  margin: 2vh 0 0;
+  font-size: 2.4vh;
+  color: #8a8a94;
+}
+
 /* The player has to be laid out to run, but nobody needs to see it. */
 .tv-engine {
   position: absolute;
