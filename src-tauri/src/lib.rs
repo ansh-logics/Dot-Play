@@ -14,6 +14,7 @@ mod playlist;
 mod queue_session;
 mod recommendations;
 mod remote;
+mod scrobble;
 mod search;
 mod session;
 mod shortcuts;
@@ -58,6 +59,14 @@ const MAIN_WINDOW_PERMISSIONS: &[&str] = &[
     "allow-discord-presence-available",
     "allow-set-discord-activity",
     "allow-stop-discord-presence",
+    "allow-scrobble-status",
+    "allow-lastfm-connect",
+    "allow-lastfm-cancel-connect",
+    "allow-lastfm-disconnect",
+    "allow-listenbrainz-connect",
+    "allow-listenbrainz-disconnect",
+    "allow-scrobble-now-playing",
+    "allow-scrobble-listen",
     "allow-get-now-playing",
     "allow-tray-media-control",
     "allow-get-like-status",
@@ -187,6 +196,7 @@ pub fn run() {
 
             session::restore_saved_state(app);
             remote::init(app.handle());
+            scrobble::init(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -213,6 +223,14 @@ pub fn run() {
             discord::discord_presence_available,
             discord::set_discord_activity,
             discord::stop_discord_presence,
+            scrobble::scrobble_status,
+            scrobble::lastfm_connect,
+            scrobble::lastfm_cancel_connect,
+            scrobble::lastfm_disconnect,
+            scrobble::listenbrainz_connect,
+            scrobble::listenbrainz_disconnect,
+            scrobble::scrobble_now_playing,
+            scrobble::scrobble_listen,
             media_controls::get_now_playing,
             media_controls::tray_media_control,
             library::get_like_status,

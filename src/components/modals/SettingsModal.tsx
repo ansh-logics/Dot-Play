@@ -4,6 +4,7 @@ import type { FeedbackPrefs } from "../../lib/feedback";
 import { IDLE_CHOICES, IS_MAC, openImmersive, type IdleMinutes } from "../../lib/immersive";
 import { ImmersiveDisplays } from "./ImmersiveDisplays";
 import { PhoneRemoteSettings } from "./PhoneRemoteSettings";
+import { ScrobbleSettings } from "./ScrobbleSettings";
 import {
   setDiscordPresenceEnabled,
   useDiscordPresenceAvailable,
@@ -147,6 +148,8 @@ export function SettingsModal({
       <PhoneRemoteSettings />
 
       <DiscordSettings />
+
+      <ScrobbleSettings />
 
       <div className="settings-section">
         <span className="settings-section-title">DATA & STORAGE</span>

@@ -32,6 +32,7 @@ import {
 } from "./playbackModes";
 import { useSystemMediaControls } from "./useSystemMediaControls";
 import { useDiscordPresence } from "./discordPresence";
+import { useScrobbler } from "./scrobble";
 import {
   loadPlaybackRate,
   normalizeRate,
@@ -812,6 +813,7 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
   }, [sleepTimer, persistCurrentPosition, currentTimeRef, showToast]);
 
   useDiscordPresence({ track: currentTrack, playerState, clock, duration, rate: playbackRate });
+  useScrobbler({ track: currentTrack, playerState, clock, duration });
 
   useSystemMediaControls({
     track: currentTrack,

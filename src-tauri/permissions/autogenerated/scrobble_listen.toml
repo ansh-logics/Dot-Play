@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-scrobble-listen"
+description = "Enables the scrobble_listen command without any pre-configured scope."
+commands.allow = ["scrobble_listen"]
+
+[[permission]]
+identifier = "deny-scrobble-listen"
+description = "Denies the scrobble_listen command without any pre-configured scope."
+commands.deny = ["scrobble_listen"]

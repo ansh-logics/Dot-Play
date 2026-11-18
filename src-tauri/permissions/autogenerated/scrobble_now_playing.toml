@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-scrobble-now-playing"
+description = "Enables the scrobble_now_playing command without any pre-configured scope."
+commands.allow = ["scrobble_now_playing"]
+
+[[permission]]
+identifier = "deny-scrobble-now-playing"
+description = "Denies the scrobble_now_playing command without any pre-configured scope."
+commands.deny = ["scrobble_now_playing"]
