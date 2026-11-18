@@ -27,7 +27,7 @@ export interface TrackLyrics {
   syncType: "word" | "line" | "plain" | "unavailable";
   lines: RichLyricLine[];
   plainText?: string;
-  source: string; // e.g. "SimpMusic" | "lrc.red" | "BiniLyrics" | "BetterLyrics" | "LyricsPlus" | "Unison"
+  source: string; // e.g. "SimpMusic" | "lrc.red" | "BiniLyrics" | "BetterLyrics" | "LyricsPlus" | "Unison" | "LRCLIB" | "YouTube Music"
   isrc?: string;
 }
 
