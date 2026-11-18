@@ -70,9 +70,11 @@ export function SettingsModal({
         <div className="settings-row">
           <div className="settings-row-text">
             <span className="settings-label">Stream Quality</span>
-            <span className="settings-desc">High Definition WebM/Opus audio streaming</span>
+            <span className="settings-desc">
+              YouTube's player picks the audio stream for each song. DOT Music can't choose it or see its bitrate.
+            </span>
           </div>
-          <span className="settings-badge">256 KBPS</span>
+          <span className="settings-badge">SET BY YOUTUBE</span>
         </div>
       </div>
 

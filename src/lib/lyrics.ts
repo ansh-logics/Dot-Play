@@ -15,6 +15,10 @@ export interface RichLyricLine {
   words?: LyricWord[]; // Word/syllable-level timing for Apple Music-style fluid karaoke
   /** Backing vocals (TTML `ttm:role="x-bg"`), shown as a softer line under the lead. */
   background?: { text: string; words?: LyricWord[] };
+  /** Who sings it (TTML `ttm:agent`, e.g. "v1", "v2"), when the lyrics say. */
+  agent?: string;
+  /** Duets: the second voice's lines sit on the other side ("end"). */
+  side?: "start" | "end";
 }
 
 export interface TrackLyrics {
@@ -241,6 +245,8 @@ export function parseTtml(xmlContent: string): RichLyricLine[] {
           decodeText(p.textContent || "").replace(/\s+/g, " "),
         );
         if (line) {
+          const agent = p.getAttribute("ttm:agent") ?? p.getAttributeNS(TTML_METADATA_NS, "agent");
+          if (agent) line.agent = agent;
           lines.push(line);
           idCounter++;
         }
@@ -248,7 +254,7 @@ export function parseTtml(xmlContent: string): RichLyricLine[] {
 
       if (lines.length > 0) {
         lines.sort((a, b) => a.startTime - b.startTime);
-        return lines;
+        return assignDuetSides(lines, groupAgents(xmlContent));
       }
     } catch (err) {
       console.warn("[DOT Music] DOMParser TTML failed, falling back to regex:", err);
@@ -272,12 +278,58 @@ export function parseTtml(xmlContent: string): RichLyricLine[] {
       decodeText(main.replace(/<[^>]+>/g, "")).replace(/\s+/g, " "),
     );
     if (line) {
+      const agent = match[0].slice(0, match[0].indexOf(">")).match(/\bttm:agent="([^"]+)"/)?.[1];
+      if (agent) line.agent = agent;
       lines.push(line);
       id++;
     }
   }
 
   lines.sort((a, b) => a.startTime - b.startTime);
+  return assignDuetSides(lines, groupAgents(xmlContent));
+}
+
+/**
+ * Agents declared as a group (`<ttm:agent type="group" xml:id="…">`), plus Apple's "v1000",
+ * which is used for everyone singing together.
+ */
+export function groupAgents(xml: string): Set<string> {
+  const groups = new Set(["v1000"]);
+  for (const tag of xml.match(/<ttm:agent\b[^>]*>/gi) ?? []) {
+    if (!/\btype="group"/i.test(tag)) continue;
+    const id = tag.match(/\bxml:id="([^"]+)"/i)?.[1];
+    if (id) groups.add(id);
+  }
+  return groups;
+}
+
+/** Above this share of lines on the "end" side, the song is flipped: the lead belongs at the start. */
+const MOSTLY_END = 0.85;
+
+/**
+ * Duets: lines move to the other side each time the singer changes, so a conversation reads
+ * left-right. Group lines and lines without a singer stay at the start and don't change whose
+ * turn it is. Songs with one singer are left alone.
+ */
+export function assignDuetSides(lines: RichLyricLine[], groups: Set<string>): RichLyricLine[] {
+  const singers = new Set(lines.map((l) => l.agent).filter((a): a is string => Boolean(a) && !groups.has(a!)));
+  if (singers.size < 2) return lines;
+  let side: "start" | "end" = "start";
+  let last: string | null = null;
+  for (const line of lines) {
+    const agent = line.agent;
+    if (!agent || groups.has(agent)) {
+      line.side = "start";
+      continue;
+    }
+    if (last !== null && agent !== last) side = side === "start" ? "end" : "start";
+    last = agent;
+    line.side = side;
+  }
+  const ends = lines.filter((l) => l.side === "end").length;
+  if (ends / lines.length > MOSTLY_END) {
+    for (const line of lines) if (line.agent && !groups.has(line.agent)) line.side = line.side === "end" ? "start" : "end";
+  }
   return lines;
 }
 

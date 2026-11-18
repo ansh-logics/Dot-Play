@@ -16,6 +16,8 @@ interface SystemMediaControlsOptions {
   playerState: YouTubePlaybackState
   clock: PlaybackClock
   duration: number
+  /** Playback speed, so macOS moves its progress bar at the same pace. */
+  rate?: number
   onTogglePlayPause: () => void
   onNext: () => void
   onPrevious: () => void
@@ -36,6 +38,7 @@ export function useSystemMediaControls({
   playerState,
   clock,
   duration,
+  rate = 1,
   onTogglePlayPause,
   onNext,
   onPrevious,
@@ -56,7 +59,7 @@ export function useSystemMediaControls({
     playerState === "playing" ? true : playerState === "buffering" ? isPlaying : false
   if (nextIsPlaying !== isPlaying) setIsPlaying(nextIsPlaying)
 
-  const lastSentRef = useRef<{ position: number; at: number; playing: boolean } | null>(null)
+  const lastSentRef = useRef<{ position: number; at: number; playing: boolean; rate: number } | null>(null)
 
   const videoId = track?.videoId
   const title = track ? cleanDisplayTitle(track.title) : ""
@@ -72,7 +75,7 @@ export function useSystemMediaControls({
       return
     }
     const currentTime = clock.get()
-    lastSentRef.current = { position: currentTime, at: performance.now(), playing: isPlaying }
+    lastSentRef.current = { position: currentTime, at: performance.now(), playing: isPlaying, rate }
     void invoke("set_now_playing", {
       info: {
         title,
@@ -81,6 +84,7 @@ export function useSystemMediaControls({
         duration: knownDuration,
         position: currentTime,
         isPlaying,
+        rate,
         artworkUrl: remoteArtworkUrl,
         videoId,
       },
@@ -89,7 +93,7 @@ export function useSystemMediaControls({
 
   useEffect(() => {
     publish()
-  }, [videoId, title, artist, remoteArtworkUrl, isPlaying, knownDuration])
+  }, [videoId, title, artist, remoteArtworkUrl, isPlaying, knownDuration, rate])
 
   // Catch seeks from anywhere (scrubber, arrow keys, "previous" restarting the song).
   useEffect(
@@ -97,7 +101,7 @@ export function useSystemMediaControls({
       clock.subscribe(() => {
         const last = lastSentRef.current
         if (!last) return
-        const expected = last.position + (last.playing ? (performance.now() - last.at) / 1000 : 0)
+        const expected = last.position + (last.playing ? ((performance.now() - last.at) / 1000) * last.rate : 0)
         if (Math.abs(clock.get() - expected) > DRIFT_TOLERANCE_SECONDS) {
           publish()
         }

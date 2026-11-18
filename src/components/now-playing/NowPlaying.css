@@ -365,6 +365,9 @@
 /* A glow behind gradient-clipped text smears it; whole-word spans skip it. */
 .np-word.is-held .np-ch--whole { text-shadow: none; }
 
+/* Duets: the other voice's lines sit on the far side, scaling from that edge. */
+.np-lyric--end { text-align: end; transform-origin: 100% 50%; }
+
 /* Backing vocals: a softer, smaller line under the lead. */
 .np-bg {
   display: block;
@@ -1428,12 +1431,23 @@
   display: flex;
 }
 
-.np-lyrics-mode {
+/* Shown on hover: this song's timing nudge, and the "show as text" switch. */
+.np-lyrics-tools {
   position: absolute;
   right: 0;
   bottom: 4px;
   z-index: 1;
-  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.np-lyrics-shell:hover .np-lyrics-tools,
+.np-lyrics-tools:focus-within { opacity: 1; }
+
+.np-lyrics-mode,
+.np-lyrics-offset {
   border: 0;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.12);
@@ -1443,11 +1457,100 @@
   font: inherit;
   font-size: 12px;
   font-weight: 600;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.2s ease, background 0.15s ease;
 }
-
-.np-lyrics-shell:hover .np-lyrics-mode,
-.np-lyrics-mode:focus-visible { opacity: 1; }
+.np-lyrics-mode {
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
 .np-lyrics-mode:hover { background: rgba(255, 255, 255, 0.2); }
+
+.np-lyrics-offset { display: flex; align-items: center; padding: 0 2px; }
+.np-lyrics-offset button {
+  min-width: 26px;
+  padding: 6px 6px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.np-lyrics-offset button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.14); }
+.np-lyrics-offset .np-lyrics-offset-value { min-width: 52px; }
+.np-lyrics-offset .np-lyrics-offset-value:disabled { cursor: default; color: rgba(255, 255, 255, 0.55); }
+
+/* Deck menus (speed and sleep timer): a small popover above the button. */
+.np-output { position: relative; }
+.np-output .np-round-btn.is-on { background: rgba(255, 255, 255, 0.2); }
+/* While a TV is the speaker the button says which one. */
+.np-output .np-round-btn.is-on { width: auto; max-width: 220px; gap: 8px; padding: 0 16px 0 14px; }
+.np-output-on { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np-output-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
+  z-index: 20;
+  min-width: 230px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-radius: 16px;
+  background: rgba(28, 28, 32, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+.np-output-title {
+  padding: 4px 10px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+}
+.np-output-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.np-output-item:hover:not(:disabled),
+.np-output-item:focus-visible { background: rgba(255, 255, 255, 0.1); outline: none; }
+.np-output-item:disabled { color: rgba(255, 255, 255, 0.4); cursor: default; }
+.np-output-name { flex: 1; display: flex; flex-direction: column; }
+.np-output-name small { font-size: 11px; color: rgba(255, 255, 255, 0.4); }
+
+/* Speed and sleep timer: a row of speed chips, then the timer choices. */
+.np-extras-menu { min-width: 260px; }
+.np-extras-menu .np-output-title:not(:first-child) { margin-top: 6px; }
+.np-extras-rates { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 6px 4px; }
+.np-extras-rate {
+  flex: 1 0 auto;
+  min-width: 46px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.np-extras-rate:hover:not(:disabled),
+.np-extras-rate:focus-visible { background: rgba(255, 255, 255, 0.16); outline: none; }
+.np-extras-rate.is-on { background: #fff; color: #111; }
+.np-extras-rate:disabled { opacity: 0.4; cursor: default; }
+.np-extras-note { padding: 0 10px 4px; font-size: 11px; color: rgba(255, 255, 255, 0.5); }
+.np-extras .np-output-on { font-variant-numeric: tabular-nums; }

@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import type { PlaybackModes } from "../../lib/playbackModes";
 import { LikeButton } from "../LikeButton";
+import { PlaybackExtrasPicker } from "./PlaybackExtrasPicker";
 import { formatTime } from "../../lib/formatTime";
 
 interface SliderProps {
@@ -238,6 +239,7 @@ export function ControlDeck(props: ControlDeckProps) {
             )}
           </div>
         )}
+        <PlaybackExtrasPicker />
         <div className="np-pill np-volume">
           <button
             type="button"

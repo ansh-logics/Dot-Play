@@ -318,8 +318,8 @@ function NowPlayingScreen(props: NowPlayingProps) {
   useEffect(() => {
     // Capture phase so Esc is handled here before the app's global handler.
     const onKey = (e: KeyboardEvent) => {
-      // Let open menus and dialogs close first.
-      if (document.querySelector(".music-context-menu, .nothing-modal-backdrop")) return;
+      // Let open menus and dialogs close first (including the deck's "Play on" and speed menus).
+      if (document.querySelector(".music-context-menu, .nothing-modal-backdrop, .np-output-menu")) return;
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();

@@ -3,6 +3,7 @@ import { asPlain, type LyricWord, type TrackLyrics } from "../../lib/lyrics";
 import type { LyricsStatus } from "./useLyrics";
 import { activeRowIndex, buildLyricRows, type LyricRow } from "./lyricRows";
 import { useFrameLoop, useLyricClock } from "./useLyricClock";
+import { formatOffset, OFFSET_STEP_S, readOffsets, withOffset, writeOffsets } from "../../lib/lyricOffsets";
 
 interface LyricsPanelProps {
   data: TrackLyrics | null;
@@ -48,6 +49,24 @@ function usePlainPreference(trackKey: string | undefined): [boolean, () => void]
     });
   }, [trackKey]);
   return [prefers, toggle];
+}
+
+/** This song's timing nudge (seconds, positive = lyrics sooner), remembered per song. */
+function useLyricOffset(trackKey: string | undefined): [number, (seconds: number) => void] {
+  const [offsets, setOffsets] = useState(readOffsets);
+  const offset = (trackKey && offsets[trackKey]) || 0;
+  const set = useCallback(
+    (seconds: number) => {
+      if (!trackKey) return;
+      setOffsets((current) => {
+        const next = withOffset(current, trackKey, seconds);
+        writeOffsets(next);
+        return next;
+      });
+    },
+    [trackKey],
+  );
+  return [offset, set];
 }
 
 const USER_SCROLL_PAUSE_MS = 3500;
@@ -123,6 +142,7 @@ export function LyricsPanel({
 }: LyricsPanelProps) {
   // Synced lyrics can be off for some songs; the listener may read them as plain text.
   const [preferPlain, togglePlain] = usePlainPreference(trackKey);
+  const [offset, setOffset] = useLyricOffset(trackKey);
   const canChoose = sourceStatus === "synced" && Boolean(sourceData) && Boolean(trackKey);
   const showPlain = canChoose && preferPlain;
   const data = useMemo(() => (showPlain && sourceData ? asPlain(sourceData) : sourceData), [showPlain, sourceData]);
@@ -137,7 +157,9 @@ export function LyricsPanel({
       : lines.map((line) => ({ kind: "line" as const, key: `line-${line.id}`, start: line.startTime, line }));
   }, [data, synced]);
 
-  const activeIdx = synced ? activeRowIndex(rows, currentTime) : -1;
+  // The song's position as the lyrics see it, nudged by the listener's per-song offset.
+  const lyricTime = currentTime + (synced ? offset : 0);
+  const activeIdx = synced ? activeRowIndex(rows, lyricTime) : -1;
   // Before anything has started, frame the upcoming row (intro dots or the first line).
   const focusIdx = synced ? Math.max(activeIdx, 0) : -1;
 
@@ -186,7 +208,9 @@ export function LyricsPanel({
   }, [centreFocus, status]);
 
   // ---- Per-frame word sweep / interlude progress -----------------------------
-  const now = useLyricClock(currentTime, isPlaying);
+  const clockNow = useLyricClock(currentTime, isPlaying);
+  const appliedOffset = synced ? offset : 0;
+  const now = useCallback(() => clockNow() + appliedOffset, [clockNow, appliedOffset]);
   const activeRow = activeIdx >= 0 ? rows[activeIdx] : undefined;
   // Lead words then backing-vocal words: the same order their spans appear in the DOM.
   const activeWords = useMemo(
@@ -292,12 +316,14 @@ export function LyricsPanel({
 
           const { line } = row;
           const state = !synced ? "plain" : isActive ? "active" : distance <= 1 ? "near" : distance === 2 ? "mid" : "far";
+          // Duets: the other voice's lines sit on the far side.
+          const end = synced && line.side === "end";
           return (
             <p
               key={row.key}
               data-row={idx}
-              className={`np-lyric np-lyric--${state}`}
-              onClick={synced ? () => onSeek(line.startTime) : undefined}
+              className={`np-lyric np-lyric--${state} ${end ? "np-lyric--end" : ""}`}
+              onClick={synced ? () => onSeek(Math.max(0, line.startTime - offset)) : undefined}
             >
               {synced && line.words && line.words.length > 0 ? (
                 <TimedWords words={line.words} letters={isActive} />
@@ -319,9 +345,41 @@ export function LyricsPanel({
         <div className="np-lyrics-pad" aria-hidden="true" />
       </div>
       {canChoose && (
-        <button type="button" className="np-lyrics-mode" onClick={togglePlain}>
-          {showPlain ? "Show synced lyrics" : "Out of sync? Show as text"}
-        </button>
+        <div className={`np-lyrics-tools ${offset !== 0 ? "has-offset" : ""}`}>
+          {synced && (
+            <div className="np-lyrics-offset" role="group" aria-label="Lyrics timing for this song">
+              <button
+                type="button"
+                onClick={() => setOffset(offset - OFFSET_STEP_S)}
+                aria-label="Show lyrics later"
+                title="Lyrics later"
+              >
+                −
+              </button>
+              <button
+                type="button"
+                className="np-lyrics-offset-value"
+                onClick={() => setOffset(0)}
+                disabled={offset === 0}
+                aria-label={offset === 0 ? "Lyrics timing as found" : `Lyrics timing ${formatOffset(offset)}; reset`}
+                title={offset === 0 ? "Lyrics timing as found" : "Reset timing"}
+              >
+                {formatOffset(offset)}
+              </button>
+              <button
+                type="button"
+                onClick={() => setOffset(offset + OFFSET_STEP_S)}
+                aria-label="Show lyrics sooner"
+                title="Lyrics sooner"
+              >
+                +
+              </button>
+            </div>
+          )}
+          <button type="button" className="np-lyrics-mode" onClick={togglePlain}>
+            {showPlain ? "Show synced lyrics" : "Out of sync? Show as text"}
+          </button>
+        </div>
       )}
     </div>
   );

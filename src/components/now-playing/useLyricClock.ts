@@ -1,32 +1,23 @@
-import { useCallback, useEffect, useRef } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createLyricClock } from "./lyricClock";
+
+/** The playback speed (1 = normal), so drawn time runs as fast as the song does. */
+export const PlaybackRateContext = createContext(1);
 
 /**
- * Playback time at animation-frame precision. The app polls the player every
- * ~100ms, which is too coarse for a smooth letter-by-letter sweep, so this
- * interpolates between polls and rebases whenever a new reading arrives
- * (which also absorbs seeks and buffering stalls).
+ * Playback time at animation-frame precision. The app polls the player every ~100ms, which is
+ * too coarse for a smooth letter-by-letter sweep; this runs its own clock and steers it toward
+ * each reading (see lyricClock.ts), so jitter, stalls and seeks never make the sweep jerk.
  */
 export function useLyricClock(currentTime: number, isPlaying: boolean) {
-  // Real timestamp is taken in the effect below (it runs on mount too).
-  const anchor = useRef({ base: currentTime, at: 0, playing: false });
+  const rate = useContext(PlaybackRateContext);
+  const [clock] = useState(() => createLyricClock(currentTime, performance.now()));
 
   useEffect(() => {
-    const prev = anchor.current;
-    const predicted = prev.playing ? prev.base + (performance.now() - prev.at) / 1000 : prev.base;
-    // The interpolated clock runs slightly ahead of the ~100ms polls, so a new reading (or a
-    // pause, which freezes on the last poll) can be a little behind it. Stepping back would make
-    // the sweep flick backwards; only accept going back on a real seek (> 0.35s).
-    const smallStepBack = currentTime < predicted && predicted - currentTime < 0.35;
-    const base = prev.playing && smallStepBack ? predicted : currentTime;
-    anchor.current = { base, at: performance.now(), playing: isPlaying };
-  }, [currentTime, isPlaying]);
+    clock.update(currentTime, isPlaying, rate, performance.now());
+  }, [clock, currentTime, isPlaying, rate]);
 
-  const now = useCallback(() => {
-    const a = anchor.current;
-    return a.playing ? a.base + (performance.now() - a.at) / 1000 : a.base;
-  }, []);
-
-  return now;
+  return useCallback(() => clock.now(performance.now()), [clock]);
 }
 
 /**

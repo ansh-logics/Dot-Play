@@ -3,6 +3,7 @@ import {
   hasRealTiming,
   parseEnhancedLrc,
   parsePlainLyrics,
+  parseTtml,
   processLyricsPayload,
   timingFitsSong,
   type LyricsPayload,
@@ -137,5 +138,42 @@ describe("lyric rows", () => {
     expect(activeRowIndex(rows, 0)).toBe(0); // the intro, not the last line
     expect(activeRowIndex(rows, 15)).toBe(2);
     expect(activeRowIndex(rows, 100)).toBe(rows.length - 1);
+  });
+});
+
+describe("duets", () => {
+  /** A TTML document with one line per [agent, start second] pair. */
+  const ttml = (lines: Array<[string | null, number]>, head = "") =>
+    `<tt xmlns:ttm="http://www.w3.org/ns/ttml#metadata"><head><metadata>${head}</metadata></head><body><div>` +
+    lines
+      .map(([agent, t], i) => {
+        const a = agent ? ` ttm:agent="${agent}"` : "";
+        return `<p begin="${t}s" end="${t + 2}s"${a}><span begin="${t}s" end="${t + 1}s">Line</span> <span begin="${t + 1}s" end="${t + 2}s">${i + 1}</span></p>`;
+      })
+      .join("") +
+    "</div></body></tt>";
+
+  it("puts the second singer's lines on the other side", () => {
+    const lines = parseTtml(ttml([["v1", 1], ["v2", 4], ["v2", 7], ["v1", 10]]));
+    expect(lines.map((l) => l.side)).toEqual(["start", "end", "end", "start"]);
+  });
+
+  it("keeps group lines at the start without changing whose turn it is", () => {
+    const head = '<ttm:agent type="group" xml:id="v3"/>';
+    const lines = parseTtml(ttml([["v1", 1], ["v2", 4], ["v3", 7], ["v2", 10], ["v1000", 13]], head));
+    expect(lines.map((l) => l.side)).toEqual(["start", "end", "start", "end", "start"]);
+  });
+
+  it("leaves a song with one singer alone", () => {
+    const lines = parseTtml(ttml([["v1", 1], ["v1", 4], [null, 7]]));
+    expect(lines.every((l) => l.side === undefined)).toBe(true);
+  });
+
+  it("flips a song that would sit almost entirely on the end side", () => {
+    const parts: Array<[string, number]> = [["v1", 1]];
+    for (let i = 0; i < 9; i++) parts.push(["v2", 4 + i * 3]);
+    const lines = parseTtml(ttml(parts));
+    expect(lines[0].side).toBe("end");
+    expect(lines.slice(1).every((l) => l.side === "start")).toBe(true);
   });
 });

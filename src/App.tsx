@@ -18,6 +18,8 @@ import { LibraryView } from "./views/LibraryView";
 import { PlaylistView } from "./views/PlaylistView";
 import { ImportView } from "./views/ImportView";
 import { SearchLandingView } from "./views/SearchLandingView";
+import { PlaybackExtrasContext } from "./components/now-playing/PlaybackExtrasPicker";
+import { PlaybackRateContext } from "./components/now-playing/useLyricClock";
 import { SearchResultsView } from "./views/SearchResultsView";
 import type { CardClickHandler, CardContextMenuHandler, NavTab } from "./views/types";
 import { ArrowLeft } from "lucide-react";
@@ -176,6 +178,19 @@ function App() {
     onToggleLike: toggleLike,
   });
   const { currentTrack, selectTrack } = playback;
+  const { playbackRate, changePlaybackRate, sleepTimer, startSleepTimer, sleepAtEndOfTrack, cancelSleepTimer } = playback;
+  const extrasContext = useMemo(
+    () => ({
+      playbackRate,
+      canChangeRate: true,
+      changePlaybackRate,
+      sleepTimer,
+      startSleepTimer,
+      sleepAtEndOfTrack,
+      cancelSleepTimer,
+    }),
+    [playbackRate, changePlaybackRate, sleepTimer, startSleepTimer, sleepAtEndOfTrack, cancelSleepTimer],
+  );
 
   const currentVideoId = currentTrack?.videoId;
   const currentPlaylistId = currentTrack?.playlistId;
@@ -784,6 +799,8 @@ function App() {
 
       {showSupportModal && <SupportModal onClose={() => setShowSupportModal(false)} />}
 
+      <PlaybackExtrasContext.Provider value={extrasContext}>
+      <PlaybackRateContext.Provider value={playbackRate}>
       <WithCurrentTime clock={playback.clock}>
         {(seconds) => (
           <NowPlaying
@@ -822,6 +839,8 @@ function App() {
           />
         )}
       </WithCurrentTime>
+      </PlaybackRateContext.Provider>
+      </PlaybackExtrasContext.Provider>
 
       <MusicContextMenu
         target={contextTarget}

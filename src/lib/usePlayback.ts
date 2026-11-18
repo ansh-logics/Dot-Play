@@ -31,6 +31,15 @@ import {
   type PlaybackModes,
 } from "./playbackModes";
 import { useSystemMediaControls } from "./useSystemMediaControls";
+import {
+  loadPlaybackRate,
+  normalizeRate,
+  savePlaybackRate,
+  sleepAfter,
+  sleepFadeGain,
+  sleepRemainingMs,
+  type SleepTimer,
+} from "./playbackExtras";
 import { useTrayBridge } from "./useTrayBridge";
 import { useImmersiveBridge } from "./useImmersiveBridge";
 import { usePlayerSkin } from "./usePlayerSkin";
@@ -88,6 +97,11 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(loadVolume);
   const [playbackModes, setPlaybackModes] = useState<PlaybackModes>(loadPlaybackModes);
+  /** Playback speed (1 = normal). */
+  const [playbackRate, setPlaybackRate] = useState(loadPlaybackRate);
+  const playbackRateRef = useRef(playbackRate);
+  const [sleepTimer, setSleepTimerState] = useState<SleepTimer>(null);
+  const sleepTimerRef = useRef<SleepTimer>(null);
 
   const playerRef = useRef<YouTubePlayerInstance | null>(null);
   const isScrubbingRef = useRef(false);
@@ -328,6 +342,30 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     }
   }, []);
 
+  // Speed
+  const changePlaybackRate = useCallback((next: number) => {
+    const rate = normalizeRate(next);
+    playbackRateRef.current = rate;
+    setPlaybackRate(rate);
+    savePlaybackRate(rate);
+    playerRef.current?.setPlaybackRate?.(rate);
+  }, []);
+
+  // Sleep timer
+  const setSleepTimer = useCallback(
+    (timer: SleepTimer) => {
+      sleepTimerRef.current = timer;
+      setSleepTimerState(timer);
+      if (!timer) showToast("Sleep timer off.");
+      else if (timer.kind === "endOfTrack") showToast("Playback will stop when this song ends.");
+      else showToast(`Playback will stop in ${timer.minutes} minutes.`);
+    },
+    [showToast],
+  );
+  const startSleepTimer = useCallback((minutes: number) => setSleepTimer(sleepAfter(minutes)), [setSleepTimer]);
+  const sleepAtEndOfTrack = useCallback(() => setSleepTimer({ kind: "endOfTrack" }), [setSleepTimer]);
+  const cancelSleepTimer = useCallback(() => setSleepTimer(null), [setSleepTimer]);
+
   // Transport
   const seekTo = useCallback(
     (seconds: number) => {
@@ -508,6 +546,25 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     const current = sessionRef.current;
     const { repeat, autoplay } = playbackModesRef.current;
 
+    // "Stop after this song": move on to the next song, but leave it waiting, paused.
+    if (sleepTimerRef.current?.kind === "endOfTrack") {
+      sleepTimerRef.current = null;
+      setSleepTimerState(null);
+      const { session: nextSession, nextTrack } = advanceOnTrackEnd(current, { repeat: repeat === "one" ? "off" : repeat });
+      if (nextTrack?.videoId) {
+        recordedTrackIdRef.current = null;
+        cacheTrack(nextTrack);
+        setAutoPlayOnMount(false);
+        setCurrentTime(0);
+        setDuration(0);
+        setPlayerState("paused");
+        playerRef.current?.cueVideoById?.({ videoId: nextTrack.videoId, startSeconds: 0 });
+      }
+      commitSession(() => nextSession);
+      showToast("Sleep timer: stopped after the song.");
+      return;
+    }
+
     if (repeat === "one" && current.currentTrack && playerRef.current) {
       playerRef.current.seekTo(0, true);
       setCurrentTime(0);
@@ -546,7 +603,7 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
       }
     }
     commitSession(() => nextSession);
-  }, [commitSession, playAutoplayFrom, startTrack]);
+  }, [showToast, commitSession, playAutoplayFrom, startTrack]);
 
   const handleNextTrack = useCallback(async () => {
     const current = sessionRef.current;
@@ -620,6 +677,7 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     playerRef.current = player;
     setIsPlayerReady(true);
     player.setVolume?.(volumeRef.current);
+    if (playbackRateRef.current !== 1) player.setPlaybackRate?.(playbackRateRef.current);
     const initialDuration = player.getDuration();
     if (initialDuration > 0) {
       setDuration(initialDuration);
@@ -637,6 +695,8 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
       if (state === "playing") {
         skipsInARowRef.current = 0;
         setPlaybackError(null);
+        // YouTube resets the speed when it loads a song; put the chosen one back.
+        if (playbackRateRef.current !== 1) playerRef.current?.setPlaybackRate?.(playbackRateRef.current);
       } else if (state === "ended") {
         recordIfNeeded(sessionRef.current.currentTrack);
         void handleTrackCompletedRef.current();
@@ -711,11 +771,51 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     return clock.subscribe(check);
   }, [clock, currentTrack, playerState, recordIfNeeded]);
 
+  // The timed sleep timer: fade out over the last seconds, then pause. A deadline on the wall
+  // clock, checked often, so a sleeping Mac or a throttled window can't stretch it.
+  useEffect(() => {
+    if (sleepTimer?.kind !== "at") return;
+    let fading = false;
+    const restoreVolume = () => {
+      if (!fading) return;
+      fading = false;
+      playerRef.current?.setVolume?.(volumeRef.current);
+    };
+    const tick = () => {
+      const remaining = sleepRemainingMs(sleepTimer);
+      if (remaining === null) return;
+      const playing = playerStateRef.current === "playing" || playerStateRef.current === "buffering";
+      if (remaining <= 0) {
+        if (playing) {
+          playerRef.current?.pauseVideo();
+          persistCurrentPosition(currentTimeRef.current);
+        }
+        restoreVolume();
+        sleepTimerRef.current = null;
+        setSleepTimerState(null);
+        if (playing) showToast("Sleep timer: playback paused.");
+        return;
+      }
+      const gain = sleepFadeGain(remaining);
+      if (gain < 1 && playing) {
+        fading = true;
+        playerRef.current?.setVolume?.(Math.round(volumeRef.current * gain));
+      }
+    };
+    tick();
+    const timer = window.setInterval(tick, 250);
+    return () => {
+      window.clearInterval(timer);
+      restoreVolume();
+    };
+  }, [sleepTimer, persistCurrentPosition, currentTimeRef, showToast]);
+
   useSystemMediaControls({
     track: currentTrack,
     playerState,
     clock,
     duration,
+    rate: playbackRate,
     onTogglePlayPause: togglePlayPause,
     onNext: handleNextTrack,
     onPrevious: handlePreviousTrack,
@@ -792,6 +892,13 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     cycleRepeatMode,
     toggleAutoplay,
     toggleShuffle,
+    // speed and sleep
+    playbackRate,
+    changePlaybackRate,
+    sleepTimer,
+    startSleepTimer,
+    sleepAtEndOfTrack,
+    cancelSleepTimer,
     // hidden player
     handlePlayerReady,
     handlePlayerStateChange,

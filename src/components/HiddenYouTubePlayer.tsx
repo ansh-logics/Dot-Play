@@ -21,6 +21,8 @@ export interface YouTubePlayerInstance {
   isMuted?: () => boolean
   setVolume?: (volume: number) => void
   getVolume?: () => number
+  /** Playback speed; YouTube allows 0.25–2. Not every engine (a linked TV) supports it. */
+  setPlaybackRate?: (rate: number) => void
 }
 
 export type YouTubePlaybackState =
@@ -233,6 +235,7 @@ export function HiddenYouTubePlayer({
       postToBridge({ action: "setVolume", volume: vol })
     },
     getVolume: () => volumeRef.current,
+    setPlaybackRate: (rate) => postToBridge({ action: "setPlaybackRate", rate }),
     isMuted: () => isMutedRef.current,
     mute: () => {
       isMutedRef.current = true

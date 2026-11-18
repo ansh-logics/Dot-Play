@@ -148,6 +148,12 @@
             }
             break;
 
+          case "setPlaybackRate":
+            if (player && typeof player.setPlaybackRate === "function" && typeof msg.rate === "number") {
+              player.setPlaybackRate(msg.rate);
+            }
+            break;
+
           case "mute":
             if (player && typeof player.mute === "function") {
               player.mute();

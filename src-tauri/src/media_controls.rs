@@ -28,6 +28,9 @@ pub struct NowPlayingInfo {
     /// needs resending on play/pause, seeks and track changes.
     pub position: f64,
     pub is_playing: bool,
+    /// Playback speed while playing (1.0 = normal); older senders leave it out.
+    #[serde(default)]
+    pub rate: Option<f64>,
     pub artwork_url: Option<String>,
     /// Lets the menu bar popover look up lyrics for the track.
     #[serde(default)]
@@ -276,7 +279,11 @@ mod macos {
             put(MPNowPlayingInfoPropertyElapsedPlaybackTime, &NSNumber::new_f64(info.position.max(0.0)));
             put(
                 MPNowPlayingInfoPropertyPlaybackRate,
-                &NSNumber::new_f64(if info.is_playing { 1.0 } else { 0.0 }),
+                &NSNumber::new_f64(if info.is_playing {
+                    info.rate.filter(|r| r.is_finite() && *r > 0.0).unwrap_or(1.0)
+                } else {
+                    0.0
+                }),
             );
             put(
                 MPNowPlayingInfoPropertyMediaType,
