@@ -18,7 +18,7 @@ import { LibraryView } from "./views/LibraryView";
 import { PlaylistView } from "./views/PlaylistView";
 import { ImportView } from "./views/ImportView";
 import { SearchLandingView } from "./views/SearchLandingView";
-import { PlaybackExtrasContext } from "./components/now-playing/PlaybackExtrasPicker";
+import { PlaybackExtrasContext } from "./components/now-playing/playbackExtrasContext";
 import { PlaybackRateContext } from "./components/now-playing/useLyricClock";
 import { SearchResultsView } from "./views/SearchResultsView";
 import type { CardClickHandler, CardContextMenuHandler, NavTab } from "./views/types";

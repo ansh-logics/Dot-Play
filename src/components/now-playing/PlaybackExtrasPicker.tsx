@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import { Check, Gauge, Moon } from "lucide-react";
 import {
   formatRate,
@@ -8,29 +9,56 @@ import {
   sleepRemainingMs,
   type SleepTimer,
 } from "../../lib/playbackExtras";
+import { PlaybackExtrasContext } from "./playbackExtrasContext";
 
-/** Speed and sleep timer, shared from App so the deck needs no props threaded to it. */
-export const PlaybackExtrasContext = createContext<{
-  playbackRate: number;
-  /** False while a TV plays: it only plays at normal speed. */
-  canChangeRate: boolean;
-  changePlaybackRate: (rate: number) => void;
-  sleepTimer: SleepTimer;
-  startSleepTimer: (minutes: number) => void;
-  sleepAtEndOfTrack: () => void;
-  cancelSleepTimer: () => void;
-} | null>(null);
 
 /** Re-renders every second while a timed sleep timer runs, for the countdown. */
 function useSleepRemaining(timer: SleepTimer): number | null {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     if (timer?.kind !== "at") return;
-    setNow(Date.now());
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, [timer]);
-  return sleepRemainingMs(timer, now);
+  // `now` only ticks while a timer runs; a timer just set never shows more than its full length.
+  return sleepRemainingMs(timer, timer?.kind === "at" ? Math.max(now, timer.deadline - timer.minutes * 60_000) : now);
+}
+
+/** Gap between the button and the menu above it, and the menu's margin from the screen edge. */
+const MENU_GAP = 10;
+const MENU_MARGIN = 16;
+
+/**
+ * Where the menu goes: above `anchor`, right-aligned with it, inside the Now Playing screen.
+ * The controls card clips its contents (overflow: hidden for its rounded glass and sheet), so
+ * the menu is drawn on the screen itself instead, and scrolls if the window is too short.
+ */
+function useMenuPlacement(open: boolean, anchor: RefObject<HTMLElement | null>) {
+  const [placement, setPlacement] = useState<{ host: HTMLElement; style: CSSProperties } | null>(null);
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const el = anchor.current;
+      if (!el) return;
+      const host = el.closest<HTMLElement>(".np-root") ?? document.body;
+      const box = host.getBoundingClientRect();
+      const button = el.getBoundingClientRect();
+      setPlacement({
+        host,
+        style: {
+          position: "absolute",
+          right: Math.max(MENU_MARGIN, box.right - button.right),
+          bottom: box.bottom - button.top + MENU_GAP,
+          maxHeight: Math.max(160, button.top - box.top - MENU_GAP - MENU_MARGIN),
+          overflowY: "auto",
+        },
+      });
+    };
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
+  }, [open, anchor]);
+  return placement;
 }
 
 /** "Speed and sleep": playback speed, and a timer that stops the music. */
@@ -38,12 +66,15 @@ export function PlaybackExtrasPicker() {
   const context = useContext(PlaybackExtrasContext);
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const remaining = useSleepRemaining(context?.sleepTimer ?? null);
+  const placement = useMenuPlacement(open, rootRef);
 
   useEffect(() => {
     if (!open) return;
     const onPointer = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (!rootRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
     };
     // The player leaves Esc alone while a menu is open (NowPlaying.tsx), so this closes only the menu.
     const onKey = (event: KeyboardEvent) => {
@@ -85,8 +116,16 @@ export function PlaybackExtrasPicker() {
         {sleepTimer ? <Moon size={18} /> : <Gauge size={19} />}
         {summary && <span className="np-output-on">{summary}</span>}
       </button>
-      {open && (
-        <div className="np-output-menu np-extras-menu" role="menu" aria-label="Speed and sleep timer">
+      {open && placement && createPortal(
+        <div
+          ref={menuRef}
+          className="np-output-menu np-extras-menu"
+          role="menu"
+          aria-label="Speed and sleep timer"
+          style={placement.style}
+          // Keep clicks in the menu from starting a drag of the card or other screen gestures.
+          onPointerDown={(event) => event.stopPropagation()}
+        >
           <span className="np-output-title">Speed</span>
           <div className="np-extras-rates" role="group" aria-label="Playback speed">
             {PLAYBACK_RATES.map((rate) => (
@@ -140,7 +179,8 @@ export function PlaybackExtrasPicker() {
               <span className="np-output-name">Turn off timer</span>
             </button>
           )}
-        </div>
+        </div>,
+        placement.host,
       )}
     </div>
   );
