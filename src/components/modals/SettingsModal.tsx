@@ -4,6 +4,13 @@ import type { FeedbackPrefs } from "../../lib/feedback";
 import { IDLE_CHOICES, IS_MAC, openImmersive, type IdleMinutes } from "../../lib/immersive";
 import { ImmersiveDisplays } from "./ImmersiveDisplays";
 import { PhoneRemoteSettings } from "./PhoneRemoteSettings";
+import {
+  setDiscordPresenceEnabled,
+  useDiscordPresenceAvailable,
+  useDiscordPresenceEnabled,
+  useDiscordPresenceStatus,
+  type DiscordPresenceStatus,
+} from "../../lib/discordPresence";
 
 interface SettingsModalProps {
   feedbackPrefs: FeedbackPrefs;
@@ -139,6 +146,8 @@ export function SettingsModal({
 
       <PhoneRemoteSettings />
 
+      <DiscordSettings />
+
       <div className="settings-section">
         <span className="settings-section-title">DATA & STORAGE</span>
         <div className="settings-row">
@@ -188,4 +197,48 @@ export function SettingsModal({
       </div>
     </Modal>
   );
+}
+
+/** Discord status: what's playing, shown on the listener's Discord profile. Off by default. */
+function DiscordSettings() {
+  const available = useDiscordPresenceAvailable();
+  const enabled = useDiscordPresenceEnabled();
+  const status = useDiscordPresenceStatus();
+  if (available === null) return null;
+  return (
+    <div className="settings-section">
+      <span className="settings-section-title">DISCORD</span>
+      {available ? (
+        <SwitchRow
+          label="Show what you're listening to"
+          description={enabled ? discordStatusText(status) : "Your Discord profile shows the song while it plays, through the Discord app on this Mac. Pausing clears it."}
+          checked={enabled}
+          onToggle={() => setDiscordPresenceEnabled(!enabled)}
+        />
+      ) : (
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <span className="settings-label">Show what you're listening to</span>
+            <span className="settings-desc">Not available in this build.</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** What the Discord row says while the switch is on, so a missing status explains itself. */
+function discordStatusText(status: DiscordPresenceStatus): string {
+  switch (status.kind) {
+    case "shown":
+      return `Showing “${status.title}” on your Discord profile.`;
+    case "cleared":
+      return "Connected to Discord. The status shows while a song plays.";
+    case "no-discord":
+      return "Couldn't reach the Discord app. Open Discord; DOT Music tries again every 30 seconds.";
+    case "error":
+      return `Discord didn't accept the status: ${status.message}`;
+    default:
+      return "Play a song to show it on your Discord profile.";
+  }
 }

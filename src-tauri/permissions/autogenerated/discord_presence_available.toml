@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-discord-presence-available"
+description = "Enables the discord_presence_available command without any pre-configured scope."
+commands.allow = ["discord_presence_available"]
+
+[[permission]]
+identifier = "deny-discord-presence-available"
+description = "Denies the discord_presence_available command without any pre-configured scope."
+commands.deny = ["discord_presence_available"]

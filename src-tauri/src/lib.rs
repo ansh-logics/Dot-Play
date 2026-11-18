@@ -1,3 +1,4 @@
+mod discord;
 mod feed;
 mod fsutil;
 mod haptics;
@@ -54,6 +55,9 @@ const MAIN_WINDOW_PERMISSIONS: &[&str] = &[
     "allow-get-lyrics",
     "allow-perform-haptic",
     "allow-set-now-playing",
+    "allow-discord-presence-available",
+    "allow-set-discord-activity",
+    "allow-stop-discord-presence",
     "allow-get-now-playing",
     "allow-tray-media-control",
     "allow-get-like-status",
@@ -206,6 +210,9 @@ pub fn run() {
             lyrics::get_lyrics,
             haptics::perform_haptic,
             media_controls::set_now_playing,
+            discord::discord_presence_available,
+            discord::set_discord_activity,
+            discord::stop_discord_presence,
             media_controls::get_now_playing,
             media_controls::tray_media_control,
             library::get_like_status,
