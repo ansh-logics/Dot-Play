@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Clock, Image, MessageSquareQuote, Monitor, Pause, Play, SkipBack, SkipForward, X } from "lucide-react";
 import { MiniVinyl } from "../components/vinyl/MiniVinyl";
 import { activeRowIndex, type LyricRow } from "../components/now-playing/lyricRows";
+import { AmLyricsPanel } from "../components/now-playing/AmLyricsPanel";
+import { useReducedMotion } from "motion/react";
 import { closeImmersive, leaveToPlayer, setDisplayOn, type ImmersiveView } from "../lib/immersive";
 import type { PlayerSkinId } from "../lib/playerSkins";
 import { useArtworkPalette } from "../lib/useArtworkPalette";
@@ -20,8 +22,6 @@ import {
   type DisplaysState,
   type LyricsResult,
 } from "./hooks";
-
-const NO_ROWS: LyricRow[] = [];
 
 /** The controls and the pointer hide after this long without the mouse moving. */
 const CONTROLS_HIDE_MS = 2600;
@@ -102,7 +102,7 @@ export function Immersive() {
           ) : (
             <Stage np={np} now={now} position={position} skin={skin} art={art} zoom={zoom} next={state?.next ?? null} lyrics={inlineLyric ? lyrics : null} />
           ))}
-        {shown === "lyrics" && np && <LyricsScreen np={np} now={now} position={position} lyrics={lyrics} art={art} zoom={zoom} />}
+        {shown === "lyrics" && np && <LyricsScreen np={np} now={now} position={position} lyrics={lyrics} art={art} zoom={zoom} skin={skin} />}
         {shown === "art" &&
           np &&
           (skin === "cassette" ? (
@@ -273,40 +273,46 @@ interface ScreenProps {
   zoom: number;
 }
 
-/** Big synced lyrics, the line being sung held in the middle. */
-function LyricsScreen({ np, now, position, lyrics, art, zoom }: ScreenProps & { lyrics: LyricsResult }) {
-  const rows = lyrics.status === "synced" ? lyrics.rows : NO_ROWS;
-  const active = activeRowIndex(rows, position);
-  const listRef = useRef<HTMLDivElement>(null);
+/** Lines in am-lyrics on a whole display: bigger, with the current line nearer the middle. */
+const IMMERSIVE_SHADOW_CSS = `
+.lyrics-container {
+  --lyplus-font-size-base: 6.4vmin;
+  --am-lyrics-line-height: 1.14;
+  --am-lyrics-line-spacing: 3.6vmin;
+  --lyrics-scroll-padding-top: 40%;
+}
+`;
 
-  useEffect(() => {
-    const list = listRef.current;
-    const el = list?.querySelector<HTMLElement>(`[data-row="${Math.max(0, active)}"]`);
-    if (!list || !el) return;
-    const box = list.getBoundingClientRect();
-    const row = el.getBoundingClientRect();
-    list.scrollTo({ top: list.scrollTop + row.top - box.top - (box.height - row.height) * 0.42, behavior: "smooth" });
-  }, [active, rows]);
+/** Each player style's lettering, as on the rest of the immersive screens. */
+const LYRIC_FONT: Partial<Record<PlayerSkinId, string>> = {
+  vinyl: "var(--font-serif)",
+  nothing: "var(--font-dot)",
+  cassette: "var(--im-mono)",
+};
 
+const seekTo = (position: number) => media({ action: "seek", position });
+
+/** Big synced lyrics, moving the same way as Now Playing's (am-lyrics). */
+function LyricsScreen({ np, now, position, lyrics, art, zoom, skin }: ScreenProps & { lyrics: LyricsResult; skin: PlayerSkinId }) {
+  const reduceMotion = useReducedMotion() ?? false;
   return (
     <section className="im-lyrics-screen">
       <CornerClock now={now} />
-      <div className="im-lyrics" ref={listRef}>
-        <div className="im-lyrics-pad" />
-        {rows.map((row, index) => {
-          const state = index === active ? " is-active" : index < active ? " is-past" : "";
-          return row.kind === "interlude" ? (
-            <p key={row.key} data-row={index} className={`im-lyric im-lyric--dots${state}`}>
-              •••
-            </p>
-          ) : (
-            <p key={row.key} data-row={index} className={`im-lyric${state}`}>
-              {row.line.text}
-            </p>
-          );
-        })}
-        <div className="im-lyrics-pad" />
-      </div>
+      {lyrics.status === "synced" && (
+        <AmLyricsPanel
+          data={lyrics.data}
+          status="synced"
+          currentTime={position}
+          isPlaying={np.isPlaying}
+          onSeek={seekTo}
+          reduceMotion={reduceMotion}
+          trackKey={np.videoId ?? undefined}
+          tools={false}
+          shadowCss={IMMERSIVE_SHADOW_CSS}
+          fontFamily={LYRIC_FONT[skin]}
+          className="im-am-lyrics"
+        />
+      )}
       <div className="im-mini-np">
         <div className="im-mini-art">
           <Cover url={art} zoom={zoom} />

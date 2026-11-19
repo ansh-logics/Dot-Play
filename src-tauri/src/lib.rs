@@ -114,6 +114,7 @@ const AUX_WINDOW_PERMISSIONS: &[&str] = &[
     "allow-set-immersive-screens",
     "allow-set-immersive-display",
     "allow-leave-immersive-to-player",
+    "allow-get-lyrics",
 ];
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

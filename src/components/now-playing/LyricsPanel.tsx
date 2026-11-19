@@ -3,7 +3,9 @@ import { asPlain, type LyricWord, type TrackLyrics } from "../../lib/lyrics";
 import type { LyricsStatus } from "./useLyrics";
 import { activeRowIndex, buildLyricRows, type LyricRow } from "./lyricRows";
 import { useFrameLoop, useLyricClock } from "./useLyricClock";
-import { formatOffset, OFFSET_STEP_S, readOffsets, withOffset, writeOffsets } from "../../lib/lyricOffsets";
+import { sampleSpring, SPRING_DURATION_S, springKeyframes, type SpringState } from "./lyricSpring";
+import { formatOffset, OFFSET_STEP_S } from "../../lib/lyricOffsets";
+import { useLyricOffset, usePlainPreference } from "./lyricsPreferences";
 
 interface LyricsPanelProps {
   data: TrackLyrics | null;
@@ -18,58 +20,111 @@ interface LyricsPanelProps {
   trackKey?: string;
 }
 
-const PLAIN_PREF_KEY = "dot_lyrics_plain_v1";
-const PLAIN_PREF_MAX = 300;
-
-function readPlainPrefs(): string[] {
-  try {
-    const value = JSON.parse(localStorage.getItem(PLAIN_PREF_KEY) ?? "[]");
-    return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
-  } catch {
-    return [];
-  }
-}
-
-/** Songs whose synced lyrics the listener found out of sync, shown as plain text instead. */
-function usePlainPreference(trackKey: string | undefined): [boolean, () => void] {
-  const [prefs, setPrefs] = useState(readPlainPrefs);
-  const prefers = Boolean(trackKey && prefs.includes(trackKey));
-  const toggle = useCallback(() => {
-    if (!trackKey) return;
-    setPrefs((current) => {
-      const next = current.includes(trackKey)
-        ? current.filter((k) => k !== trackKey)
-        : [...current, trackKey].slice(-PLAIN_PREF_MAX);
-      try {
-        localStorage.setItem(PLAIN_PREF_KEY, JSON.stringify(next));
-      } catch {
-        // Storage unavailable: the choice lasts for this session.
-      }
-      return next;
-    });
-  }, [trackKey]);
-  return [prefers, toggle];
-}
-
-/** This song's timing nudge (seconds, positive = lyrics sooner), remembered per song. */
-function useLyricOffset(trackKey: string | undefined): [number, (seconds: number) => void] {
-  const [offsets, setOffsets] = useState(readOffsets);
-  const offset = (trackKey && offsets[trackKey]) || 0;
-  const set = useCallback(
-    (seconds: number) => {
-      if (!trackKey) return;
-      setOffsets((current) => {
-        const next = withOffset(current, trackKey, seconds);
-        writeOffsets(next);
-        return next;
-      });
-    },
-    [trackKey],
-  );
-  return [offset, set];
-}
-
 const USER_SCROLL_PAUSE_MS = 3500;
+/**
+ * The view starts moving to the next line this long before it is sung, so the (smooth) scroll
+ * lands as the line starts instead of chasing it. The highlight itself still changes on time.
+ */
+const SCROLL_LEAD_S = 0.4;
+/** Rows behind the move (below it going forward, above it going back) start this much later
+ *  each, up to GLIDE_STAGGER_ROWS, so the lines follow one another instead of moving as a block. */
+const GLIDE_STAGGER_S = 0.05;
+const GLIDE_STAGGER_ROWS = 4;
+
+/** Each row's spring while it moves: where it started, how fast, and its stagger. */
+const rowSprings = new WeakMap<HTMLElement, { animation: Animation } & SpringState & { delay: number }>();
+
+/** A row's painted vertical offset ("0px 12px" → 12): the compositor can be ahead of JS. */
+function paintedOffset(el: HTMLElement): number | null {
+  const value = getComputedStyle(el).translate;
+  if (!value || value === "none") return null;
+  const parts = value.split(" ");
+  return parts.length > 1 ? Number.parseFloat(parts[1]) || 0 : 0;
+}
+
+/**
+ * Moves the lyrics so `top` is the scroll position. The scroll position jumps, invisibly:
+ * every row is shifted back by the same amount, then springs to its place (lyricSpring.ts).
+ * A row still moving from the last line change keeps its position, speed and remaining
+ * stagger, so quick lines flow on instead of restarting.
+ */
+function glideTo(container: HTMLElement, top: number, focusIdx: number, animate: boolean) {
+  const rows = Array.from(container.querySelectorAll<HTMLElement>("[data-row]"));
+  const stopAll = () =>
+    rows.forEach((el) => {
+      const run = rowSprings.get(el);
+      if (run) {
+        run.animation.cancel();
+        rowSprings.delete(el);
+        el.style.removeProperty("will-change");
+      }
+    });
+  const currentTop = container.scrollTop;
+  const forward = top >= currentTop;
+  const retargeting = rows.some((el) => rowSprings.has(el));
+
+  // Read every row's pose before anything is cancelled or scrolled.
+  const poses = rows.map((el) => {
+    const run = rowSprings.get(el);
+    if (!run) {
+      const row = Number(el.dataset.row);
+      const steps = forward ? row - focusIdx : focusIdx - row;
+      const delay = !retargeting && steps > 0 ? Math.min(steps, GLIDE_STAGGER_ROWS) * GLIDE_STAGGER_S : 0;
+      return { el, position: 0, velocity: 0, delay, moving: false };
+    }
+    const elapsed = Number(run.animation.currentTime ?? 0) / 1000;
+    const pose = sampleSpring(run.position, run.velocity, Math.max(0, elapsed - run.delay));
+    return {
+      el,
+      position: paintedOffset(el) ?? pose.position,
+      velocity: pose.velocity,
+      // Keep an in-flight cascade's remaining waits; a settled row doesn't start a new one.
+      delay: Math.max(0, run.delay - elapsed),
+      moving: true,
+    };
+  });
+  // Moving rows add to the scroll range; measure it without them.
+  stopAll();
+  const target = Math.max(0, Math.min(top, container.scrollHeight - container.clientHeight));
+  const delta = target - currentTop;
+
+  // Instant: reduced motion, or a jump too far to read as a move (a seek, a new song).
+  if (!animate || Math.abs(delta) > container.clientHeight * 1.5) {
+    container.scrollTop = target;
+    return;
+  }
+  if (Math.abs(delta) < 0.5 && !poses.some((p) => p.moving)) return;
+
+  // Only rows in the swept view (or already moving) need a spring.
+  const viewStart = Math.min(currentTop, target) - 200;
+  const viewEnd = Math.max(currentTop, target) + container.clientHeight + 200;
+  const started: Animation[] = [];
+  for (const { el, position: from, velocity, delay, moving } of poses) {
+    const position = from + delta;
+    const offscreen = el.offsetTop + el.offsetHeight < viewStart || el.offsetTop > viewEnd;
+    if ((!moving && offscreen) || (Math.abs(position) < 0.1 && Math.abs(velocity) < 0.1)) continue;
+    el.style.setProperty("will-change", "translate");
+    const animation = el.animate(springKeyframes(position, velocity), {
+      duration: SPRING_DURATION_S * 1000,
+      delay: delay * 1000,
+      fill: "both",
+      easing: "linear",
+    });
+    animation.pause();
+    animation.currentTime = 0;
+    rowSprings.set(el, { animation, position, velocity, delay });
+    animation.onfinish = () => {
+      if (rowSprings.get(el)?.animation !== animation) return;
+      animation.cancel();
+      rowSprings.delete(el);
+      el.style.removeProperty("will-change");
+    };
+    started.push(animation);
+  }
+  // Shift the rows and scroll in the same frame, then let the springs run.
+  container.scrollTop = target;
+  started.forEach((animation) => animation.play());
+}
 /** Words held at least this long get a faint glow while sung (Apple's emphasis on long notes). */
 const HELD_WORD_S = 1;
 
@@ -160,8 +215,13 @@ export function LyricsPanel({
   // The song's position as the lyrics see it, nudged by the listener's per-song offset.
   const lyricTime = currentTime + (synced ? offset : 0);
   const activeIdx = synced ? activeRowIndex(rows, lyricTime) : -1;
-  // Before anything has started, frame the upcoming row (intro dots or the first line).
-  const focusIdx = synced ? Math.max(activeIdx, 0) : -1;
+  // Before anything has started, frame the upcoming row (intro dots or the first line). While
+  // playing, the frame moves a moment early (SCROLL_LEAD_S).
+  const leadIdx = synced && isPlaying ? activeRowIndex(rows, lyricTime + SCROLL_LEAD_S) : activeIdx;
+  const focusIdx = synced ? Math.max(leadIdx, activeIdx, 0) : -1;
+  // Scrolling the lyrics by hand: auto-follow pauses and every line is readable, not dimmed.
+  const [browsing, setBrowsing] = useState(false);
+  const browseTimer = useRef<number | null>(null);
 
   // ---- Scrolling ------------------------------------------------------------
   const centreFocus = useCallback(
@@ -171,10 +231,31 @@ export function LyricsPanel({
       const el = container.querySelector<HTMLElement>(`[data-row="${focusIdx}"]`);
       if (!el) return;
       const top = el.offsetTop - container.clientHeight * 0.4 + el.clientHeight / 2;
-      container.scrollTo({ top: Math.max(0, top), behavior });
+      glideTo(container, top, focusIdx, behavior === "smooth");
     },
     [focusIdx],
   );
+
+  // Back to following the song once the listener stops scrolling.
+  const browse = useCallback(() => {
+    userScrollUntil.current = Date.now() + USER_SCROLL_PAUSE_MS;
+    setBrowsing(true);
+    if (browseTimer.current) window.clearTimeout(browseTimer.current);
+    browseTimer.current = window.setTimeout(() => {
+      browseTimer.current = null;
+      // Clear the pause first, or the re-centre below would still see it.
+      userScrollUntil.current = 0;
+      setBrowsing(false);
+    }, USER_SCROLL_PAUSE_MS);
+  }, []);
+  useEffect(() => () => {
+    if (browseTimer.current) window.clearTimeout(browseTimer.current);
+  }, []);
+  useEffect(() => {
+    if (!browsing) centreFocus(reduceMotion ? "auto" : "smooth");
+    // Only when browsing ends; following the line otherwise is handled below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [browsing]);
 
   // New song: never inherit the previous song's scroll position.
   useLayoutEffect(() => {
@@ -286,10 +367,8 @@ export function LyricsPanel({
     <div className="np-lyrics-shell">
       <div
         ref={scrollRef}
-        className={`np-lyrics ${synced ? "is-synced" : "is-plain"}`}
-        onWheel={() => {
-          userScrollUntil.current = Date.now() + USER_SCROLL_PAUSE_MS;
-        }}
+        className={`np-lyrics ${synced ? "is-synced" : "is-plain"} ${synced && browsing ? "is-browsing" : ""}`}
+        onWheel={browse}
         aria-label="Lyrics"
       >
         <div className="np-lyrics-pad" aria-hidden="true" />

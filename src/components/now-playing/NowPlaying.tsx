@@ -22,6 +22,7 @@ import type { QueueSession } from "../../lib/queueManager";
 import type { PlaybackModes } from "../../lib/playbackModes";
 import { NowPlayingBackdrop } from "./NowPlayingBackdrop";
 import { LyricsPanel } from "./LyricsPanel";
+import { AmLyricsPanel } from "./AmLyricsPanel";
 import { ControlDeck } from "./ControlDeck";
 import { QueuePanel, type QueueContextMenuHandler } from "./QueuePanel";
 import { useLyrics } from "./useLyrics";
@@ -525,7 +526,7 @@ function NowPlayingScreen(props: NowPlayingProps) {
                   exit={{ opacity: 0, x: 24 }}
                   transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
                 >
-                  <LyricsPanel
+                  <AmLyricsPanel
                     data={lyrics}
                     status={lyricsStatus}
                     currentTime={props.currentTime}

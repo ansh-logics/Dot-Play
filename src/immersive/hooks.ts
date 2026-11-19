@@ -143,7 +143,7 @@ export function useScreenView(): [ImmersiveView, (view: ImmersiveView) => void] 
 export type LyricsResult =
   | { status: "loading" }
   | { status: "none" }
-  | { status: "synced"; rows: LyricRow[] };
+  | { status: "synced"; rows: LyricRow[]; data: TrackLyrics };
 
 /** Line-synced lyrics for the track; only fetched while `wanted`. */
 export function useLyricRows(np: NowPlaying | null, wanted: boolean): LyricsResult {
@@ -171,8 +171,8 @@ export function useLyricRows(np: NowPlaying | null, wanted: boolean): LyricsResu
   const rows = useMemo(() => (synced && data ? buildLyricRows(data.lines) : []), [synced, data]);
 
   if (data === undefined) return { status: "loading" };
-  if (!synced || rows.length === 0) return { status: "none" };
-  return { status: "synced", rows };
+  if (!data || !synced || rows.length === 0) return { status: "none" };
+  return { status: "synced", rows, data };
 }
 
 /**

@@ -455,6 +455,32 @@ body,
 }
 .im-root[data-skin="nothing"] .im-lyric.is-active { color: #fff; }
 
+/* am-lyrics (the same motion as Now Playing) across the display; lines fade out towards
+   the top and bottom edges. Its colour follows each player style. */
+.im-am-lyrics {
+  position: absolute;
+  inset: 0;
+  padding: 0 12vw;
+  display: flex;
+}
+.im-am-lyrics .np-am-lyrics-host {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 4%, #000 24%, #000 72%, transparent 94%);
+  mask-image: linear-gradient(to bottom, transparent 4%, #000 24%, #000 72%, transparent 94%);
+}
+.im-am-lyrics .np-am-lyrics {
+  display: block;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  --am-lyrics-highlight-color: rgb(var(--im-ink));
+}
+.im-root[data-skin="cassette"] .im-am-lyrics .np-am-lyrics { --am-lyrics-highlight-color: rgb(var(--phos)); }
+
 .im-mini-np {
   position: absolute;
   left: 5vw;
@@ -753,7 +779,7 @@ body,
   }
   .im-art-meta .im-np-artist { font-size: 4vmin; }
 
-  .im-lyrics { padding: 0 8vw; }
+  .im-lyrics, .im-am-lyrics { padding: 0 8vw; }
   .im-lyric {
     max-width: 84vw;
     font-size: 7.4vmin;
@@ -817,7 +843,7 @@ body,
     text-wrap: balance;
   }
 
-  .im-lyrics { padding: 0 22vw; }
+  .im-lyrics, .im-am-lyrics { padding: 0 22vw; }
 }
 
 @media (prefers-reduced-motion: reduce) {
