@@ -5,6 +5,7 @@ import { IDLE_CHOICES, IS_MAC, openImmersive, type IdleMinutes } from "../../lib
 import { ImmersiveDisplays } from "./ImmersiveDisplays";
 import { PhoneRemoteSettings } from "./PhoneRemoteSettings";
 import { ScrobbleSettings } from "./ScrobbleSettings";
+import { setArtworkAccentEnabled, useArtworkAccentEnabled } from "../../lib/artworkAccent";
 import {
   setDiscordPresenceEnabled,
   useDiscordPresenceAvailable,
@@ -94,6 +95,7 @@ export function SettingsModal({
           checked={feedbackPrefs.sound}
           onToggle={() => onFeedbackChange({ sound: !feedbackPrefs.sound })}
         />
+        <ArtworkAccentRow />
         <SwitchRow
           label="Trackpad haptics"
           description="Feel each notch on a Force Touch trackpad"
@@ -244,4 +246,16 @@ function discordStatusText(status: DiscordPresenceStatus): string {
     default:
       return "Play a song to show it on your Discord profile.";
   }
+}
+
+function ArtworkAccentRow() {
+  const on = useArtworkAccentEnabled();
+  return (
+    <SwitchRow
+      label="Colours from the album art"
+      description="The accent colour follows the playing song's cover. Off keeps DOT red."
+      checked={on}
+      onToggle={() => setArtworkAccentEnabled(!on)}
+    />
+  );
 }

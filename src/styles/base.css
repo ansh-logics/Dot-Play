@@ -2,7 +2,19 @@
    DOT Music - Nothing OS (dot-player) Inspired Design System
    ========================================================================== */
 
+/* Registered so the accent eases to a new song's colour ("Colours from the album art")
+   instead of snapping. Initial values match DOT red below. */
+@property --accent-red { syntax: "<color>"; inherits: true; initial-value: #d71921; }
+@property --accent-red-hover { syntax: "<color>"; inherits: true; initial-value: #e5242c; }
+@property --accent-red-glow { syntax: "<color>"; inherits: true; initial-value: rgba(215, 25, 33, 0.45); }
+@property --accent-red-subtle { syntax: "<color>"; inherits: true; initial-value: rgba(215, 25, 33, 0.16); }
+
 :root {
+  transition:
+    --accent-red 0.6s ease,
+    --accent-red-hover 0.6s ease,
+    --accent-red-glow 0.6s ease,
+    --accent-red-subtle 0.6s ease;
   --bg-oled: #000000;
   --bg-sidebar: #040405;
   --bg-surface: #0a0a0c;
@@ -111,5 +123,31 @@ h1, h2, h3, h4, h5, h6, b, strong, th {
   .skeleton-line,
   .carousel-shimmer-skeleton {
     animation: none !important;
+  }
+}
+
+/* macOS "Reduce transparency" (System Settings → Accessibility → Display): no frosted glass.
+   Blur is turned off everywhere, and the panels that relied on it for legibility get a solid
+   fill so nothing behind them shows through. */
+@media (prefers-reduced-transparency: reduce) {
+  *,
+  *::before,
+  *::after {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+  .liquid-glass-surface::before,
+  .liquid-glass-surface.music-context-menu,
+  .np-output-menu,
+  .nothing-modal-card,
+  .nothing-toast-card,
+  .apple-profile-popover {
+    background: #1c1c20 !important;
+  }
+  .np-card {
+    background-color: #202024 !important;
+  }
+  .nothing-modal-backdrop {
+    background: rgba(0, 0, 0, 0.9) !important;
   }
 }
