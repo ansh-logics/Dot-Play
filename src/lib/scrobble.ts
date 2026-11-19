@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen as listenEvent } from "@tauri-apps/api/event";
-import type { YouTubePlaybackState } from "../components/HiddenYouTubePlayer";
+import type { PlaybackState } from "./engine/deck";
 import { cleanDisplayTitle } from "./displayText";
 import { cleanArtistName } from "./lyrics";
 import type { PlaybackClock } from "./playbackClock";
@@ -113,7 +113,7 @@ export function useScrobbleStatus(): ScrobbleStatus | null {
 
 interface ScrobblerOptions {
   track: SearchResult | null | undefined;
-  playerState: YouTubePlaybackState;
+  playerState: PlaybackState;
   clock: PlaybackClock;
   duration: number;
 }

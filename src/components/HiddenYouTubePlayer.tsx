@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { getPlayerServerUrl } from "../lib/search"
+import type { PlaybackState } from "../lib/engine/deck"
 
 export interface YouTubePlayerInstance {
   destroy: () => void
@@ -25,13 +26,7 @@ export interface YouTubePlayerInstance {
   setPlaybackRate?: (rate: number) => void
 }
 
-export type YouTubePlaybackState =
-  | "buffering"
-  | "cued"
-  | "ended"
-  | "paused"
-  | "playing"
-  | "unstarted"
+type YouTubePlaybackState = PlaybackState
 
 declare global {
   interface Window {
@@ -536,29 +531,5 @@ export function HiddenYouTubePlayer({
         />
       )}
     </div>
-  )
-}
-
-export interface AudioEngineSlot extends HiddenYouTubePlayerProps {
-  key: string
-}
-
-/** The app's hidden players: one plays, the other cues the next song for crossfades. */
-export function AudioEngines({ slots }: { slots: AudioEngineSlot[] }) {
-  return (
-    <>
-      {slots.map((slot) => (
-        <HiddenYouTubePlayer
-          key={slot.key}
-          videoId={slot.videoId}
-          initialSeconds={slot.initialSeconds}
-          autoPlayOnMount={slot.autoPlayOnMount}
-          onReady={slot.onReady}
-          onStateChange={slot.onStateChange}
-          onError={slot.onError}
-          onTrackChange={slot.onTrackChange}
-        />
-      ))}
-    </>
   )
 }

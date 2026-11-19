@@ -14,7 +14,7 @@ import {
 import { ArtworkImage } from "../ArtworkImage";
 import { LikeButton } from "../LikeButton";
 import { MiniVinyl } from "../vinyl/MiniVinyl";
-import type { YouTubePlaybackState } from "../HiddenYouTubePlayer";
+import type { PlaybackState } from "../../lib/engine/deck";
 import { cleanDisplayTitle } from "../../lib/displayText";
 import { formatTime } from "../../lib/formatTime";
 import { useArtwork } from "../../lib/imagePipeline";
@@ -28,7 +28,7 @@ interface SidebarPlayerProps {
   track: SearchResult;
   isQueueOpen: boolean;
   isPlayerReady: boolean;
-  playerState: YouTubePlaybackState;
+  playerState: PlaybackState;
   currentTime: number;
   duration: number;
   playbackError: string | null;
@@ -50,7 +50,7 @@ interface SidebarPlayerProps {
   children: React.ReactNode;
 }
 
-function playButtonLabel(isPlayerReady: boolean, state: YouTubePlaybackState): string {
+function playButtonLabel(isPlayerReady: boolean, state: PlaybackState): string {
   if (!isPlayerReady) return "Loading...";
   if (state === "buffering") return "Buffering...";
   if (state === "playing") return "Pause";

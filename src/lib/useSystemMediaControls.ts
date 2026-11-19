@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { listen } from "@tauri-apps/api/event"
-import type { YouTubePlaybackState } from "../components/HiddenYouTubePlayer"
+import type { PlaybackState } from "./engine/deck"
 import { cleanDisplayTitle } from "./displayText"
 import { useArtwork } from "./imagePipeline"
 import type { PlaybackClock } from "./playbackClock"
@@ -13,7 +13,7 @@ type MediaControlAction =
 
 interface SystemMediaControlsOptions {
   track: SearchResult | null | undefined
-  playerState: YouTubePlaybackState
+  playerState: PlaybackState
   clock: PlaybackClock
   duration: number
   /** Playback speed, so macOS moves its progress bar at the same pace. */

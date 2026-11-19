@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
-import { AudioEngines } from "./components/HiddenYouTubePlayer";
+import { PlaybackDecks } from "./components/PlaybackDecks";
 import { MusicContextMenu, type MusicContextTarget } from "./components/MusicContextMenu";
 import { Toast } from "./components/Toast";
 import { UpdatePrompt } from "./components/UpdatePrompt";
@@ -776,7 +776,7 @@ function App() {
 
       {/* Hidden audio engine */}
       {/* Two hidden players: the second cues the next song for crossfades (usePlayback). */}
-      <AudioEngines slots={playback.playerSlots} />
+      <PlaybackDecks slots={playback.deckSlots} />
 
       {showSettingsModal && (
         <SettingsModal
