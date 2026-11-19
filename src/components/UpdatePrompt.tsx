@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { listen } from "@tauri-apps/api/event"
 import { Download } from "lucide-react"
 import { LiquidGlassSurface } from "./ui/LiquidGlassSurface"
+import { shortenNotes } from "../lib/releaseNotes"
 
 interface UpdateInfo {
   version: string
@@ -17,13 +18,15 @@ interface UpdateProgress {
 
 /**
  * Announces a new release found by the Rust updater (src-tauri/src/updater.rs) and installs it
- * on request. "Later" hides it until the next check finds the update again.
+ * on request, with a short "What's new" from the release notes. "Later" hides it until the next
+ * check finds the update again.
  */
 export function UpdatePrompt() {
   const [update, setUpdate] = useState<UpdateInfo | null>(null)
   const [dismissed, setDismissed] = useState<string | null>(null)
   const [progress, setProgress] = useState<UpdateProgress | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const notes = useMemo(() => shortenNotes(update?.notes), [update?.notes])
 
   useEffect(() => {
     // The announcement may have fired before this window loaded.
@@ -77,6 +80,19 @@ export function UpdatePrompt() {
             </span>
           </div>
         </div>
+        {!installing && !error && (notes.summary || notes.points.length > 0) && (
+          <div className="update-prompt-notes">
+            <span className="update-prompt-notes-title">What's new</span>
+            {notes.summary && <p className="update-prompt-summary">{notes.summary}</p>}
+            {notes.points.length > 0 && (
+              <ul className="update-prompt-points">
+                {notes.points.map((point) => (
+                  <li key={point}>{point}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
         {installing ? (
           <div className="update-prompt-bar" aria-hidden="true">
             <span style={{ width: `${percent ?? 8}%` }} />

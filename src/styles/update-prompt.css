@@ -13,7 +13,7 @@
 /* Compound selector so LiquidGlassSurface.css's base rule (padding: 0, inline-flex) loses. */
 .liquid-glass-surface.update-prompt-card {
   display: block;
-  width: 300px;
+  width: 320px;
   padding: 14px 14px 12px;
   background: rgba(18, 18, 18, 0.94);
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -113,4 +113,58 @@
   height: 100%;
   background: var(--accent-red);
   transition: width 0.2s ease;
+}
+
+/* What's new: the release notes' opening line and headlines, kept short. */
+.update-prompt-notes {
+  margin: 12px 0 0;
+  padding: 10px 0 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.update-prompt-notes-title {
+  display: block;
+  margin-bottom: 4px;
+  font-family: var(--font-heading);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.update-prompt-summary {
+  margin: 0 0 6px;
+  font-family: var(--font-body);
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.update-prompt-points {
+  max-height: 132px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.update-prompt-points li {
+  position: relative;
+  padding: 2px 0 2px 12px;
+  font-family: var(--font-body);
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.update-prompt-points li::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 0.62em;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent-red);
 }
