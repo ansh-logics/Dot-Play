@@ -49,11 +49,13 @@ interface AmLyricsPanelProps {
  * - the lines around the current one are dimmed further than am-lyrics does (0.8 down to
  *   0.5, then 0.4, 0.32 and 0.26 for the rest): without its blur, the next line in a light
  *   colour (Vinyl's cream) read as bright as the one being sung;
+ * - a caption keeps its line break (romanized line above the translated one);
  * - sizes follow DOT Music's lyrics column, with the current line about a third down.
  */
 const SHADOW_CSS = `
 .lyrics-header { display: none !important; }
 .lyrics-footer { visibility: hidden !important; pointer-events: none !important; }
+.lyrics-translation-container { white-space: pre-line; }
 .lyrics-container .lyrics-line:not(.active):not(.pre-active):not(.lyrics-gap) { opacity: 0.26; }
 .lyrics-container .lyrics-line.next-active-line:not(.active):not(.pre-active):not(.lyrics-gap),
 .lyrics-container .lyrics-line.post-active-line:not(.active):not(.pre-active):not(.lyrics-gap),
@@ -147,9 +149,9 @@ export function AmLyricsPanel({
       el = document.createElement("am-lyrics") as AmLyrics;
       el.ttml = ttmlRef.current ?? undefined;
       el.noAutoAlternates = true;
-      // Captions show whenever the TTML carries them; with noAutoAlternates it never asks
-      // Google for its own.
-      Object.assign(el as unknown as CaptionSwitches, { showRomanization: true, showTranslation: true });
+      // Captions (romanization and translation, both in the translation block) show whenever
+      // the TTML carries them; with noAutoAlternates it never asks Google for its own.
+      Object.assign(el as unknown as CaptionSwitches, { showRomanization: false, showTranslation: true });
       // No blur on the lines around the current one: WebKit draws a coloured seam along the
       // edge of a blurred line (the same reason LyricsPanel dims with opacity only). The
       // dimming stays; only the softening goes.

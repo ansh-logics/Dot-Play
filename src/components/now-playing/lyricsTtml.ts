@@ -8,8 +8,10 @@ import type { LyricWord, RichLyricLine, TrackLyrics } from "../../lib/lyrics";
  * - duets as two singers: lines on the far side are `v2`, typed `other`, which am-lyrics
  *   places opposite `v1`;
  * - unsynced lyrics as lines timed 0 to 0, which am-lyrics shows as plain text;
- * - translations and romanizations (lyricAlternates.ts) as Apple's iTunesMetadata blocks, keyed
- *   to each line, which am-lyrics shows as caption lines when its toggles are on.
+ * - romanizations and translations (lyricAlternates.ts) as one caption per line (romanized
+ *   above translated), in Apple's iTunesMetadata translation block keyed to each line, which
+ *   am-lyrics shows as a full line under the lyric. Not as its transliteration block: that one
+ *   is split word by word under the original, which leaves gaps and breaks up Indic letters.
  */
 
 /** Per-line extras, indexed like `lyrics.lines`; null where a line has none. */
@@ -44,12 +46,17 @@ function lineBody(line: RichLyricLine, synced: boolean): string {
   return `${lead}<span ttm:role="x-bg">${backing}</span>`;
 }
 
-function alternatesBlock(tag: "translation" | "transliteration", texts: (string | null)[] | null | undefined, keys: Map<number, string>): string {
-  if (!texts) return "";
+/** Each line's caption: its romanization, then its translation, on separate lines. */
+function captionsBlock(alternates: LyricAlternates | undefined, keys: Map<number, string>): string {
   const entries = [...keys]
-    .map(([index, key]) => (texts[index]?.trim() ? `<text for="${key}">${escape(texts[index]!.trim())}</text>` : ""))
+    .map(([index, key]) => {
+      const parts = [alternates?.romanized?.[index], alternates?.translations?.[index]]
+        .map((part) => part?.trim())
+        .filter((part): part is string => Boolean(part));
+      return parts.length ? `<text for="${key}">${escape(parts.join("\n"))}</text>` : "";
+    })
     .join("");
-  return entries ? `<${tag}s><${tag}>${entries}</${tag}></${tag}s>` : "";
+  return entries ? `<translations><translation>${entries}</translation></translations>` : "";
 }
 
 export function lyricsToTtml(lyrics: Pick<TrackLyrics, "lines" | "syncType">, alternates?: LyricAlternates): string {
@@ -72,8 +79,7 @@ export function lyricsToTtml(lyrics: Pick<TrackLyrics, "lines" | "syncType">, al
       return `<p begin="${time(begin)}" end="${time(end)}" itunes:key="${key}" ttm:agent="${agent}">${lineBody(line, synced)}</p>`;
     })
     .join("");
-  const extras =
-    alternatesBlock("translation", alternates?.translations, keys) + alternatesBlock("transliteration", alternates?.romanized, keys);
+  const extras = captionsBlock(alternates, keys);
   const metadata = extras ? `${agents}<iTunesMetadata xmlns="http://music.apple.com/lyric-ttml-internal">${extras}</iTunesMetadata>` : agents;
   return (
     '<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata" ' +

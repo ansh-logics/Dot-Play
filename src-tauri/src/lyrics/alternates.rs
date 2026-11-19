@@ -79,6 +79,8 @@ pub async fn romanize_lyrics(lines: Vec<String>) -> Result<Option<Vec<Option<Str
 
 fn cache_path(app: &AppHandle, lines: &[String], target: &str) -> Option<std::path::PathBuf> {
     let mut hash = Sha1::new();
+    // Bumped when the translator changes, so older translations are made again.
+    hash.update(b"v3\n");
     hash.update(target.as_bytes());
     for line in lines {
         hash.update(b"\n");
@@ -158,7 +160,7 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn romanizes_on_device() {
-        let reply = super::bridge::romanize(&serde_json::json!({ "lines": ["रब", "Привет", "Hello"] })).unwrap();
-        assert_eq!(reply["lines"], serde_json::json!(["rab", "Privet", null]));
+        let reply = super::bridge::romanize(&serde_json::json!({ "lines": ["(दिल, ये दिल)", "Привет", "Hello", "Café"] })).unwrap();
+        assert_eq!(reply["lines"], serde_json::json!(["(dil, ye dil)", "Privet", null, null]));
     }
 }

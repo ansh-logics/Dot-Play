@@ -44,7 +44,7 @@ describe("lyricsToTtml", () => {
     expect(ttml).toContain('<p begin="0.000s" end="0.000s" itunes:key="L1" ttm:agent="v1">Rock &amp; &lt;roll&gt;</p>');
   });
 
-  it("keys translations and romanizations to their lines, skipping empty ones", () => {
+  it("keys one caption per line (romanized, then translated), skipping empty lines", () => {
     const lines: RichLyricLine[] = [
       { id: 0, startTime: 1, endTime: 2, text: "रब" },
       { id: 1, startTime: 2, endTime: 3, text: "" },
@@ -56,8 +56,8 @@ describe("lyricsToTtml", () => {
     );
     expect(ttml).toContain('itunes:key="L1" ttm:agent="v1">रब</p>');
     expect(ttml).toContain('itunes:key="L2" ttm:agent="v1">मिल गया</p>');
-    expect(ttml).toContain('<translations><translation><text for="L1">God</text><text for="L2">found</text></translation></translations>');
-    expect(ttml).toContain('<transliterations><transliteration><text for="L1">rab</text></transliteration></transliterations>');
+    expect(ttml).toContain('<translations><translation><text for="L1">rab\nGod</text><text for="L2">found</text></translation></translations>');
+    expect(ttml).not.toContain("transliteration");
     expect(parseTtml(ttml).map((l) => l.text)).toEqual(["रब", "मिल गया"]);
   });
 
