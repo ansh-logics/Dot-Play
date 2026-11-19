@@ -54,6 +54,8 @@ const MAIN_WINDOW_PERMISSIONS: &[&str] = &[
     "allow-get-related-recommendations",
     "allow-get-player-server-url",
     "allow-get-lyrics",
+    "allow-romanize-lyrics",
+    "allow-translate-lyrics",
     "allow-perform-haptic",
     "allow-set-now-playing",
     "allow-discord-presence-available",
@@ -115,6 +117,8 @@ const AUX_WINDOW_PERMISSIONS: &[&str] = &[
     "allow-set-immersive-display",
     "allow-leave-immersive-to-player",
     "allow-get-lyrics",
+    "allow-romanize-lyrics",
+    "allow-translate-lyrics",
 ];
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -219,6 +223,8 @@ pub fn run() {
             recommendations::get_related_recommendations,
             player_server::get_player_server_url,
             lyrics::get_lyrics,
+            lyrics::alternates::romanize_lyrics,
+            lyrics::alternates::translate_lyrics,
             haptics::perform_haptic,
             media_controls::set_now_playing,
             discord::discord_presence_available,

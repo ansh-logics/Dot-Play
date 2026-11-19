@@ -34,13 +34,35 @@ describe("lyricsToTtml", () => {
     ];
     const ttml = lyricsToTtml({ syncType: "line", lines });
     expect(ttml).toContain('<ttm:agent type="other" xml:id="v2"/>');
-    expect(ttml).toContain('ttm:agent="v2">You</p>');
+    expect(ttml).toContain('itunes:key="L2" ttm:agent="v2">You</p>');
   });
 
   it("times unsynced lyrics 0 to 0 and escapes text", () => {
     const lines: RichLyricLine[] = [{ id: 0, startTime: 0, endTime: 0, text: "Rock & <roll>" }];
     const ttml = lyricsToTtml({ syncType: "plain", lines });
     expect(ttml).toContain('itunes:timing="None"');
-    expect(ttml).toContain('<p begin="0.000s" end="0.000s" ttm:agent="v1">Rock &amp; &lt;roll&gt;</p>');
+    expect(ttml).toContain('<p begin="0.000s" end="0.000s" itunes:key="L1" ttm:agent="v1">Rock &amp; &lt;roll&gt;</p>');
+  });
+
+  it("keys translations and romanizations to their lines, skipping empty ones", () => {
+    const lines: RichLyricLine[] = [
+      { id: 0, startTime: 1, endTime: 2, text: "रब" },
+      { id: 1, startTime: 2, endTime: 3, text: "" },
+      { id: 2, startTime: 3, endTime: 4, text: "मिल गया" },
+    ];
+    const ttml = lyricsToTtml(
+      { syncType: "line", lines },
+      { translations: ["God", null, "found"], romanized: ["rab", null, null] },
+    );
+    expect(ttml).toContain('itunes:key="L1" ttm:agent="v1">रब</p>');
+    expect(ttml).toContain('itunes:key="L2" ttm:agent="v1">मिल गया</p>');
+    expect(ttml).toContain('<translations><translation><text for="L1">God</text><text for="L2">found</text></translation></translations>');
+    expect(ttml).toContain('<transliterations><transliteration><text for="L1">rab</text></transliteration></transliterations>');
+    expect(parseTtml(ttml).map((l) => l.text)).toEqual(["रब", "मिल गया"]);
+  });
+
+  it("leaves the metadata alone without alternates", () => {
+    const ttml = lyricsToTtml({ syncType: "line", lines: [{ id: 0, startTime: 1, endTime: 2, text: "Hi" }] });
+    expect(ttml).not.toContain("iTunesMetadata");
   });
 });

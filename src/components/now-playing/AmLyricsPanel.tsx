@@ -4,15 +4,21 @@ import { asPlain, type TrackLyrics } from "../../lib/lyrics";
 import { formatOffset, OFFSET_STEP_S } from "../../lib/lyricOffsets";
 import type { LyricsStatus } from "./useLyrics";
 import { useFrameLoop, useLyricClock } from "./useLyricClock";
-import { useLyricOffset, usePlainPreference } from "./lyricsPreferences";
+import { useLyricOffset, usePlainPreference, useRomanizePreference, useTranslatePreference } from "./lyricsPreferences";
+import { ALTERNATES_SUPPORTED, translationNote } from "../../lib/lyricAlternates";
+import { useLyricAlternates } from "./useLyricAlternates";
 import { lyricsToTtml } from "./lyricsTtml";
 
 /**
  * Now Playing's lyrics column, drawn by am-lyrics (github.com/uimaxbai/am-lyrics, MPL-2.0),
  * the Apple-Music-style component BitChord uses: spring-driven line motion, word wipe,
  * duets and backing vocals. DOT Music still finds the lyrics; am-lyrics only shows them, from
- * the TTML handed to it (lyricsTtml.ts), so it never fetches anything itself.
+ * the TTML handed to it (lyricsTtml.ts), so it never fetches anything itself. Romanization
+ * and translation come from the Mac itself (lyricAlternates.ts) and ride along in that TTML.
  */
+
+/** am-lyrics' caption switches: private in its types, but plain reactive properties. */
+type CaptionSwitches = { showRomanization: boolean; showTranslation: boolean };
 
 interface AmLyricsPanelProps {
   data: TrackLyrics | null;
@@ -98,7 +104,15 @@ export function AmLyricsPanel({
   const data = useMemo(() => (showPlain && sourceData ? asPlain(sourceData) : sourceData), [showPlain, sourceData]);
   const status: LyricsStatus = showPlain ? "plain" : sourceStatus;
   const synced = status === "synced";
-  const ttml = useMemo(() => (data && data.lines.length > 0 ? lyricsToTtml(data) : null), [data]);
+  const [romanizeOn, toggleRomanize] = useRomanizePreference(trackKey);
+  const [translateOn, toggleTranslate] = useTranslatePreference(trackKey);
+  const alternates = useLyricAlternates(data, ALTERNATES_SUPPORTED && translateOn);
+  const romanized = romanizeOn ? alternates.romanized : null;
+  const translations = translateOn && alternates.translation?.status === "translated" ? alternates.translation.lines : null;
+  const ttml = useMemo(
+    () => (data && data.lines.length > 0 ? lyricsToTtml(data, { romanized, translations }) : null),
+    [data, romanized, translations],
+  );
   const visible = (status === "synced" || status === "plain") && ttml !== null;
 
   const host = useRef<HTMLDivElement>(null);
@@ -133,6 +147,9 @@ export function AmLyricsPanel({
       el = document.createElement("am-lyrics") as AmLyrics;
       el.ttml = ttmlRef.current ?? undefined;
       el.noAutoAlternates = true;
+      // Captions show whenever the TTML carries them; with noAutoAlternates it never asks
+      // Google for its own.
+      Object.assign(el as unknown as CaptionSwitches, { showRomanization: true, showTranslation: true });
       // No blur on the lines around the current one: WebKit draws a coloured seam along the
       // edge of a blurred line (the same reason LyricsPanel dims with opacity only). The
       // dimming stays; only the softening goes.
@@ -214,9 +231,24 @@ export function AmLyricsPanel({
   return (
     <div className={className ? `np-lyrics-shell ${className}` : "np-lyrics-shell"}>
       <div ref={host} className="np-am-lyrics-host" aria-label="Lyrics" />
-      {tools && canChoose && (
+      {tools && trackKey && (canChoose || ALTERNATES_SUPPORTED) && (
         <div className={`np-lyrics-tools ${offset !== 0 ? "has-offset" : ""}`}>
-          {synced && (
+          {translateOn && (alternates.translating || translationNote(alternates.translation)) && (
+            <span className="np-lyrics-note" role="status">
+              {alternates.translating ? "Translating on this Mac…" : translationNote(alternates.translation)}
+            </span>
+          )}
+          {alternates.romanized && (
+            <button type="button" className={`np-lyrics-mode${romanizeOn ? " is-on" : ""}`} aria-pressed={romanizeOn} onClick={toggleRomanize}>
+              Romanize
+            </button>
+          )}
+          {ALTERNATES_SUPPORTED && (
+            <button type="button" className={`np-lyrics-mode${translateOn ? " is-on" : ""}`} aria-pressed={translateOn} onClick={toggleTranslate}>
+              Translate
+            </button>
+          )}
+          {canChoose && synced && (
             <div className="np-lyrics-offset" role="group" aria-label="Lyrics timing for this song">
               <button type="button" onClick={() => setOffset(offset - OFFSET_STEP_S)} aria-label="Show lyrics later" title="Lyrics later">
                 −
@@ -236,9 +268,11 @@ export function AmLyricsPanel({
               </button>
             </div>
           )}
-          <button type="button" className="np-lyrics-mode" onClick={togglePlain}>
-            {showPlain ? "Show synced lyrics" : "Out of sync? Show as text"}
-          </button>
+          {canChoose && (
+            <button type="button" className="np-lyrics-mode" onClick={togglePlain}>
+              {showPlain ? "Show synced lyrics" : "Out of sync? Show as text"}
+            </button>
+          )}
         </div>
       )}
     </div>

@@ -20,6 +20,8 @@
     "allow-set-immersive-screens",
     "allow-set-immersive-display",
     "allow-leave-immersive-to-player",
-    "allow-get-lyrics"
+    "allow-get-lyrics",
+    "allow-romanize-lyrics",
+    "allow-translate-lyrics"
   ]
 }

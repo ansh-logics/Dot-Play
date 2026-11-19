@@ -1,5 +1,6 @@
 //! Synced / plain lyrics lookup across several community providers, with an on-disk cache.
 
+pub(crate) mod alternates;
 pub(crate) mod matching;
 mod providers;
 

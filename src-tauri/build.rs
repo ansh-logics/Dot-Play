@@ -1,4 +1,9 @@
+mod build_swift;
+
 fn main() {
+  if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+    build_swift::build();
+  }
   tauri_build::try_build(
     tauri_build::Attributes::new().app_manifest(
       tauri_build::AppManifest::new().commands(&[
@@ -20,6 +25,8 @@ fn main() {
         "get_related_recommendations",
         "get_player_server_url",
         "get_lyrics",
+        "romanize_lyrics",
+        "translate_lyrics",
         "perform_haptic",
         "set_now_playing",
         "discord_presence_available",
