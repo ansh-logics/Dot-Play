@@ -6,6 +6,7 @@ import { ImmersiveDisplays } from "./ImmersiveDisplays";
 import { PhoneRemoteSettings } from "./PhoneRemoteSettings";
 import { ScrobbleSettings } from "./ScrobbleSettings";
 import { setArtworkAccentEnabled, useArtworkAccentEnabled } from "../../lib/artworkAccent";
+import { CROSSFADE_CHOICES, setCrossfadeSeconds, useCrossfadeSeconds } from "../../lib/crossfade";
 import {
   setDiscordPresenceEnabled,
   useDiscordPresenceAvailable,
@@ -89,6 +90,7 @@ export function SettingsModal({
 
       <div className="settings-section">
         <span className="settings-section-title">PLAYER</span>
+        <CrossfadeRow />
         <SwitchRow
           label="Player sounds"
           description="Clicks on the player-style wheel, and the Cassette deck's keys, motor and tape"
@@ -246,6 +248,32 @@ function discordStatusText(status: DiscordPresenceStatus): string {
     default:
       return "Play a song to show it on your Discord profile.";
   }
+}
+
+function CrossfadeRow() {
+  const seconds = useCrossfadeSeconds();
+  return (
+    <div className="settings-row">
+      <div className="settings-row-text">
+        <span className="settings-label">Crossfade</span>
+        <span className="settings-desc">Blend the end of each song into the next. Not with repeat one or "stop after this song".</span>
+      </div>
+      <div className="settings-segmented" role="radiogroup" aria-label="Crossfade">
+        {CROSSFADE_CHOICES.map((choice) => (
+          <button
+            key={choice}
+            type="button"
+            role="radio"
+            aria-checked={seconds === choice}
+            className={seconds === choice ? "is-on" : undefined}
+            onClick={() => setCrossfadeSeconds(choice)}
+          >
+            {choice === 0 ? "Off" : `${choice}s`}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function ArtworkAccentRow() {

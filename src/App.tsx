@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
-import { HiddenYouTubePlayer } from "./components/HiddenYouTubePlayer";
+import { AudioEngines } from "./components/HiddenYouTubePlayer";
 import { MusicContextMenu, type MusicContextTarget } from "./components/MusicContextMenu";
 import { Toast } from "./components/Toast";
 import { UpdatePrompt } from "./components/UpdatePrompt";
@@ -775,16 +775,8 @@ function App() {
       </div>
 
       {/* Hidden audio engine */}
-      <HiddenYouTubePlayer
-        key="global-audio-engine"
-        videoId={currentVideoId}
-        initialSeconds={playback.initialPlaybackSeconds}
-        autoPlayOnMount={playback.autoPlayOnMount}
-        onReady={playback.handlePlayerReady}
-        onStateChange={playback.handlePlayerStateChange}
-        onError={playback.handlePlayerError}
-        onTrackChange={playback.handleTrackChangeFromIframe}
-      />
+      {/* Two hidden players: the second cues the next song for crossfades (usePlayback). */}
+      <AudioEngines slots={playback.playerSlots} />
 
       {showSettingsModal && (
         <SettingsModal

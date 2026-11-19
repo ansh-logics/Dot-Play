@@ -258,6 +258,10 @@ export function HiddenYouTubePlayer({
       if (bridgeOriginRef.current && event.origin !== bridgeOriginRef.current) {
         return
       }
+      // Two players can be mounted at once (crossfade); each listens only to its own iframe.
+      if (iframeRef.current && event.source !== iframeRef.current.contentWindow) {
+        return
+      }
 
       const data = event.data
       if (!data || typeof data !== "object" || !data.type) return
@@ -405,14 +409,16 @@ export function HiddenYouTubePlayer({
               if (instance) {
                 playerRef.current = instance
                 currentVideoIdRef.current = targetVideoId
-                // Like the bridge player, remember what the app itself loads, so the videoId
-                // effect below doesn't load the same song a second time when the prop catches up.
+                // Like the bridge player, remember what the app itself loads or cues, so the
+                // videoId effect below doesn't load (and start) the same song again when the prop
+                // catches up.
                 const tracked = new Proxy(instance, {
                   get(target, prop) {
-                    if (prop === "loadVideoById") {
+                    if (prop === "loadVideoById" || prop === "cueVideoById") {
                       return (opts: string | { videoId: string; startSeconds?: number }) => {
                         currentVideoIdRef.current = typeof opts === "string" ? opts : opts.videoId
-                        target.loadVideoById?.(opts)
+                        if (prop === "loadVideoById") target.loadVideoById?.(opts)
+                        else target.cueVideoById?.(opts)
                       }
                     }
                     const value = Reflect.get(target, prop)
@@ -465,8 +471,14 @@ export function HiddenYouTubePlayer({
 
   // Watchdog: ensure track doesn't freeze in unstarted/paused state when auto-advancing.
   // Once the song has started, any pause is the listener's, so it is left alone.
+  // Only a new song resets it: a crossfade's incoming player becomes the active one (and gets
+  // autoPlayOnMount) while already playing the song it buffered.
+  const watchedVideoIdRef = useRef<string | undefined>(undefined)
   useEffect(() => {
-    startedSinceLoadRef.current = false
+    if (watchedVideoIdRef.current !== videoId) {
+      watchedVideoIdRef.current = videoId
+      startedSinceLoadRef.current = false
+    }
     if (!videoId || !autoPlayOnMount || !isFirstMountPlaybackHandled.current) return
     const timer = setTimeout(() => {
       if (startedSinceLoadRef.current) return
@@ -524,5 +536,29 @@ export function HiddenYouTubePlayer({
         />
       )}
     </div>
+  )
+}
+
+export interface AudioEngineSlot extends HiddenYouTubePlayerProps {
+  key: string
+}
+
+/** The app's hidden players: one plays, the other cues the next song for crossfades. */
+export function AudioEngines({ slots }: { slots: AudioEngineSlot[] }) {
+  return (
+    <>
+      {slots.map((slot) => (
+        <HiddenYouTubePlayer
+          key={slot.key}
+          videoId={slot.videoId}
+          initialSeconds={slot.initialSeconds}
+          autoPlayOnMount={slot.autoPlayOnMount}
+          onReady={slot.onReady}
+          onStateChange={slot.onStateChange}
+          onError={slot.onError}
+          onTrackChange={slot.onTrackChange}
+        />
+      ))}
+    </>
   )
 }
