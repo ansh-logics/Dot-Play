@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { AnimatePresence, motion, useInView, useReducedMotion, useScroll, useTransform } from "motion/react";
-import trayIcon from "../../../src-tauri/icons/tray-template@2x.png";
-import { AlsoNew, ImportDemo, Remote } from "./NewFeatures";
+import { AnimatePresence, motion, useInView, useReducedMotion } from "motion/react";
+import { FeatureBento } from "../demos/Bento";
+import { AlsoNew } from "./NewFeatures";
 
 /**
  * A screenshot as WebP, with a 1000px copy for phones when the original is wider.
@@ -15,16 +15,12 @@ function shot(name: string, fullWidth: number | null = 2000) {
   };
 }
 
-/** Screenshots of the app; the menu bar shot comes from `npm run capture`. */
+/** Screenshots of the app, from `npm run capture`. */
 const SHOTS = {
-  home: shot("app-home", 1470),
   apple: shot("app-apple"),
   nothing: shot("app-nothing"),
   vinyl: shot("app-vinyl"),
   cassette: shot("app-cassette"),
-  queue: shot("app-queue"),
-  lyrics: shot("app-lyrics"),
-  menubar: shot("menubar-player", null),
   // Immersive mode, from `npm run capture`.
   immersiveApple: shot("immersive-apple"),
   immersiveNothing: shot("immersive-nothing"),
@@ -61,102 +57,73 @@ function Copy({ kicker, title, children }: { kicker: string; title: ReactNode; c
   );
 }
 
-/** The hero product shot: settles from a tilt to flat as it scrolls into view. */
-export function HeroShot() {
-  const ref = useRef<HTMLDivElement>(null);
-  const reduce = useReducedMotion();
-  const { scrollYProgress } = useScroll({ target: ref, offset: ["start end", "center center"] });
-  const rotateX = useTransform(scrollYProgress, [0, 1], reduce ? [0, 0] : [24, 0]);
-  const scale = useTransform(scrollYProgress, [0, 1], reduce ? [1, 1] : [0.9, 1]);
-  return (
-    <div ref={ref} className="hero-shot">
-      <motion.div
-        className="screen"
-        style={{ rotateX, scale }}
-        initial={{ opacity: 0, y: 60 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 1.1, delay: 0.5, ease }}
-      >
-        <img {...SHOTS.home} alt="dot(.)music home: Top Picks and Quick Picks" width={1470} height={926} fetchPriority="high" />
-      </motion.div>
-      <div className="screen-glow" aria-hidden="true" />
-    </div>
-  );
-}
 
 const MOODS = [
-  { id: "apple", label: "Apple", shot: SHOTS.apple },
-  { id: "nothing", label: "Nothing", shot: SHOTS.nothing },
-  { id: "vinyl", label: "Vinyl", shot: SHOTS.vinyl },
-  { id: "cassette", label: "Cassette", shot: SHOTS.cassette },
+  { id: "apple", label: "Apple", note: "Frosted glass in your album's colours." },
+  { id: "nothing", label: "Nothing", note: "Stark, in dot matrix." },
+  { id: "vinyl", label: "Vinyl", note: "A record that spins up and coasts to a stop." },
+  { id: "cassette", label: "Cassette", note: "A hi-fi deck with piano keys and a tape counter." },
 ] as const;
+const MOOD_SHOTS = { apple: SHOTS.apple, nothing: SHOTS.nothing, vinyl: SHOTS.vinyl, cassette: SHOTS.cassette };
 
-/** The player styles, cross-fading on their own while the section is on screen. */
+/** The player styles as real screenshots. They advance on their own while on screen until the
+ *  visitor picks one; then the choice stays. */
 function Moods() {
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { amount: 0.4 });
   const reduce = useReducedMotion();
   const [i, setI] = useState(0);
+  const [picked, setPicked] = useState(false);
   useEffect(() => {
-    if (!inView || reduce) return;
-    const id = window.setInterval(() => setI((n) => (n + 1) % MOODS.length), 3200);
+    if (!inView || reduce || picked) return;
+    const id = window.setInterval(() => setI((n) => (n + 1) % MOODS.length), 3600);
     return () => window.clearInterval(id);
-  }, [inView, reduce]);
+  }, [inView, reduce, picked]);
+  const mood = MOODS[i];
 
   return (
-    <section className="showcase" id="features">
+    <section className="showcase moods" id="styles">
       <Copy kicker="Styles" title="Four moods. One player.">
-        Spin the style wheel at the edge of the screen: Apple-style frosted glass, a stark Nothing look in dot-matrix, a
-        warm vinyl sleeve, or a full hi-fi cassette deck with piano keys and a tape counter. Your album art sets the colours.
+        Spin the style wheel at the edge of the screen and the whole player changes. Your album art sets the colours.
       </Copy>
       <Reveal className="mood-stage" delay={0.1}>
-        <div ref={ref} className="screen">
+        <div className="mood-tabs" role="tablist" aria-label="Player style">
+          {MOODS.map((m, n) => (
+            <button
+              key={m.id}
+              type="button"
+              role="tab"
+              id={`mood-tab-${m.id}`}
+              aria-selected={n === i}
+              aria-controls="mood-panel"
+              className={n === i ? "is-on" : undefined}
+              onClick={() => {
+                setI(n);
+                setPicked(true);
+              }}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+        <div ref={ref} className="screen" role="tabpanel" id="mood-panel" aria-labelledby={`mood-tab-${mood.id}`}>
           <AnimatePresence initial={false}>
             <motion.img
-              key={MOODS[i].id}
-              {...MOODS[i].shot}
-              alt={`The ${MOODS[i].label} style`}
+              key={mood.id}
+              {...MOOD_SHOTS[mood.id]}
+              alt={`dot(.)music in the ${mood.label} style`}
               {...SHOT_SIZE}
               loading="lazy"
               initial={{ opacity: 0, scale: 1.02 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.9, ease }}
+              transition={{ duration: 0.7, ease }}
             />
           </AnimatePresence>
         </div>
-        <div className="mood-labels" aria-hidden="true">
-          {MOODS.map((m, n) => (
-            <span key={m.id} className={n === i ? "is-on" : undefined}>
-              {m.label}
-            </span>
-          ))}
-        </div>
-      </Reveal>
-    </section>
-  );
-}
-
-/** Lyrics: a highlight sweeps across the headline the way the app sweeps words, then the real thing. */
-function Lyrics() {
-  return (
-    <section className="showcase lyrics-show">
-      <Reveal>
-        <p className="kicker">
-          <span className="red-dot" /> Lyrics
+        <p className="mood-note" aria-live="polite">
+          <b>{mood.label}.</b> {mood.note}
         </p>
-        <h2 className="sweep-title">
-          <span>Every word lights up</span> <span>as it's sung.</span>
-        </h2>
-        <p className="showcase-text centered">
-          Word-by-word synced lyrics with backing vocals underneath and breathing dots for instrumental breaks. Hindi, Arabic,
-          Tamil and every other script render properly.
-        </p>
-      </Reveal>
-      <Reveal className="lyrics-stage" delay={0.1}>
-        <div className="screen kenburns kenburns--lyrics">
-          <img {...SHOTS.lyrics} alt="Synced Hindi lyrics for Ehsaas in the Apple style" {...SHOT_SIZE} loading="lazy" />
-        </div>
       </Reveal>
     </section>
   );
@@ -271,72 +238,21 @@ function Immersive() {
   );
 }
 
-function Vinyl() {
-  return (
-    <section className="showcase is-flipped">
-      <Copy kicker="Vinyl" title="Spins up. Slows down. Like the real thing.">
-        Press play and the tonearm drops, the platter eases up to speed and the album art turns on the label. Pause, and it
-        coasts to a stop.
-      </Copy>
-      <Reveal className="vinyl-stage" delay={0.1}>
-        <div className="screen kenburns">
-          <img {...SHOTS.vinyl} alt="The Vinyl style with a spinning record" {...SHOT_SIZE} loading="lazy" />
-        </div>
-      </Reveal>
-    </section>
-  );
-}
 
-/** The queue sheet: a slow push-in, like the vinyl shot. */
-function Queue() {
-  return (
-    <section className="showcase is-flipped">
-      <Copy kicker="Queue" title="Up Next, without leaving the song.">
-        Pull up the queue over Now Playing to reorder, remove or clear what's next, or jump back through your history.
-        Autoplay keeps it full with fresh picks and never loops the same songs.
-      </Copy>
-      <Reveal className="vinyl-stage" delay={0.1}>
-        <div className="screen kenburns">
-          <img {...SHOTS.queue} alt="The Up Next queue over Now Playing" {...SHOT_SIZE} loading="lazy" />
-        </div>
-      </Reveal>
-    </section>
-  );
-}
 
-/** A Mac desktop; the menu bar player drops from its icon when the section comes into view. */
-function MenuBar() {
-  const ref = useRef<HTMLDivElement>(null);
-  const open = useInView(ref, { once: true, amount: 0.5 });
+
+function Features() {
   return (
-    <section className="showcase">
-      <Copy kicker="Menu bar" title="Your music, one click away.">
-        A phone-style mini player lives in the menu bar: cover, scrubber, shuffle, repeat, volume, Up Next and live lyrics. It
-        opens over full-screen apps, and media keys, AirPods and Control Center work too.
-      </Copy>
-      <Reveal className="desk-stage" delay={0.1}>
-        <div ref={ref} className="desk">
-          <div className="desk-bar" aria-hidden="true">
-            <b>Finder</b>
-            <span>File</span>
-            <span>Edit</span>
-            <span>View</span>
-            <span className="desk-spacer" />
-            <span className={`desk-icon ${open ? "is-on" : ""}`}>
-              <img src={trayIcon} alt="" />
-            </span>
-            <span>9:41</span>
-          </div>
-          <motion.div
-            className="desk-popover"
-            initial={{ opacity: 0, y: -10, scale: 0.94 }}
-            animate={open ? { opacity: 1, y: 0, scale: 1 } : undefined}
-            transition={{ type: "spring", stiffness: 260, damping: 24, delay: 0.35 }}
-          >
-            <img {...SHOTS.menubar} alt="The menu bar mini player" width={640} height={1160} loading="lazy" />
-          </motion.div>
-        </div>
+    <section className="section features" id="features" aria-labelledby="features-title">
+      <Reveal>
+        <p className="kicker">
+          <span className="red-dot" /> Everything else
+        </p>
+        <h2 id="features-title" className="section-title">
+          Small app. Big on the details.
+        </h2>
       </Reveal>
+      <FeatureBento />
     </section>
   );
 }
@@ -345,13 +261,8 @@ export function Showcase() {
   return (
     <>
       <Moods />
-      <Lyrics />
+      <Features />
       <Immersive />
-      <Remote />
-      <ImportDemo />
-      <Vinyl />
-      <MenuBar />
-      <Queue />
       <AlsoNew />
     </>
   );

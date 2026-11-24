@@ -1,0 +1,526 @@
+/* The homepage hero: dot(.)music's Now Playing in three of its styles.
+   The page is black, so the stage is transparent (no plate): the window is
+   pinned top-left and runs off the right and the bottom, where only filler is. */
+
+.dmh .ss-stage {
+  --dmh-red: #d71921;
+  --dmh-gutter: 40px;
+  --ss-font: Inter, "Noto Sans Devanagari", -apple-system, BlinkMacSystemFont, sans-serif;
+  --ss-canvas: #0b0b0c;
+  --ss-surface: #050505;
+  --ss-chrome: #0b0b0c;
+  --ss-line: rgba(255, 255, 255, 0.08);
+  --ss-ink-2: rgba(255, 255, 255, 0.08);
+  --ss-raised: #2a2a2d;
+  --ss-text: rgba(255, 255, 255, 0.6);
+  --ss-text-strong: #fff;
+  --ss-icon: rgba(255, 255, 255, 0.62);
+  --ss-row: 26px;
+  background: transparent;
+  overflow: hidden;
+}
+
+.dmh .ss-stage[data-layout="compact"] {
+  --dmh-gutter: 16px;
+}
+
+.dmh-window {
+  position: absolute;
+  top: var(--dmh-gutter);
+  left: var(--dmh-gutter);
+  width: 1180px;
+  height: 640px;
+  border-radius: 14px;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 40px 120px -20px rgba(215, 25, 33, 0.22),
+    0 30px 80px rgba(0, 0, 0, 0.6);
+}
+
+.dmh-window[data-layout="compact"] {
+  width: 400px;
+  height: 520px;
+}
+
+/* ---------- Sidebar ---------- */
+
+.dmh-side {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  height: 100%;
+  padding: 6px 10px 0;
+}
+
+.dmh-logo {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 8px;
+  margin-bottom: 16px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #fff;
+}
+
+.dmh-logo__dot {
+  width: 6px;
+  height: 6px;
+  margin: 2px 2px 0;
+  border-radius: 50%;
+  background: var(--dmh-red);
+}
+
+.dmh-side__label {
+  margin: 0 8px 10px;
+}
+
+.dmh-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  color: var(--ss-icon);
+}
+
+.dmh-nav[data-on] {
+  background: rgba(255, 255, 255, 0.07);
+  color: #fff;
+}
+
+.dmh-mini {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 28px;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.dmh-mini__art {
+  width: 100%;
+  aspect-ratio: 1;
+  margin-bottom: 4px;
+  border-radius: 8px;
+  background: linear-gradient(160deg, #3a3f52, #14161d);
+}
+
+/* ---------- Bar: the style switcher ---------- */
+
+.dmh-window .ss-window__main > .ss-window__bar {
+  padding: 0 20px;
+  background: transparent;
+}
+
+.dmh-window[data-layout="compact"] > .ss-window__bar {
+  background: transparent;
+  gap: 12px;
+}
+
+.dmh-seg {
+  flex: none;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.dmh-seg .ss-seg__option {
+  padding: 0 12px;
+  font-size: 12px;
+}
+
+.dmh-window[data-layout="compact"] .dmh-seg .ss-seg__option {
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+.dmh-seg .ss-seg__thumb {
+  background: #3a3a3e;
+  box-shadow: none;
+  transition:
+    transform 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 0.2s ease;
+}
+
+.dmh-window[data-style="nothing"] .dmh-seg .ss-seg__thumb {
+  background: var(--dmh-red);
+}
+
+/* ---------- Body: the album's colour washes the background ---------- */
+
+.dmh-window .ss-window__main,
+.dmh-window[data-layout="compact"] {
+  position: relative;
+  isolation: isolate;
+}
+
+.dmh-window .ss-window__main::before,
+.dmh-window[data-layout="compact"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(60% 70% at 22% 40%, rgba(214, 104, 62, 0.34), transparent 70%),
+    radial-gradient(50% 60% at 70% 10%, rgba(96, 62, 140, 0.32), transparent 70%),
+    #0a0809;
+  transition: opacity 0.6s ease;
+}
+
+.dmh-window[data-style="nothing"] .ss-window__main::before,
+.dmh-window[data-style="nothing"][data-layout="compact"]::before {
+  opacity: 0;
+}
+
+.dmh-window[data-style="vinyl"] .ss-window__main::before,
+.dmh-window[data-style="vinyl"][data-layout="compact"]::before {
+  opacity: 0.55;
+}
+
+.dmh-window .ss-window__body {
+  background: transparent;
+}
+
+.dmh-now {
+  display: grid;
+  grid-template-columns: 270px 470px;
+  align-items: start;
+  gap: 64px;
+  padding: 30px 36px 0;
+}
+
+.dmh-window[data-layout="compact"] .dmh-now {
+  grid-template-columns: 1fr;
+  gap: 22px;
+  padding: 18px 16px 0;
+}
+
+/* ---------- Cover, sleeve and record ---------- */
+
+.dmh-left {
+  display: flex;
+  flex-direction: column;
+}
+
+.dmh-window[data-layout="compact"] .dmh-left {
+  display: grid;
+  grid-template-columns: 124px auto;
+  grid-template-rows: auto auto auto;
+  column-gap: 16px;
+  align-items: center;
+  width: 326px;
+}
+
+.dmh-cover {
+  position: relative;
+  width: 270px;
+  height: 270px;
+}
+
+.dmh-window[data-layout="compact"] .dmh-cover {
+  grid-row: 1 / 4;
+  width: 124px;
+  height: 124px;
+}
+
+.dmh-art {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: linear-gradient(180deg, #2b1d48 0%, #7a3456 42%, #e0704a 72%, #f2a65a 100%);
+}
+
+.dmh-art__sun {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 38%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #ffe0a3, #ff9b6a);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 40px rgba(255, 190, 120, 0.6);
+}
+
+.dmh-art__hill {
+  position: absolute;
+  inset: 62% -10% -20%;
+  border-radius: 50% 50% 0 0;
+  background: linear-gradient(180deg, #1a0f22, #0c0710);
+}
+
+/* The sleeve: rounded in Apple, square-ish and grey in Nothing; in Vinyl it
+   shrinks into the label and fades as the label takes over */
+.dmh-art--sleeve {
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  transition:
+    transform 0.8s cubic-bezier(0.45, 0, 0.1, 1),
+    border-radius 0.8s cubic-bezier(0.45, 0, 0.1, 1),
+    opacity 0.35s ease 0.45s,
+    filter 0.5s ease;
+}
+
+.dmh-window[data-style="nothing"] .dmh-art--sleeve {
+  border-radius: 4px;
+  filter: grayscale(1) contrast(1.15);
+}
+
+.dmh-window[data-style="vinyl"] .dmh-art--sleeve {
+  border-radius: 50%;
+  transform: scale(0.4);
+  opacity: 0;
+}
+
+/* Leaving Vinyl, the sleeve is back at once and grows out of the label */
+.dmh-window:not([data-style="vinyl"]) .dmh-art--sleeve {
+  transition:
+    transform 0.8s cubic-bezier(0.45, 0, 0.1, 1),
+    border-radius 0.8s cubic-bezier(0.45, 0, 0.1, 1),
+    opacity 0.15s ease,
+    filter 0.5s ease;
+}
+
+.dmh-record {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, transparent 0 21%, rgba(255, 255, 255, 0.05) 21.5%, transparent 22.5%),
+    repeating-radial-gradient(circle, #111 0 2px, #1b1b1d 2px 3px),
+    #111;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  opacity: 0;
+  transform: scale(0.92);
+  transition:
+    opacity 0.5s ease,
+    transform 0.8s cubic-bezier(0.45, 0, 0.1, 1);
+  animation: dmh-spin 3.2s linear infinite;
+}
+
+/* A sheen that stays still while the grooves turn under it */
+.dmh-record::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 20deg, transparent 0 10%, rgba(255, 255, 255, 0.09) 14%, transparent 20% 60%, rgba(255, 255, 255, 0.07) 64%, transparent 70%);
+}
+
+.dmh-window[data-style="vinyl"] .dmh-record {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.dmh-art--label {
+  inset: 30%;
+  border-radius: 50%;
+}
+
+.dmh-record__hole {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #050505;
+  transform: translate(-50%, -50%);
+}
+
+/* The record spins on its own layer; the sheen is counter-rotated */
+@keyframes dmh-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+.dmh-record::after {
+  animation: dmh-spin 3.2s linear infinite reverse;
+}
+
+/* ---------- Song, scrubber, controls ---------- */
+
+.dmh-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 22px;
+}
+
+.dmh-window[data-layout="compact"] .dmh-meta {
+  margin-top: 0;
+}
+
+.dmh-title {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: #fff;
+  transition: font-family 0s;
+}
+
+.dmh-artist {
+  font-size: 14px;
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.dmh-window[data-style="nothing"] .dmh-title {
+  font-family: Doto, monospace;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.dmh-scrub {
+  position: relative;
+  height: 4px;
+  margin-top: 18px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.dmh-window[data-layout="compact"] .dmh-scrub {
+  margin-top: 12px;
+}
+
+.dmh-scrub__fill {
+  position: absolute;
+  inset: 0 58% 0 0;
+  border-radius: 2px;
+  background: #fff;
+  transition: background-color 0.2s ease;
+}
+
+.dmh-window[data-style="nothing"] .dmh-scrub__fill {
+  background: var(--dmh-red);
+}
+
+.dmh-controls {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  margin-top: 16px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.dmh-window[data-layout="compact"] .dmh-controls {
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.dmh-play {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #fff;
+  color: #000;
+}
+
+.dmh-heart {
+  margin-left: auto;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.dmh-window[data-layout="compact"] .dmh-heart {
+  display: none;
+}
+
+/* ---------- Lyrics: a track of lines, one sung word at a time ---------- */
+
+.dmh-lyrics {
+  --dmh-line: 50px;
+  position: relative;
+  height: 300px;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 22%, #000 70%, transparent 100%);
+  mask-image: linear-gradient(180deg, transparent 0, #000 22%, #000 70%, transparent 100%);
+}
+
+.dmh-lyrics[data-compact] {
+  --dmh-line: 34px;
+  height: 160px;
+}
+
+.dmh-lyrics__track {
+  padding-top: var(--dmh-line);
+  transition: transform 0.6s cubic-bezier(0.45, 0, 0.1, 1);
+}
+
+.dmh-line {
+  display: flex;
+  align-items: center;
+  height: var(--dmh-line);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.28);
+  transition: color 0.4s ease;
+}
+
+.dmh-lyrics[data-compact] .dmh-line {
+  font-size: 19px;
+}
+
+.dmh-word {
+  white-space: pre;
+  transition: color 0.18s ease, text-shadow 0.3s ease;
+}
+
+.dmh-line[data-state="now"] .dmh-word {
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.dmh-line[data-state="now"] .dmh-word[data-sung] {
+  color: #fff;
+  text-shadow: 0 0 18px rgba(255, 255, 255, 0.35);
+}
+
+.dmh-line[data-state="past"] .dmh-word {
+  color: rgba(255, 255, 255, 0.22);
+}
+
+/* Nothing: the lyrics in dot matrix, capitals, the app's red on what's sung */
+.dmh-window[data-style="nothing"] .dmh-line {
+  font-family: Doto, monospace;
+  font-size: 25px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.dmh-window[data-style="nothing"] .dmh-lyrics[data-compact] .dmh-line {
+  font-size: 16px;
+}
+
+.dmh-window[data-style="nothing"] .dmh-line[data-state="now"] .dmh-word[data-sung] {
+  color: #fff;
+  text-shadow: none;
+}
+
+.dmh-window[data-style="nothing"] .dmh-line[data-state="now"] .dmh-word[data-sung]:last-of-type,
+.dmh-window[data-style="nothing"] .dmh-line[data-state="now"] .dmh-word[data-sung]:has(+ .dmh-word:not([data-sung])) {
+  color: var(--dmh-red);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dmh-record,
+  .dmh-record::after {
+    animation: none;
+  }
+}
+
+.dmh-art--label .dmh-art__sun {
+  top: 50%;
+  width: 44%;
+  box-shadow: none;
+}

@@ -213,7 +213,7 @@ svg {
 
 .hero {
   position: relative;
-  padding: calc(64px + clamp(48px, 9vh, 110px)) var(--gutter) 60px;
+  padding: calc(64px + clamp(36px, 6vh, 80px)) var(--gutter) 40px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -256,7 +256,7 @@ svg {
   margin: 0;
   font-family: Doto, monospace;
   font-weight: 800;
-  font-size: clamp(34px, 10vw, 136px);
+  font-size: clamp(40px, min(8.4vw, 12vh), 112px);
   line-height: 0.98;
   letter-spacing: 0.01em;
 }
@@ -276,8 +276,8 @@ svg {
 }
 
 .hero-sub {
-  max-width: 640px;
-  margin: 26px auto 0;
+  max-width: 600px;
+  margin: 22px auto 0;
   font-size: clamp(17px, 1.6vw, 20px);
   line-height: 1.55;
   color: var(--dim);
@@ -288,7 +288,7 @@ svg {
   flex-wrap: wrap;
   justify-content: center;
   gap: 12px;
-  margin-top: 34px;
+  margin-top: 28px;
 }
 
 .hero-meta {
@@ -1282,5 +1282,113 @@ svg {
 
   .phone--back {
     margin-right: -14vw;
+  }
+}
+
+/* ---------- Redesign: the hero demo, style tabs, the feature grid ---------- */
+
+.skip-link {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 100;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: #fff;
+  color: #000;
+  font-weight: 600;
+  text-decoration: none;
+  transform: translateY(-160%);
+  transition: transform 0.2s var(--ease);
+}
+
+.skip-link:focus-visible {
+  transform: none;
+}
+
+/* The live product demo under the hero copy; the page is its ground */
+.hero-demo {
+  position: relative;
+  width: min(1080px, 100%);
+  margin-top: clamp(36px, 6vh, 64px);
+}
+
+.hero-demo::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 120px;
+  background: linear-gradient(180deg, transparent, var(--bg));
+  pointer-events: none;
+}
+
+/* Style tabs over the screenshots */
+.moods .mood-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.mood-tabs {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.mood-tabs button {
+  min-height: 36px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dim);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.mood-tabs button:hover {
+  color: var(--ink);
+}
+
+.mood-tabs button.is-on {
+  background: var(--ink);
+  color: #000;
+}
+
+.moods .screen {
+  aspect-ratio: 2000 / 1256;
+}
+
+.mood-note {
+  margin: 0;
+  font-size: 15px;
+  color: var(--dim);
+}
+
+.mood-note b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* The feature grid section */
+.features {
+  max-width: var(--max);
+}
+
+@media (max-width: 640px) {
+  .mood-tabs {
+    align-self: stretch;
+    justify-content: space-between;
+  }
+  .mood-tabs button {
+    flex: 1;
+    padding: 0 8px;
   }
 }

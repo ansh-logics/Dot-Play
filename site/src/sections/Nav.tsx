@@ -24,6 +24,7 @@ export function Nav({ info }: { info: RepoInfo }) {
     <header className="nav">
       <Logo />
       <nav className="nav-links" aria-label="Sections">
+        <a href="#styles">Styles</a>
         <a href="#features">Features</a>
         <a href="#immersive">Immersive</a>
         <a href="#install">Install</a>
