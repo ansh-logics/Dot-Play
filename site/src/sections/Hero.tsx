@@ -2,7 +2,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { Download } from "lucide-react";
 import { VISITOR_PLATFORM, downloadFor, visitorDownload, type RepoInfo } from "../lib/github";
 import { StarButton } from "./Nav";
-import { HeroShot } from "./Showcase";
+import { HeroDemo } from "../demos/HeroDemo";
 
 const HEADLINE = ["Your music.", "Every mood."];
 
@@ -46,9 +46,8 @@ export function Hero({ info }: { info: RepoInfo }) {
         </p>
         <TypedHeadline />
         <p className="hero-sub">
-          Lyrics that move with the voice, four players in one (a record that really spins and a cassette deck), a phone
-          remote that works anywhere, playlists imported from Spotify and more, and a clock-and-song screensaver across
-          your displays. Free.
+          Lyrics that light up word by word, four player styles from a spinning record to a cassette deck, and a phone
+          remote that works anywhere. Free and open source.
         </p>
         <div className="hero-ctas">
           <a className="btn btn-red btn-lg" href={main.url}>
@@ -66,7 +65,9 @@ export function Hero({ info }: { info: RepoInfo }) {
         </p>
       </div>
 
-      <HeroShot />
+      <div className="hero-demo" role="img" aria-label="dot(.)music playing Night Drive: the lyrics light up word by word while the player switches between the Apple, Vinyl and Nothing styles">
+        <HeroDemo />
+      </div>
     </section>
   );
 }

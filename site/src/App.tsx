@@ -9,8 +9,9 @@ export function App() {
   const info = useRepoInfo();
   return (
     <>
+      <a className="skip-link" href="#main">Skip to content</a>
       <Nav info={info} />
-      <main>
+      <main id="main">
         <Hero info={info} />
         <Showcase />
         <BuiltLight />
