@@ -6,6 +6,7 @@ import { ImmersiveDisplays } from "./ImmersiveDisplays";
 import { PhoneRemoteSettings } from "./PhoneRemoteSettings";
 import { ScrobbleSettings } from "./ScrobbleSettings";
 import { setArtworkAccentEnabled, useArtworkAccentEnabled } from "../../lib/artworkAccent";
+import { setGtaMode, useGtaMode } from "../../lib/gtaMode";
 import { CROSSFADE_CHOICES, setCrossfadeSeconds, useCrossfadeSeconds } from "../../lib/crossfade";
 import {
   setDiscordPresenceEnabled,
@@ -98,6 +99,7 @@ export function SettingsModal({
           onToggle={() => onFeedbackChange({ sound: !feedbackPrefs.sound })}
         />
         <ArtworkAccentRow />
+        <GtaModeRow />
         <SwitchRow
           label="Trackpad haptics"
           description="Feel each notch on a Force Touch trackpad"
@@ -273,6 +275,18 @@ function CrossfadeRow() {
         ))}
       </div>
     </div>
+  );
+}
+
+function GtaModeRow() {
+  const on = useGtaMode();
+  return (
+    <SwitchRow
+      label="GTA mode"
+      description="Experimental. The window becomes an endless coastal drive with GTA-style radio. Hold R for the radio wheel, Esc for the menu."
+      checked={on}
+      onToggle={() => setGtaMode(!on)}
+    />
   );
 }
 

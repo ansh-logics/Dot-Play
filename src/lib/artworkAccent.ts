@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
+import { useGtaMode } from "./gtaMode";
 import { useArtwork } from "./imagePipeline";
 import { useArtworkPalette, type ArtworkPalette } from "./useArtworkPalette";
 import type { SearchResult } from "./search";
@@ -102,9 +103,15 @@ export function accentFromPalette(palette: Pick<ArtworkPalette, "colors">): Acce
 
 const VARS = ["--accent-red", "--accent-red-hover", "--accent-red-glow", "--accent-red-subtle"] as const;
 
-/** Points the app's accent at the playing song's cover while the setting is on. */
+/**
+ * Points the app's accent at the playing song's cover while the setting is on. GTA mode
+ * owns the accent (its theme's hot pink), so the cover colour stands down while it's on
+ * and comes back when it's turned off.
+ */
 export function useArtworkAccent(track: SearchResult | null | undefined) {
-  const on = useArtworkAccentEnabled();
+  const enabledSetting = useArtworkAccentEnabled();
+  const gtaMode = useGtaMode();
+  const on = enabledSetting && !gtaMode;
   const { currentUrl } = useArtwork({
     sourceUrl: on ? track?.thumbnailUrl : undefined,
     videoId: on ? track?.videoId : undefined,

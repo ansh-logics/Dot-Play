@@ -309,3 +309,25 @@ export function crateRattle(count: number, prefs: FeedbackPrefs = loadFeedbackPr
     later(i * 42 + Math.random() * 12, () => click(2200 + Math.random() * 1200, 900, 0.035))
   }
 }
+
+// ---- Radio (GTA mode) ---------------------------------------------------------------
+
+/**
+ * Tuning static between stations: a crackly band of noise sweeping down the dial, with a
+ * few pops. `level` follows the music volume (0..1) so it never jumps out over the song.
+ */
+export function radioStatic(level: number, seconds = 0.55): void {
+  const l = Math.max(0, Math.min(1, level))
+  if (l <= 0.001) return
+  noiseSwell({ freq: 3200, freqTo: 900, q: 0.6, level: 0.22 * l, attack: 0.03, hold: seconds * 0.6, release: seconds * 0.4 })
+  noiseSwell({ freq: 7000, freqTo: 5200, q: 2.5, level: 0.06 * l, attack: 0.01, hold: seconds * 0.4, release: seconds * 0.3, delay: 0.04 })
+  for (let i = 0; i < 4; i++) {
+    const delay = Math.random() * seconds * 0.8
+    window.setTimeout(() => click(1800 + Math.random() * 2400, 400 + Math.random() * 500, 0.08 * l), delay * 1000)
+  }
+}
+
+/** The soft detent as the wheel's highlight moves onto another station. */
+export function radioDetent(level = 1): void {
+  click(2400 * jitter(0.05), 900, 0.07 * Math.max(0, Math.min(1, level)))
+}

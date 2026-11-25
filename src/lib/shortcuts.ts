@@ -10,6 +10,7 @@ export const SHORTCUT_GROUPS: Array<{ title: string; items: Array<{ keys: string
       { keys: ["F"], label: "Now Playing" },
       { keys: ["I"], label: "Immersive mode (clock and song on your displays)" },
       { keys: ["/"], label: "Search" },
+      { keys: ["R"], label: "GTA mode radio: hold for the wheel, tap for the next station" },
       { keys: ["?"], label: "These shortcuts" },
       { keys: ["Esc"], label: "Back one step: close, then Home, then minimise (full screen stops at Home)" },
     ],

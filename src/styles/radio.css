@@ -1,0 +1,958 @@
+/* ==========================================================================
+   Radio (GTA mode): station badges, the radio wheel, the in-car banner and
+   the Radio page. Sunset palette is local to these components; everything
+   else follows the app's tokens so it works in the normal and GTA themes.
+   ========================================================================== */
+
+:root {
+  --radio-font-display: "Anton", Impact, "Arial Narrow", sans-serif;
+  --radio-font-label: "Bebas Neue", Impact, "Arial Narrow", sans-serif;
+  --radio-night: #0e0b2e;
+  --radio-night-2: #1a1446;
+  --radio-violet: #2b1b5e;
+  --radio-magenta: #c2187a;
+  --radio-pink: #ff3e9a;
+  --radio-coral: #ff6b4a;
+  --radio-gold: #ffd166;
+  --radio-teal: #19d3c5;
+  --radio-sunset: linear-gradient(180deg, #2b1b5e 0%, #c2187a 45%, #ff6b4a 75%, #ffd166 100%);
+  --radio-sunset-h: linear-gradient(90deg, #ff3e9a 0%, #ff6b4a 50%, #ffd166 100%);
+}
+
+/* ---- Station badge --------------------------------------------------------- */
+
+.radio-badge {
+  --radio-badge-size: 64px;
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: var(--radio-badge-size);
+  height: var(--radio-badge-size);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 120%, rgba(0, 0, 0, 0.28), transparent 60%),
+    var(--radio-badge-fill);
+  color: var(--radio-badge-ink);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+    inset 0 -2px 6px rgba(0, 0, 0, 0.25),
+    0 2px 10px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  user-select: none;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.radio-badge-ring {
+  position: absolute;
+  inset: calc(var(--radio-badge-size) * 0.08);
+  border-radius: 50%;
+  border: max(1px, calc(var(--radio-badge-size) * 0.03)) solid var(--radio-badge-ink);
+  opacity: 0.55;
+}
+
+.radio-badge-mono {
+  position: relative;
+  font-family: var(--radio-font-display);
+  font-size: calc(var(--radio-badge-size) * 0.38);
+  line-height: 1;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  transform: translateY(2%);
+}
+
+.radio-badge.is-long .radio-badge-mono {
+  font-size: calc(var(--radio-badge-size) * 0.28);
+}
+
+.radio-badge.has-freq .radio-badge-mono {
+  transform: translateY(-10%);
+}
+
+.radio-badge-freq {
+  position: absolute;
+  bottom: calc(var(--radio-badge-size) * 0.17);
+  font-family: var(--radio-font-label);
+  font-size: max(8px, calc(var(--radio-badge-size) * 0.14));
+  line-height: 1;
+  letter-spacing: 0.06em;
+  opacity: 0.85;
+}
+
+.radio-badge-gloss {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.38) 0%, rgba(255, 255, 255, 0.06) 38%, transparent 52%);
+  pointer-events: none;
+}
+
+.radio-badge.is-active {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.3),
+    inset 0 -2px 6px rgba(0, 0, 0, 0.25),
+    0 0 0 2px rgba(255, 255, 255, 0.85),
+    0 0 22px 2px var(--radio-badge-fill);
+}
+
+/* ---- Radio wheel ----------------------------------------------------------- */
+
+.radio-wheel-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  padding: 24px 16px;
+  background:
+    radial-gradient(circle at 50% 52%, rgba(14, 11, 46, 0.55) 0%, rgba(0, 0, 0, 0.78) 70%);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  outline: none;
+  cursor: default;
+  user-select: none;
+}
+
+.radio-wheel-eras {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-glass);
+}
+
+.radio-wheel-era {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 16px 5px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--radio-font-label);
+  font-size: 18px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+.radio-wheel-era:hover {
+  color: var(--text-primary);
+}
+
+.radio-wheel-era.is-active {
+  background: var(--radio-sunset-h);
+  color: #1a0b2e;
+}
+
+.radio-wheel-era-short {
+  font-family: var(--radio-font-display);
+  font-size: 16px;
+  letter-spacing: 0.02em;
+}
+
+.radio-wheel-era-label {
+  font-size: 15px;
+}
+
+.radio-wheel {
+  position: relative;
+  flex: none;
+}
+
+.radio-wheel-disc {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: calc(var(--radio-ring-r) * 2 + 8px);
+  height: calc(var(--radio-ring-r) * 2 + 8px);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, rgba(14, 11, 46, 0.92) 0%, rgba(14, 11, 46, 0.92) 46%, rgba(26, 20, 70, 0.55) 47%, rgba(26, 20, 70, 0.3) 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    inset 0 0 60px rgba(194, 24, 122, 0.18),
+    0 30px 80px rgba(0, 0, 0, 0.5);
+}
+
+/* Glowing arc that swings to the highlighted slot. */
+.radio-wheel-pointer {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: calc(var(--radio-ring-r) * 2);
+  height: calc(var(--radio-ring-r) * 2);
+  pointer-events: none;
+}
+
+.radio-wheel-pointer-arc {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 120px;
+  height: 120px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--radio-accent) 0%, transparent 65%);
+  opacity: 0.45;
+  transition: background 0.2s ease;
+}
+
+.radio-wheel-slot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--slot-size);
+  height: var(--slot-size);
+  margin: calc(var(--slot-size) / -2) 0 0 calc(var(--slot-size) / -2);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  transform: translate(var(--slot-x), var(--slot-y)) scale(0.9);
+  opacity: 0.72;
+  transition: transform 0.18s cubic-bezier(0.3, 1.4, 0.5, 1), opacity 0.18s ease, filter 0.18s ease;
+  outline: none;
+}
+
+.radio-wheel-slot.is-highlighted {
+  transform: translate(var(--slot-x), var(--slot-y)) scale(1.28);
+  opacity: 1;
+  z-index: 2;
+  filter: drop-shadow(0 0 14px var(--slot-glow));
+}
+
+.radio-wheel-slot.is-playing:not(.is-highlighted) {
+  opacity: 0.95;
+}
+
+.radio-wheel-slot.is-playing::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -9px;
+  width: 6px;
+  height: 6px;
+  margin-left: -3px;
+  border-radius: 50%;
+  background: var(--radio-teal);
+  box-shadow: 0 0 8px var(--radio-teal);
+}
+
+.radio-wheel-slot:focus-visible .radio-badge,
+.radio-wheel-slot:focus-visible .radio-wheel-off {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 3px;
+}
+
+.radio-wheel-off {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 30%, #2a2440, #120a1f);
+  color: var(--text-primary);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.22), 0 2px 10px rgba(0, 0, 0, 0.45);
+}
+
+.radio-wheel-slot.is-off.is-highlighted .radio-wheel-off {
+  color: var(--radio-pink);
+  box-shadow: inset 0 0 0 2px var(--radio-pink), 0 0 20px rgba(255, 62, 154, 0.5);
+}
+
+.radio-wheel-hub {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(calc(var(--radio-ring-r) * 1.25), 300px);
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.radio-wheel-hub-title {
+  font-family: var(--radio-font-display);
+  font-size: clamp(22px, calc(var(--radio-ring-r) * 0.15), 38px);
+  line-height: 1.02;
+  text-transform: uppercase;
+  color: var(--text-primary);
+  text-shadow: 0 0 24px color-mix(in srgb, var(--radio-accent) 55%, transparent);
+  overflow-wrap: anywhere;
+}
+
+.radio-wheel-hub-meta,
+.radio-wheel-hub-host {
+  font-family: var(--radio-font-label);
+  font-size: 18px;
+  letter-spacing: 0.06em;
+  line-height: 1.1;
+  color: var(--radio-gold);
+}
+
+.radio-wheel-hub-host {
+  color: var(--text-secondary);
+  font-size: 16px;
+}
+
+.radio-wheel-hub-song {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  max-width: 100%;
+  font-family: var(--font-body);
+}
+
+.radio-wheel-hub-song-title {
+  font-size: var(--fs-base);
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.radio-wheel-hub-song-artist {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.radio-wheel-hub-tuning {
+  margin-top: 8px;
+  font-family: var(--radio-font-label);
+  font-size: 16px;
+  letter-spacing: 0.12em;
+  color: var(--radio-teal);
+  animation: radio-flicker 0.9s steps(2, end) infinite;
+}
+
+.radio-wheel-hint {
+  margin: 0;
+  font-family: var(--radio-font-label);
+  font-size: 17px;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+/* ---- In-car banner --------------------------------------------------------- */
+
+.radio-banner-anchor {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  z-index: 99990;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.radio-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 260px;
+  max-width: min(520px, calc(100vw - 32px));
+  padding: 8px 20px 8px 8px;
+  border-radius: var(--radius-full);
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--radio-accent) 22%, transparent), transparent 60%),
+    rgba(14, 11, 46, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(18px) saturate(1.3);
+  -webkit-backdrop-filter: blur(18px) saturate(1.3);
+}
+
+.radio-banner-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.radio-banner-station {
+  font-family: var(--radio-font-display);
+  font-size: 20px;
+  line-height: 1.1;
+  text-transform: uppercase;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.radio-banner-song,
+.radio-banner-tuning {
+  font-family: var(--radio-font-label);
+  font-size: 16px;
+  letter-spacing: 0.05em;
+  line-height: 1.15;
+  color: var(--radio-gold);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.radio-banner-tuning {
+  color: var(--radio-teal);
+  letter-spacing: 0.14em;
+  animation: radio-flicker 0.9s steps(2, end) infinite;
+}
+
+.radio-banner.is-tuning .radio-badge {
+  animation: radio-flicker 1.2s steps(3, end) infinite;
+}
+
+/* ---- Radio page ------------------------------------------------------------ */
+
+.radio-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-section);
+  animation: fadeIn 0.25s ease-out;
+}
+
+.radio-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.radio-title {
+  margin: 0;
+  font-family: var(--radio-font-display);
+  font-size: clamp(56px, 9vw, 112px);
+  font-weight: 400;
+  line-height: 0.92;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  background: var(--radio-sunset);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 4px 24px rgba(194, 24, 122, 0.35));
+}
+
+.radio-subtitle {
+  margin: 0;
+  max-width: 560px;
+  font-size: var(--fs-base);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+/* Hero: on air / tune in */
+.radio-hero {
+  --radio-accent: var(--radio-pink);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding: 28px;
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  background:
+    radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--radio-accent) 30%, transparent) 0%, transparent 55%),
+    linear-gradient(135deg, rgba(43, 27, 94, 0.75) 0%, rgba(14, 11, 46, 0.9) 60%, rgba(194, 24, 122, 0.28) 100%);
+  border: 1px solid var(--border-glass);
+}
+
+.radio-hero::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 3px;
+  background: var(--radio-sunset-h);
+  opacity: 0.85;
+}
+
+.radio-hero-idle {
+  background:
+    radial-gradient(90% 160% at 100% 100%, rgba(255, 107, 74, 0.28) 0%, transparent 55%),
+    linear-gradient(135deg, rgba(43, 27, 94, 0.7) 0%, rgba(14, 11, 46, 0.92) 70%);
+}
+
+.radio-hero-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.radio-hero-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--radio-font-label);
+  font-size: 17px;
+  letter-spacing: 0.12em;
+  color: var(--radio-teal);
+}
+
+.radio-hero-title {
+  margin: 0;
+  font-family: var(--radio-font-display);
+  font-size: clamp(32px, 4.4vw, 52px);
+  font-weight: 400;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.radio-hero-host {
+  margin: 0;
+  font-family: var(--radio-font-label);
+  font-size: 19px;
+  letter-spacing: 0.05em;
+  color: var(--radio-gold);
+}
+
+.radio-hero-vibe {
+  margin: 0;
+  font-size: var(--fs-base);
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.radio-hero-hint {
+  margin: 6px 0 0;
+  font-size: var(--fs-md);
+  color: var(--text-secondary);
+}
+
+.radio-kbd {
+  display: inline-block;
+  min-width: 22px;
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-active);
+  border-bottom-width: 2px;
+  background: rgba(255, 255, 255, 0.06);
+  font-family: var(--radio-font-label);
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  text-align: center;
+  color: var(--text-primary);
+}
+
+.radio-hero-song {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 10px 0 0;
+  min-width: 0;
+}
+
+.radio-hero-song-title {
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.radio-hero-song-artist {
+  font-size: var(--fs-md);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.radio-hero-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: none;
+}
+
+.radio-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 18px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-glass);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  font-family: var(--radio-font-label);
+  font-size: 17px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.12s ease;
+}
+
+.radio-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: var(--border-active);
+}
+
+.radio-btn:active {
+  transform: scale(0.97);
+}
+
+.radio-btn:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 2px;
+}
+
+.radio-btn-primary {
+  border-color: transparent;
+  background: var(--radio-sunset-h);
+  color: #1a0b2e;
+}
+
+.radio-btn-primary:hover {
+  background: var(--radio-sunset-h);
+  filter: brightness(1.08);
+}
+
+.radio-btn-ghost {
+  background: transparent;
+}
+
+/* Era sections */
+.radio-era {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-heading);
+}
+
+.radio-era-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.radio-era-title {
+  margin: 0;
+  font-family: var(--radio-font-display);
+  font-size: 30px;
+  font-weight: 400;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+
+.radio-era-year {
+  font-family: var(--radio-font-label);
+  font-size: 20px;
+  letter-spacing: 0.06em;
+  background: var(--radio-sunset-h);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.radio-era-count {
+  margin-left: auto;
+  font-size: var(--fs-sm);
+  color: var(--text-tertiary);
+}
+
+.radio-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+/* Station card */
+.radio-card {
+  --radio-accent: var(--radio-pink);
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.radio-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(80% 120% at 0% 0%, color-mix(in srgb, var(--radio-accent) 18%, transparent), transparent 60%);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+.radio-card:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border-glass);
+  transform: translateY(-2px);
+}
+
+.radio-card:hover::before,
+.radio-card.is-playing::before,
+.radio-card.is-tuning::before {
+  opacity: 1;
+}
+
+.radio-card:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 2px;
+}
+
+.radio-card.is-playing {
+  border-color: color-mix(in srgb, var(--radio-accent) 60%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--radio-accent) 35%, transparent), 0 10px 30px rgba(0, 0, 0, 0.35);
+  cursor: default;
+}
+
+.radio-card.is-tuning {
+  cursor: progress;
+}
+
+.radio-card-badge {
+  position: relative;
+  flex: none;
+  transition: transform 0.2s ease;
+}
+
+.radio-card:hover .radio-card-badge {
+  transform: rotate(-6deg) scale(1.04);
+}
+
+.radio-card-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.radio-card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.radio-card-title {
+  font-family: var(--radio-font-display);
+  font-size: 20px;
+  line-height: 1.1;
+  text-transform: uppercase;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.radio-card-onair {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  margin-left: auto;
+  font-family: var(--radio-font-label);
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  color: var(--radio-teal);
+}
+
+.radio-card-spinner {
+  width: 12px;
+  height: 12px;
+  border-width: 2px;
+  border-top-color: var(--radio-teal);
+}
+
+.radio-card-genre {
+  font-family: var(--radio-font-label);
+  font-size: 16px;
+  letter-spacing: 0.05em;
+  line-height: 1.15;
+  color: var(--radio-gold);
+}
+
+.radio-card-vibe {
+  font-size: var(--fs-md);
+  line-height: 1.4;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.radio-card-foot {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+}
+
+.radio-card-host {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.radio-card-count {
+  flex: none;
+  margin-left: auto;
+}
+
+.radio-card-tag {
+  align-self: flex-start;
+  margin-top: 6px;
+  padding: 2px 7px;
+  border-radius: var(--radius-xs);
+  border: 1px dashed rgba(255, 209, 102, 0.45);
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--radio-gold);
+}
+
+/* Equalizer bars */
+.radio-eq {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  width: 14px;
+  height: 12px;
+}
+
+.radio-eq span {
+  flex: 1;
+  height: 100%;
+  border-radius: 1px;
+  background: currentColor;
+  transform-origin: bottom;
+  animation: radio-eq 0.9s ease-in-out infinite;
+}
+
+.radio-eq span:nth-child(2) { animation-delay: -0.3s; animation-duration: 0.75s; }
+.radio-eq span:nth-child(3) { animation-delay: -0.55s; animation-duration: 1.05s; }
+.radio-eq span:nth-child(4) { animation-delay: -0.15s; animation-duration: 0.85s; }
+
+@keyframes radio-eq {
+  0%, 100% { transform: scaleY(0.3); }
+  50% { transform: scaleY(1); }
+}
+
+@keyframes radio-flicker {
+  0% { opacity: 1; }
+  50% { opacity: 0.45; }
+  100% { opacity: 1; }
+}
+
+@media (max-width: 720px) {
+  .radio-hero {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .radio-hero-actions {
+    flex-direction: row;
+  }
+}
+
+/* ---- GTA theme: lean further into the sunset ----------------------------------- */
+
+:root[data-theme="gta"] .radio-card {
+  background: rgba(26, 20, 70, 0.45);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+:root[data-theme="gta"] .radio-card:hover {
+  background: rgba(43, 27, 94, 0.6);
+}
+
+:root[data-theme="gta"] .radio-era-title {
+  text-shadow: 0 2px 0 rgba(194, 24, 122, 0.6);
+}
+
+:root[data-theme="gta"] .radio-wheel-overlay {
+  background: radial-gradient(circle at 50% 52%, rgba(43, 27, 94, 0.6) 0%, rgba(14, 11, 46, 0.86) 70%);
+}
+
+/* ---- Reduced motion ----------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .radio-badge,
+  .radio-wheel-slot,
+  .radio-wheel-pointer-arc,
+  .radio-card,
+  .radio-card::before,
+  .radio-card-badge,
+  .radio-btn {
+    transition: none;
+  }
+
+  .radio-view {
+    animation: none;
+  }
+
+  .radio-card:hover {
+    transform: none;
+  }
+
+  .radio-card:hover .radio-card-badge {
+    transform: none;
+  }
+
+  .radio-eq span {
+    animation: none;
+    transform: scaleY(0.7);
+  }
+
+  .radio-eq span:nth-child(2) { transform: scaleY(1); }
+  .radio-eq span:nth-child(3) { transform: scaleY(0.5); }
+
+  .radio-wheel-hub-tuning,
+  .radio-banner-tuning,
+  .radio-banner.is-tuning .radio-badge {
+    animation: none;
+  }
+}
+
+.drive-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(180deg, #2b1b5e, #c2187a 60%, #ff6b4a);
+  color: #fff;
+  font-family: "Anton", Impact, sans-serif;
+  font-size: 40px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}

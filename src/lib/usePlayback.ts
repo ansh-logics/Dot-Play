@@ -237,6 +237,7 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     const sourceVideoId = currentTrack?.videoId;
     if (!sourceVideoId || !playbackModes.autoplay) return;
     if (session.upcoming.length > 0) return;
+    if (autoplaySuspendedRef.current) return;
     if (queueFilledForRef.current === sourceVideoId) return;
     queueFilledForRef.current = sourceVideoId;
 
@@ -318,6 +319,37 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     },
     [commitSession],
   );
+
+  /**
+   * Radio: append station songs as context (not "user") items, so picking any other song
+   * drops them the same way it drops the rest of a playlist. Skips songs already queued.
+   */
+  const appendStationTracks = useCallback(
+    (tracks: SearchResult[]) => {
+      if (!tracks || tracks.length === 0) return;
+      commitSession((prev) => {
+        const seen = new Set(prev.upcoming.map((t) => t.videoId));
+        if (prev.currentTrack?.videoId) seen.add(prev.currentTrack.videoId);
+        const fresh = tracks.filter((t) => t.videoId && !seen.has(t.videoId) && seen.add(t.videoId));
+        if (fresh.length === 0) return prev;
+        return { ...prev, upcoming: [...prev.upcoming, ...fresh.map(({ queueSource: _q, ...t }) => t)] };
+      });
+    },
+    [commitSession],
+  );
+
+  /** The radio owns the queue: no related-song recommendations while it's on. */
+  const autoplaySuspendedRef = useRef(false);
+  const suspendAutoplay = useCallback((suspended: boolean) => {
+    autoplaySuspendedRef.current = suspended;
+  }, []);
+
+  /** Temporarily lowers the music (0..1 of the listener's volume) without saving it. */
+  const setDuck = useCallback((gain: number) => {
+    // Applied even while muted, so unmuting never comes back at a ducked level.
+    const g = Math.max(0, Math.min(1, gain));
+    playerRef.current?.setVolume(Math.round(volumeRef.current * g));
+  }, []);
 
   // Playback modes
   const cycleRepeatMode = useCallback(() => {
@@ -624,7 +656,7 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     }
 
     if (!needsAutoplay) return;
-    if (autoplay && current.currentTrack?.videoId) {
+    if (autoplay && !autoplaySuspendedRef.current && current.currentTrack?.videoId) {
       try {
         // nextSession already has the finished song in history, so it's excluded and seeds the radio.
         const result = await playAutoplayFrom(nextSession, (_prev, first, rest) => ({
@@ -664,7 +696,7 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
       return;
     }
 
-    if (autoplay && current.currentTrack?.videoId) {
+    if (autoplay && !autoplaySuspendedRef.current && current.currentTrack?.videoId) {
       try {
         const result = await playAutoplayFrom(current, (prev, first, rest) => ({
           ...playTrackImmediate(prev, first),
@@ -1158,6 +1190,9 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     handleClearUpcoming,
     handleAddToQueue,
     handleAppendTracksToQueue,
+    appendStationTracks,
+    setDuck,
+    suspendAutoplay,
     handleSelectUpcoming,
     selectTrack,
     handlePlayNext,

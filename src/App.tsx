@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import { PlaybackDecks } from "./components/PlaybackDecks";
 import { MusicContextMenu, type MusicContextTarget } from "./components/MusicContextMenu";
@@ -24,6 +24,7 @@ import { useArtworkAccent } from "./lib/artworkAccent";
 import { SearchResultsView } from "./views/SearchResultsView";
 import type { CardClickHandler, CardContextMenuHandler, NavTab } from "./views/types";
 import { ArrowLeft } from "lucide-react";
+import { useReducedMotion } from "motion/react";
 import { WithCurrentTime } from "./lib/playbackClock";
 import { getPlaylistDetails, loadRemainingPlaylistPages, type PlaylistDetails, type PlaylistTrack, type SearchResult } from "./lib/search";
 import {
@@ -52,6 +53,14 @@ import { isTauriEnvironment } from "./lib/search";
 import { applyDisplayChoices, applyIdleMinutes, loadIdleMinutes, openImmersive, saveIdleMinutes, type IdleMinutes } from "./lib/immersive";
 import { usePlayback } from "./lib/usePlayback";
 import { useSearch } from "./lib/useSearch";
+import { useGtaMode } from "./lib/gtaMode";
+import { useRadio } from "./lib/useRadio";
+import { RadioWheel } from "./components/radio/RadioWheel";
+import { RadioBanner } from "./components/radio/RadioBanner";
+import { setGtaMode } from "./lib/gtaMode";
+
+// The drive (three.js) only loads when GTA mode is switched on.
+const GtaDrive = lazy(() => import("./drive/GtaDrive"));
 
 /** The last step of Esc: the window goes to the Dock (F brings it back). A full-screen
  *  window stays as it is: Esc there stops at Home. */
@@ -180,6 +189,27 @@ function App() {
   });
   const { currentTrack, selectTrack } = playback;
   useArtworkAccent(currentTrack);
+
+  // GTA mode: the sunset theme (styles/gta.css) and the radio.
+  const gtaMode = useGtaMode();
+  const radio = useRadio(playback);
+  const [radioWheelOpen, setRadioWheelOpen] = useState(false);
+  const reduceMotion = Boolean(useReducedMotion());
+  useEffect(() => {
+    const root = document.documentElement;
+    if (gtaMode) root.dataset.theme = "gta";
+    else delete root.dataset.theme;
+  }, [gtaMode]);
+  // Entering GTA mode (from Settings): the drive takes the whole window.
+  useEffect(() => {
+    if (gtaMode) setShowSettingsModal(false);
+  }, [gtaMode]);
+  const releaseRadio = radio.release;
+  useEffect(() => {
+    if (gtaMode) return;
+    releaseRadio();
+    setRadioWheelOpen(false);
+  }, [gtaMode, releaseRadio]);
   const { playbackRate, changePlaybackRate, sleepTimer, startSleepTimer, sleepAtEndOfTrack, cancelSleepTimer } = playback;
   const extrasContext = useMemo(
     () => ({
@@ -505,13 +535,18 @@ function App() {
     onTogglePlayPause: playback.togglePlayPause,
     onSeekRelative: playback.seekRelative,
     onToggleNowPlaying: () => {
-      if (!currentTrack) return false;
+      if (!currentTrack || gtaMode) return false;
       setShowNowPlaying((open) => !open);
       return true;
     },
     onFocusSearch: focusSearch,
     onOpenImmersive: openImmersive,
     onShowShortcuts: () => setShowSupportModal(true),
+    onRadioWheel: () => {
+      if (!gtaMode) return false;
+      setRadioWheelOpen(true);
+      return true;
+    },
   });
 
   const browse = {
@@ -792,6 +827,31 @@ function App() {
       )}
 
       {showSupportModal && <SupportModal onClose={() => setShowSupportModal(false)} />}
+
+      {gtaMode && (
+        <>
+          <Suspense fallback={<div className="drive-loading">Loading Leonida…</div>}>
+            <GtaDrive
+              radio={radio}
+              currentTrack={currentTrack}
+              isPlaying={playback.playerState === "playing"}
+              wheelOpen={radioWheelOpen}
+              onOpenWheel={() => setRadioWheelOpen(true)}
+              onTogglePlay={playback.togglePlayPause}
+              onNext={playback.handleNextTrack}
+              onExit={() => setGtaMode(false)}
+            />
+          </Suspense>
+          <RadioWheel
+            open={radioWheelOpen}
+            radio={radio}
+            currentTrack={currentTrack}
+            onClose={() => setRadioWheelOpen(false)}
+            reduceMotion={reduceMotion}
+          />
+          <RadioBanner radio={radio} currentTrack={currentTrack} />
+        </>
+      )}
 
       <PlaybackExtrasContext.Provider value={extrasContext}>
       <PlaybackRateContext.Provider value={playbackRate}>

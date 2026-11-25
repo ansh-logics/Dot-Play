@@ -1,0 +1,588 @@
+/* ==========================================================================
+   GTA mode: an original Vice-City-at-sunset theme (night purples, hot pink, coral, gold,
+   a teal accent). Everything here is scoped to :root[data-theme="gta"], which App sets
+   while GTA mode is on, so the normal DOT look is untouched when it's off.
+
+   No logos, fonts or artwork from any game: the palms, grain and type treatments are drawn
+   here. Display type is Anton, short UI labels Bebas Neue; body text stays on the system
+   font so lists and settings stay readable.
+
+   Utilities (only styled while GTA mode is on):
+     .gta-neon          Anton, pale pink with layered pink + teal glow and a slow flicker
+                        (no flicker under prefers-reduced-motion).
+     .gta-neon--teal    Same glow led by teal instead of pink.
+     .gta-poster-title  Anton, uppercase, sunset gradient fill with a hard night drop
+                        shadow: the loading-screen poster headline.
+     .gta-label         Bebas Neue, spaced uppercase label in lavender.
+
+   Tokens (also for other GTA components, e.g. the radio wheel):
+     --gta-night-0/1/2, --gta-violet/-2, --gta-magenta/-2, --gta-pink/-2, --gta-coral/-2,
+     --gta-gold/-2, --gta-teal/-2, --gta-palm, --gta-sunset (hero gradient),
+     --gta-fill (pink→orange fill), --font-gta-display, --font-gta-label.
+   ========================================================================== */
+
+:root[data-theme="gta"] {
+  /* Palette */
+  --gta-night-0: #0e0b2e;
+  --gta-night-1: #1a1446;
+  --gta-night-2: #2b1b5e;
+  --gta-violet: #4b2a8c;
+  --gta-violet-2: #6a3fb5;
+  --gta-magenta: #c2187a;
+  --gta-magenta-2: #e0218a;
+  --gta-pink: #ff3e9a;
+  --gta-pink-2: #ff5fa8;
+  --gta-coral: #ff6b4a;
+  --gta-coral-2: #ff8a3d;
+  --gta-gold: #ffb347;
+  --gta-gold-2: #ffd166;
+  --gta-teal: #19d3c5;
+  --gta-teal-2: #3fe0f0;
+  --gta-palm: #120a1f;
+  --gta-sunset: linear-gradient(180deg, #2b1b5e 0%, #c2187a 45%, #ff6b4a 75%, #ffd166 100%);
+  --gta-fill: linear-gradient(90deg, #ff3e9a 0%, #ff6b4a 70%, #ff8a3d 100%);
+  --gta-button: linear-gradient(135deg, #ff3e9a 0%, #ff6b4a 60%, #ffb347 100%);
+  --gta-hard-shadow: 2px 2px 0 #120a1f;
+
+  --font-gta-display: "Anton", Impact, "Arial Narrow Bold", sans-serif;
+  --font-gta-label: "Bebas Neue", "Anton", Impact, sans-serif;
+
+  /* App tokens */
+  --bg-oled: #0e0b2e;
+  --bg-sidebar: rgba(18, 12, 44, 0.74);
+  --bg-surface: #1a1446;
+  --bg-card: rgba(255, 95, 168, 0.05);
+  --bg-card-hover: rgba(255, 95, 168, 0.1);
+  --bg-elevated: #2b1b5e;
+
+  --accent-red: #ff3e9a;
+  --accent-red-hover: #ff5fa8;
+  --accent-red-glow: rgba(255, 62, 154, 0.5);
+  --accent-red-subtle: rgba(255, 62, 154, 0.16);
+
+  --text-primary: #fff7fb;
+  --text-secondary: #bcb1dc;
+  --text-tertiary: #9286b8;
+
+  --border-subtle: rgba(255, 95, 168, 0.1);
+  --border-glass: rgba(186, 150, 255, 0.2);
+  --border-active: rgba(255, 95, 168, 0.4);
+}
+
+/* --------------------------------------------------------------------------
+   App shell: sunset backdrop, palms, film grain
+   -------------------------------------------------------------------------- */
+:root[data-theme="gta"] body {
+  background-color: var(--gta-night-0);
+}
+
+:root[data-theme="gta"] .music-app-layout {
+  background: transparent;
+}
+
+/* Night sky fading to a dim magenta/coral horizon, with a row of palm silhouettes. */
+:root[data-theme="gta"] .music-app-layout::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 160' preserveAspectRatio='xMidYMax meet'%3E%3Cdefs%3E%3Cg id='p'%3E%3Cpath d='M-3 0 C2 50 6 100 8 152 L19 152 C15 100 9 50 3 0 Z'/%3E%3Cpath d='M0 0 Q-30 -18 -62 6 Q-32 -6 0 4 Z'/%3E%3Cpath d='M0 0 Q30 -20 64 4 Q32 -4 0 4 Z'/%3E%3Cpath d='M0 0 Q-14 -30 -44 -34 Q-18 -20 0 2 Z'/%3E%3Cpath d='M0 0 Q16 -32 46 -30 Q20 -18 0 2 Z'/%3E%3Cpath d='M0 0 Q-36 4 -52 34 Q-30 10 0 3 Z'/%3E%3Cpath d='M0 0 Q36 2 54 30 Q30 10 0 3 Z'/%3E%3Cpath d='M0 0 Q2 -30 -6 -44 Q8 -28 3 0 Z'/%3E%3Ccircle cx='1' cy='5' r='4'/%3E%3Ccircle cx='6' cy='7' r='3.5'/%3E%3C/g%3E%3C/defs%3E%3Cg fill='%23120A1F'%3E%3Cuse href='%23p' transform='translate(86 34) scale(0.86)'/%3E%3Cuse href='%23p' transform='translate(300 10) scale(1)'/%3E%3Cuse href='%23p' transform='translate(352 64) scale(-0.62 0.62)'/%3E%3Cuse href='%23p' transform='translate(520 42) scale(-0.8 0.8)'/%3E%3Cpath d='M0 160 L0 152 Q150 144 300 150 T600 150 L600 160 Z'/%3E%3C/g%3E%3C/svg%3E")
+      left bottom / 720px 192px repeat-x,
+    radial-gradient(60% 34% at 62% 100%, rgba(255, 138, 61, 0.28) 0%, rgba(224, 33, 138, 0.14) 45%, transparent 75%),
+    linear-gradient(
+      180deg,
+      #0e0b2e 0%,
+      #15103b 34%,
+      #22164f 58%,
+      #3a1a5e 76%,
+      #5c1a5c 90%,
+      #6e2050 100%
+    );
+}
+
+/* Film grain on top of everything in the shell, below Now Playing (900) and modals. Moves
+   in a few hard steps (cheap: a transform on one layer) and stops for reduced motion. */
+:root[data-theme="gta"] .music-app-layout::after {
+  content: "";
+  position: absolute;
+  inset: -60px;
+  z-index: 800;
+  pointer-events: none;
+  opacity: 0.07;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.6 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")
+    0 0 / 180px 180px repeat;
+  animation: gta-grain 0.9s steps(5) infinite;
+  will-change: transform;
+}
+
+@keyframes gta-grain {
+  0% { transform: translate3d(0, 0, 0); }
+  20% { transform: translate3d(-23px, 17px, 0); }
+  40% { transform: translate3d(31px, -11px, 0); }
+  60% { transform: translate3d(-14px, -29px, 0); }
+  80% { transform: translate3d(19px, 26px, 0); }
+  100% { transform: translate3d(0, 0, 0); }
+}
+
+:root[data-theme="gta"] .app-main-area {
+  background: transparent;
+}
+
+:root[data-theme="gta"] .app-top-bar {
+  background: rgba(14, 11, 46, 0.62);
+  border-bottom-color: rgba(255, 95, 168, 0.12);
+}
+
+:root[data-theme="gta"] .top-search-input {
+  background: rgba(43, 27, 94, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(186, 150, 255, 0.14);
+}
+
+:root[data-theme="gta"] .top-search-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+:root[data-theme="gta"] .top-search-input:focus {
+  background: rgba(43, 27, 94, 0.8);
+  box-shadow: inset 0 0 0 1px rgba(255, 95, 168, 0.4), 0 0 0 3px rgba(63, 224, 240, 0.22);
+}
+
+:root[data-theme="gta"] .app-main-content::-webkit-scrollbar-thumb,
+:root[data-theme="gta"] .sidebar-nav::-webkit-scrollbar-thumb {
+  background: rgba(255, 95, 168, 0.22);
+}
+
+:root[data-theme="gta"] .app-main-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 95, 168, 0.4);
+}
+
+/* Teal keyboard focus everywhere. Only the colour changes, so components that hide the
+   outline (and draw their own ring) keep doing so. */
+:root[data-theme="gta"] :where(button, a, input, [role="button"], [role="tab"], [role="option"], [role="menuitem"]):focus-visible {
+  outline-color: var(--gta-teal-2);
+}
+
+/* --------------------------------------------------------------------------
+   Sidebar
+   -------------------------------------------------------------------------- */
+:root[data-theme="gta"] .app-sidebar {
+  background: linear-gradient(180deg, rgba(26, 20, 70, 0.78) 0%, rgba(14, 11, 46, 0.72) 100%);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border-right: 1px solid transparent;
+  border-image: linear-gradient(180deg, rgba(255, 62, 154, 0.75) 0%, rgba(255, 107, 74, 0.55) 60%, rgba(255, 209, 102, 0.3) 100%) 1;
+}
+
+:root[data-theme="gta"] .brand-dot-logo {
+  background: var(--gta-night-1);
+  border-color: rgba(255, 95, 168, 0.35);
+}
+
+:root[data-theme="gta"] .brand-red-dot {
+  background: #ffd1e6;
+  box-shadow:
+    0 0 0 2px var(--gta-pink),
+    0 0 8px 2px var(--gta-pink),
+    0 0 18px rgba(255, 62, 154, 0.6);
+}
+
+:root[data-theme="gta"] .brand-title {
+  font-family: var(--font-gta-label);
+  font-size: 26px;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, #ffd166 0%, #ff8a3d 38%, #ff3e9a 72%, #e0218a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(2px 2px 0 #120a1f);
+}
+
+:root[data-theme="gta"] .nav-group-label {
+  font-family: var(--font-gta-label);
+  font-size: var(--fs-lg);
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gta-teal-2);
+  opacity: 0.85;
+}
+
+:root[data-theme="gta"] .nav-item-label {
+  font-family: var(--font-gta-label);
+  font-size: 19px;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+:root[data-theme="gta"] .sidebar-nav-item {
+  border-radius: var(--radius-full);
+}
+
+:root[data-theme="gta"] .sidebar-nav-item:hover {
+  background: rgba(255, 95, 168, 0.08);
+}
+
+:root[data-theme="gta"] .sidebar-nav-item.active {
+  background: linear-gradient(90deg, rgba(255, 62, 154, 0.26) 0%, rgba(255, 107, 74, 0.1) 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 95, 168, 0.4);
+  color: #fff;
+}
+
+:root[data-theme="gta"] .sidebar-nav-item.active .nav-item-indicator {
+  width: 4px;
+  height: 16px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(180deg, #ff5fa8, #ff8a3d);
+  box-shadow: 0 0 8px rgba(255, 62, 154, 0.7);
+}
+
+:root[data-theme="gta"] .sidebar-nav-item:focus-visible {
+  outline: 2px solid var(--gta-teal-2);
+  outline-offset: 2px;
+}
+
+/* Mini player */
+:root[data-theme="gta"] .sidebar-player-card {
+  background:
+    radial-gradient(120% 70% at 50% 0%, color-mix(in srgb, var(--tint) 30%, transparent), transparent 72%),
+    linear-gradient(180deg, rgba(43, 27, 94, 0.82) 0%, rgba(26, 20, 70, 0.9) 100%);
+  border-color: rgba(255, 95, 168, 0.18);
+  box-shadow: 0 12px 32px rgba(8, 4, 24, 0.55);
+}
+
+:root[data-theme="gta"] .sidebar-player-card:hover {
+  border-color: rgba(255, 95, 168, 0.34);
+}
+
+/* The range has no filled part, so the rail itself carries the sunset and the thumb glows. */
+:root[data-theme="gta"] .sidebar-player-scrubber {
+  background: linear-gradient(90deg, rgba(255, 62, 154, 0.45), rgba(255, 138, 61, 0.35));
+}
+
+:root[data-theme="gta"] .sidebar-player-scrubber::-webkit-slider-thumb {
+  background: #fff;
+  box-shadow: 0 0 0 2px var(--gta-pink), 0 0 10px rgba(255, 62, 154, 0.7);
+}
+
+:root[data-theme="gta"] .sidebar-player-scrubber:hover::-webkit-slider-thumb {
+  background: var(--gta-gold-2);
+  box-shadow: 0 0 0 2px var(--gta-coral), 0 0 12px rgba(255, 107, 74, 0.8);
+}
+
+:root[data-theme="gta"] .sidebar-ctrl-btn:hover:not(:disabled) {
+  background: rgba(255, 95, 168, 0.12);
+}
+
+/* --------------------------------------------------------------------------
+   Play buttons: sunset gradient, night icon
+   -------------------------------------------------------------------------- */
+:root[data-theme="gta"] .sidebar-ctrl-btn.play-pause,
+:root[data-theme="gta"] .album-play-btn,
+:root[data-theme="gta"] .top-match-play-btn,
+:root[data-theme="gta"] .carousel-play-btn.playing {
+  background: var(--gta-button);
+  color: var(--gta-palm);
+  border-color: transparent;
+  box-shadow: 0 4px 14px rgba(255, 62, 154, 0.35);
+}
+
+:root[data-theme="gta"] .sidebar-ctrl-btn.play-pause:hover:not(:disabled),
+:root[data-theme="gta"] .album-play-btn:hover:not(:disabled),
+:root[data-theme="gta"] .top-match-play-btn:hover {
+  background: linear-gradient(135deg, #ff5fa8 0%, #ff8a3d 60%, #ffd166 100%);
+  color: var(--gta-palm);
+  box-shadow: 0 4px 18px rgba(255, 95, 168, 0.5);
+}
+
+:root[data-theme="gta"] .carousel-play-btn:not(.playing) {
+  background: rgba(26, 20, 70, 0.78);
+  border-color: rgba(255, 95, 168, 0.3);
+}
+
+:root[data-theme="gta"] .carousel-dot-btn.active {
+  background: var(--gta-fill);
+}
+
+/* Primary buttons in dialogs */
+:root[data-theme="gta"] .new-playlist-btn.is-primary {
+  background: var(--gta-button);
+  color: var(--gta-palm);
+}
+
+:root[data-theme="gta"] .new-playlist-btn.is-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #ff5fa8 0%, #ff8a3d 60%, #ffd166 100%);
+}
+
+:root[data-theme="gta"] .history-signin-btn,
+:root[data-theme="gta"] .search-empty-clear-btn {
+  background: var(--gta-button);
+  color: var(--gta-palm);
+  border-color: transparent;
+}
+
+/* --------------------------------------------------------------------------
+   Headings: loading-screen poster type
+   -------------------------------------------------------------------------- */
+:root[data-theme="gta"] .section-heading,
+:root[data-theme="gta"] .carousel-heading-label,
+:root[data-theme="gta"] .history-header-title,
+:root[data-theme="gta"] .search-header-title,
+:root[data-theme="gta"] .album-title {
+  font-family: var(--font-gta-display);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  line-height: 1.05;
+  color: #fff7fb;
+  text-shadow: var(--gta-hard-shadow);
+}
+
+:root[data-theme="gta"] .album-title {
+  text-shadow: 3px 3px 0 #120a1f;
+}
+
+:root[data-theme="gta"] .nothing-modal-title,
+:root[data-theme="gta"] .settings-section-title,
+:root[data-theme="gta"] .search-subheading-label,
+:root[data-theme="gta"] .album-kind {
+  font-family: var(--font-gta-label);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+:root[data-theme="gta"] .nothing-modal-title {
+  font-size: 22px;
+  color: #fff7fb;
+  text-shadow: var(--gta-hard-shadow);
+}
+
+:root[data-theme="gta"] .settings-section-title {
+  font-size: var(--fs-lg);
+  color: var(--gta-teal-2);
+}
+
+/* Filter pills */
+:root[data-theme="gta"] .search-filter-pill.active,
+:root[data-theme="gta"] .settings-segmented button.is-on,
+:root[data-theme="gta"] .new-playlist-privacy-option.is-on {
+  background: var(--gta-fill);
+  color: #fff;
+  border-color: transparent;
+}
+
+/* --------------------------------------------------------------------------
+   Cards: thicker outline, slight tilt, pink glow, halftone on the artwork
+   -------------------------------------------------------------------------- */
+:root[data-theme="gta"] .card-thumb-wrap {
+  background: var(--gta-night-1);
+  box-shadow: 0 0 0 1px rgba(255, 95, 168, 0.12), 0 6px 16px rgba(8, 4, 24, 0.4);
+}
+
+:root[data-theme="gta"] .track-card:hover .card-thumb-wrap {
+  transform: translateY(-3px) rotate(-1deg);
+  box-shadow: 0 0 0 2px var(--gta-pink), 0 12px 26px rgba(255, 62, 154, 0.28);
+}
+
+:root[data-theme="gta"] .track-card:focus-visible .card-thumb-wrap {
+  transform: translateY(-3px) rotate(-1deg);
+  box-shadow: 0 0 0 2px var(--gta-teal-2), 0 12px 26px rgba(25, 211, 197, 0.25);
+}
+
+/* Halftone dots + a warm wash, shown on hover. Sits over the image, under the badges. */
+:root[data-theme="gta"] .card-thumb-wrap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle, rgba(18, 10, 31, 0.55) 0.9px, transparent 1.5px) 0 0 / 5px 5px,
+    linear-gradient(180deg, transparent 40%, rgba(194, 24, 122, 0.4) 85%, rgba(255, 107, 74, 0.45) 100%);
+  mix-blend-mode: multiply;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+:root[data-theme="gta"] .track-card:hover .card-thumb-wrap::after {
+  opacity: 1;
+}
+
+:root[data-theme="gta"] .artwork-image-container,
+:root[data-theme="gta"] .artwork-fallback-placeholder {
+  background: var(--gta-night-1);
+}
+
+:root[data-theme="gta"] .card-type-pill.playlist {
+  background: rgba(255, 62, 154, 0.88);
+}
+
+:root[data-theme="gta"] .card-play-indicator {
+  background: rgba(14, 11, 46, 0.8);
+  border-color: rgba(255, 95, 168, 0.35);
+}
+
+:root[data-theme="gta"] .track-card.active .card-play-indicator {
+  background: var(--gta-button);
+  color: var(--gta-palm);
+}
+
+:root[data-theme="gta"] .tracklist-row:hover {
+  background: rgba(255, 95, 168, 0.07);
+}
+
+:root[data-theme="gta"] .top-match-card:hover {
+  border-color: rgba(255, 95, 168, 0.4);
+}
+
+/* --------------------------------------------------------------------------
+   Toasts, modals, menus
+   -------------------------------------------------------------------------- */
+:root[data-theme="gta"] .nothing-toast-card {
+  background: rgba(26, 20, 70, 0.94);
+  border: 1px solid rgba(255, 95, 168, 0.5);
+  box-shadow: 0 12px 32px rgba(8, 4, 24, 0.6), 0 0 18px rgba(255, 62, 154, 0.28);
+}
+
+:root[data-theme="gta"] .nothing-modal-backdrop {
+  background: rgba(14, 11, 46, 0.74);
+}
+
+:root[data-theme="gta"] .nothing-modal-card {
+  background:
+    linear-gradient(160deg, rgba(106, 63, 181, 0.28) 0%, rgba(26, 20, 70, 0.4) 45%, rgba(194, 24, 122, 0.12) 100%),
+    rgba(18, 13, 52, 0.9);
+  border: 1px solid rgba(255, 95, 168, 0.45);
+  box-shadow:
+    0 28px 70px rgba(6, 3, 20, 0.85),
+    0 0 28px rgba(255, 62, 154, 0.22),
+    inset 0 1px 0 rgba(255, 209, 102, 0.18);
+}
+
+:root[data-theme="gta"] .nothing-modal-header {
+  border-bottom-color: rgba(255, 95, 168, 0.18);
+}
+
+:root[data-theme="gta"] .nothing-modal-close-btn:hover,
+:root[data-theme="gta"] .settings-action-btn:hover {
+  background: rgba(255, 95, 168, 0.14);
+}
+
+:root[data-theme="gta"] .settings-switch {
+  border-color: rgba(186, 150, 255, 0.28);
+  background: rgba(43, 27, 94, 0.7);
+}
+
+:root[data-theme="gta"] .settings-switch.on {
+  background: var(--gta-pink);
+  border-color: transparent;
+  box-shadow: 0 0 10px rgba(255, 62, 154, 0.5);
+}
+
+:root[data-theme="gta"] .liquid-glass-surface.music-context-menu,
+:root[data-theme="gta"] .apple-profile-popover {
+  background:
+    linear-gradient(160deg, rgba(106, 63, 181, 0.22) 0%, rgba(26, 20, 70, 0.5) 50%),
+    rgba(18, 13, 52, 0.9);
+  border-color: rgba(255, 95, 168, 0.35);
+}
+
+/* --------------------------------------------------------------------------
+   Now Playing: only the default (apple) skin gets the sunset tint; the Nothing, vinyl and
+   cassette skins keep their own look.
+   -------------------------------------------------------------------------- */
+:root[data-theme="gta"] .np-root[data-skin="apple"] .np-vignette {
+  background:
+    radial-gradient(120% 90% at 50% 40%, transparent 55%, rgba(14, 11, 46, 0.45) 100%),
+    linear-gradient(180deg, rgba(43, 27, 94, 0.35) 0%, transparent 35%, transparent 62%, rgba(194, 24, 122, 0.22) 85%, rgba(255, 107, 74, 0.24) 100%);
+}
+
+:root[data-theme="gta"] .np-root[data-skin="apple"] .np-slider-fill {
+  background: var(--gta-fill);
+}
+
+/* --------------------------------------------------------------------------
+   Utilities
+   -------------------------------------------------------------------------- */
+:root[data-theme="gta"] .gta-neon {
+  font-family: var(--font-gta-display);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #ffe3f1;
+  text-shadow:
+    0 0 2px #fff,
+    0 0 6px var(--gta-pink-2),
+    0 0 14px var(--gta-pink),
+    0 0 28px rgba(255, 62, 154, 0.55),
+    0 0 44px rgba(25, 211, 197, 0.35);
+  animation: gta-neon-flicker 7s linear infinite;
+}
+
+:root[data-theme="gta"] .gta-neon--teal {
+  color: #e2fffd;
+  text-shadow:
+    0 0 2px #fff,
+    0 0 6px var(--gta-teal-2),
+    0 0 14px var(--gta-teal),
+    0 0 28px rgba(25, 211, 197, 0.55),
+    0 0 44px rgba(255, 62, 154, 0.35);
+}
+
+@keyframes gta-neon-flicker {
+  0%, 18%, 22%, 25%, 53%, 57%, 100% { opacity: 1; }
+  20%, 24% { opacity: 0.55; }
+  55% { opacity: 0.8; }
+}
+
+:root[data-theme="gta"] .gta-poster-title {
+  font-family: var(--font-gta-display);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  line-height: 0.95;
+  background: linear-gradient(180deg, #ffd166 0%, #ff8a3d 35%, #ff3e9a 70%, #c2187a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(3px 3px 0 #120a1f);
+}
+
+:root[data-theme="gta"] .gta-label {
+  font-family: var(--font-gta-label);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-secondary);
+}
+
+/* --------------------------------------------------------------------------
+   Reduced motion: still grain, steady neon, no card tilt
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme="gta"] .music-app-layout::after {
+    animation: none;
+    will-change: auto;
+  }
+
+  :root[data-theme="gta"] .gta-neon {
+    animation: none;
+  }
+
+  :root[data-theme="gta"] .track-card:hover .card-thumb-wrap,
+  :root[data-theme="gta"] .track-card:focus-visible .card-thumb-wrap {
+    transform: none;
+  }
+
+  :root[data-theme="gta"] .card-thumb-wrap::after {
+    transition: none;
+  }
+}

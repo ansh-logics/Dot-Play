@@ -10,6 +10,8 @@ interface KeyboardShortcutOptions {
   onFocusSearch: () => void;
   onOpenImmersive: () => void;
   onShowShortcuts: () => void;
+  /** R (GTA mode): opens the radio wheel; returns false when the radio isn't available. */
+  onRadioWheel?: () => boolean;
 }
 
 const isTyping = (target: EventTarget | null) => {
@@ -54,6 +56,10 @@ export function useKeyboardShortcuts(options: KeyboardShortcutOptions) {
     } else if (e.key.toLowerCase() === "i" && !e.metaKey && !e.ctrlKey && !e.altKey) {
       e.preventDefault();
       options.onOpenImmersive();
+    } else if (e.key.toLowerCase() === "r" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      // Held: the wheel stays open until R is released (RadioWheel listens for the keyup).
+      if (e.repeat) e.preventDefault();
+      else if (options.onRadioWheel?.()) e.preventDefault();
     } else if (e.key === "?") {
       e.preventDefault();
       options.onShowShortcuts();

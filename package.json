@@ -14,11 +14,13 @@
   },
   "dependencies": {
     "@samasante/liquid-glass": "^0.1.1",
+    "@types/three": "0.170.0",
     "@uimaxbai/am-lyrics": "^1.9.1",
     "lucide-react": "^1.50.0",
     "motion": "^14.0.0",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "three": "0.170.0"
   },
   "devDependencies": {
     "@tauri-apps/api": "^2.12.1",
