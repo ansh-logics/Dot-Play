@@ -11,9 +11,6 @@
 
 .sidebar-player-card {
   --tint: transparent;
-  background:
-    radial-gradient(120% 70% at 50% 0%, color-mix(in srgb, var(--tint) 30%, transparent), transparent 72%),
-    #0e0e11;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-lg);
   padding: 12px 12px 14px;
@@ -28,6 +25,27 @@
   min-width: 0;
   box-sizing: border-box;
   overflow: hidden;
+}
+
+/* Compound selector so LiquidGlassSurface.css base rule (padding: 0, inline-flex) doesn't drop card into page flow */
+.liquid-glass-surface.sidebar-player-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  padding: 12px 12px 14px;
+  overflow: hidden;
+}
+
+.sidebar-player-card .liquid-glass-content-layer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  height: auto;
+  min-width: 0;
+  align-items: stretch;
+  justify-content: flex-start;
 }
 
 .sidebar-player-card:hover {

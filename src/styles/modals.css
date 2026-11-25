@@ -182,6 +182,31 @@
 .settings-token-input { flex: 1; min-width: 0; height: 34px; }
 .settings-note { margin: 2px 4px 0; font-size: var(--fs-sm); color: var(--text-tertiary); }
 
+/* Lyrics sources: reorder buttons, then the on/off switch. */
+.settings-lyrics-source .settings-row-text { min-width: 0; }
+.settings-lyrics-source .settings-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-lyrics-actions { flex: none; display: flex; align-items: center; gap: 6px; }
+.settings-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+.settings-icon-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); color: var(--text-primary); }
+.settings-icon-btn:disabled { opacity: 0.3; cursor: default; }
+.settings-icon-btn:focus-visible,
+.settings-switch:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.6); outline-offset: 2px; }
+.settings-switch:disabled { opacity: 0.45; cursor: default; }
+.settings-lyrics-reset { display: flex; justify-content: flex-end; margin-top: 2px; }
+
 /* A few choices side by side (immersive idle time). */
 .settings-segmented {
   flex: none;

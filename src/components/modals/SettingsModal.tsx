@@ -1,12 +1,21 @@
-import { Settings } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ChevronDown, ChevronUp, Settings } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
 import { Modal } from "./Modal";
 import type { FeedbackPrefs } from "../../lib/feedback";
 import { IDLE_CHOICES, IS_MAC, openImmersive, type IdleMinutes } from "../../lib/immersive";
 import { ImmersiveDisplays } from "./ImmersiveDisplays";
 import { PhoneRemoteSettings } from "./PhoneRemoteSettings";
 import { ScrobbleSettings } from "./ScrobbleSettings";
-import { setArtworkAccentEnabled, useArtworkAccentEnabled } from "../../lib/artworkAccent";
 import { CROSSFADE_CHOICES, setCrossfadeSeconds, useCrossfadeSeconds } from "../../lib/crossfade";
+import { isTauriEnvironment } from "../../lib/search";
+import {
+  DEFAULT_PROVIDERS,
+  readProviderSettings,
+  resetProviderSettings,
+  writeProviderSettings,
+  type ProviderSetting,
+} from "../../lib/lyricsPrefs";
 import {
   setDiscordPresenceEnabled,
   useDiscordPresenceAvailable,
@@ -97,7 +106,6 @@ export function SettingsModal({
           checked={feedbackPrefs.sound}
           onToggle={() => onFeedbackChange({ sound: !feedbackPrefs.sound })}
         />
-        <ArtworkAccentRow />
         <SwitchRow
           label="Trackpad haptics"
           description="Feel each notch on a Force Touch trackpad"
@@ -105,6 +113,8 @@ export function SettingsModal({
           onToggle={() => onFeedbackChange({ haptics: !feedbackPrefs.haptics })}
         />
       </div>
+
+      <LyricsSources />
 
       <div className="settings-section">
         <span className="settings-section-title">IMMERSIVE MODE</span>
@@ -206,6 +216,109 @@ export function SettingsModal({
   );
 }
 
+/** The order lyrics providers are tried in, and which ones are on. */
+function LyricsSources() {
+  const [known, setKnown] = useState<string[]>(DEFAULT_PROVIDERS);
+  const [settings, setSettings] = useState<ProviderSetting[]>(() => readProviderSettings(DEFAULT_PROVIDERS));
+
+  useEffect(() => {
+    if (!isTauriEnvironment()) return;
+    let cancelled = false;
+    void invoke<string[]>("lyrics_providers")
+      .then((names) => {
+        if (cancelled || !Array.isArray(names)) return;
+        const list = names.filter((name): name is string => typeof name === "string" && name.length > 0);
+        if (list.length === 0) return;
+        setKnown(list);
+        setSettings(readProviderSettings(list));
+      })
+      .catch((err: unknown) => {
+        console.warn("[DOT Music] lyrics_providers failed, using the default order:", err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const enabledCount = settings.filter((setting) => setting.on).length;
+
+  const update = (next: ProviderSetting[]) => {
+    setSettings(next);
+    writeProviderSettings(next);
+  };
+
+  const toggle = (index: number) => {
+    const setting = settings[index];
+    if (!setting || (setting.on && enabledCount <= 1)) return;
+    update(settings.map((item, i) => (i === index ? { ...item, on: !item.on } : item)));
+  };
+
+  const move = (index: number, delta: number) => {
+    const target = index + delta;
+    if (target < 0 || target >= settings.length) return;
+    const next = [...settings];
+    [next[index], next[target]] = [next[target], next[index]];
+    update(next);
+  };
+
+  const reset = () => {
+    resetProviderSettings();
+    setSettings(readProviderSettings(known));
+  };
+
+  return (
+    <div className="settings-section">
+      <span className="settings-section-title">LYRICS SOURCES</span>
+      <span className="settings-note">Tried in this order when a song's lyrics load. At least one stays on.</span>
+      {settings.map((setting, index) => (
+        <div className="settings-row settings-lyrics-source" key={setting.name}>
+          <div className="settings-row-text">
+            <span className="settings-label">{setting.name}</span>
+          </div>
+          <div className="settings-lyrics-actions">
+            <button
+              type="button"
+              className="settings-icon-btn"
+              onClick={() => move(index, -1)}
+              disabled={index === 0}
+              aria-label={`Move ${setting.name} up`}
+              title="Move up"
+            >
+              <ChevronUp size={16} />
+            </button>
+            <button
+              type="button"
+              className="settings-icon-btn"
+              onClick={() => move(index, 1)}
+              disabled={index === settings.length - 1}
+              aria-label={`Move ${setting.name} down`}
+              title="Move down"
+            >
+              <ChevronDown size={16} />
+            </button>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={setting.on}
+              aria-label={`${setting.name} lyrics source`}
+              className={`settings-switch ${setting.on ? "on" : ""}`}
+              disabled={setting.on && enabledCount <= 1}
+              onClick={() => toggle(index)}
+            >
+              <span className="settings-switch-knob" />
+            </button>
+          </div>
+        </div>
+      ))}
+      <div className="settings-lyrics-reset">
+        <button type="button" className="settings-action-btn" onClick={reset}>
+          Reset to default
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** Discord status: what's playing, shown on the listener's Discord profile. Off by default. */
 function DiscordSettings() {
   const available = useDiscordPresenceAvailable();
@@ -276,14 +389,3 @@ function CrossfadeRow() {
   );
 }
 
-function ArtworkAccentRow() {
-  const on = useArtworkAccentEnabled();
-  return (
-    <SwitchRow
-      label="Colours from the album art"
-      description="The accent colour follows the playing song's cover. Off keeps DOT red."
-      checked={on}
-      onToggle={() => setArtworkAccentEnabled(!on)}
-    />
-  );
-}

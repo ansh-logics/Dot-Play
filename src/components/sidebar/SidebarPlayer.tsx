@@ -23,6 +23,7 @@ import { useArtworkPalette } from "../../lib/useArtworkPalette";
 import { openImmersive } from "../../lib/immersive";
 import { isTauriEnvironment } from "../../lib/search";
 import { usePlayerSkin } from "../../lib/usePlayerSkin";
+import { LiquidGlassSurface } from "../ui/LiquidGlassSurface";
 
 interface SidebarPlayerProps {
   track: SearchResult;
@@ -95,10 +96,14 @@ export function SidebarPlayer({
   const isBusy = playerState === "buffering" || !isPlayerReady;
 
   return (
-    <div
+    <LiquidGlassSurface
+      as="div"
+      variant="popover"
+      radius={16}
       className={`sidebar-player-card ${isQueueOpen ? "queue-mode" : "hero-mode"}`}
       style={palette ? ({ "--tint": palette.colors[0] } as React.CSSProperties) : undefined}
       aria-label="Audio Player"
+      filterResolution={1}
     >
       <div
         className={`sidebar-player-header ${isQueueOpen ? "queue-view" : "hero-view"}`}
@@ -272,6 +277,6 @@ export function SidebarPlayer({
       </div>
 
       {children}
-    </div>
+    </LiquidGlassSurface>
   );
 }

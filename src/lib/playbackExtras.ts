@@ -46,7 +46,7 @@ export type SleepTimer = { kind: "at"; deadline: number; minutes: number } | { k
 
 export const SLEEP_PRESETS_MIN = [15, 30, 45, 60] as const;
 /** The volume fades out over the last stretch before the timer stops playback. */
-export const SLEEP_FADE_MS = 10_000;
+export const SLEEP_FADE_MS = 30_000;
 
 export function sleepAfter(minutes: number, now = Date.now()): SleepTimer {
   const m = Math.max(1, Math.min(12 * 60, Math.round(minutes)));

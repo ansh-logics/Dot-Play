@@ -18,6 +18,8 @@ interface LyricsPanelProps {
   paused?: boolean;
   /** The song, so a choice to read its lyrics as plain text is remembered for it. */
   trackKey?: string;
+  /** Opens the "Wrong lyrics?" source picker; left out where it can't be shown. */
+  onOpenLyricsPicker?: () => void;
 }
 
 const USER_SCROLL_PAUSE_MS = 3500;
@@ -194,6 +196,7 @@ export function LyricsPanel({
   reduceMotion,
   paused = false,
   trackKey,
+  onOpenLyricsPicker,
 }: LyricsPanelProps) {
   // Synced lyrics can be off for some songs; the listener may read them as plain text.
   const [preferPlain, togglePlain] = usePlainPreference(trackKey);
@@ -359,6 +362,11 @@ export function LyricsPanel({
     return (
       <div className="np-lyrics-state" aria-live="polite">
         {data?.source === "instrumental" ? "Instrumental" : "No lyrics for this track"}
+        {trackKey && onOpenLyricsPicker && (
+          <button type="button" className="np-lyrics-mode" onClick={onOpenLyricsPicker}>
+            Wrong lyrics?
+          </button>
+        )}
       </div>
     );
   }
@@ -423,7 +431,7 @@ export function LyricsPanel({
         })}
         <div className="np-lyrics-pad" aria-hidden="true" />
       </div>
-      {canChoose && (
+      {trackKey && (
         <div className={`np-lyrics-tools ${offset !== 0 ? "has-offset" : ""}`}>
           {synced && (
             <div className="np-lyrics-offset" role="group" aria-label="Lyrics timing for this song">
@@ -455,9 +463,16 @@ export function LyricsPanel({
               </button>
             </div>
           )}
-          <button type="button" className="np-lyrics-mode" onClick={togglePlain}>
-            {showPlain ? "Show synced lyrics" : "Out of sync? Show as text"}
-          </button>
+          {canChoose && (
+            <button type="button" className="np-lyrics-mode" onClick={togglePlain}>
+              {showPlain ? "Show synced lyrics" : "Out of sync? Show as text"}
+            </button>
+          )}
+          {onOpenLyricsPicker && (
+            <button type="button" className="np-lyrics-mode" onClick={onOpenLyricsPicker}>
+              Wrong lyrics?
+            </button>
+          )}
         </div>
       )}
     </div>

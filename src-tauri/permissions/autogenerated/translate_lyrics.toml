@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-translate-lyrics"
+description = "Enables the translate_lyrics command without any pre-configured scope."
+commands.allow = ["translate_lyrics"]
+
+[[permission]]
+identifier = "deny-translate-lyrics"
+description = "Denies the translate_lyrics command without any pre-configured scope."
+commands.deny = ["translate_lyrics"]

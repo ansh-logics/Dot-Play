@@ -20,7 +20,6 @@ import { ImportView } from "./views/ImportView";
 import { SearchLandingView } from "./views/SearchLandingView";
 import { PlaybackExtrasContext } from "./components/now-playing/playbackExtrasContext";
 import { PlaybackRateContext } from "./components/now-playing/useLyricClock";
-import { useArtworkAccent } from "./lib/artworkAccent";
 import { SearchResultsView } from "./views/SearchResultsView";
 import type { CardClickHandler, CardContextMenuHandler, NavTab } from "./views/types";
 import { ArrowLeft } from "lucide-react";
@@ -179,7 +178,6 @@ function App() {
     onToggleLike: toggleLike,
   });
   const { currentTrack, selectTrack } = playback;
-  useArtworkAccent(currentTrack);
   const { playbackRate, changePlaybackRate, sleepTimer, startSleepTimer, sleepAtEndOfTrack, cancelSleepTimer } = playback;
   const extrasContext = useMemo(
     () => ({
@@ -830,6 +828,7 @@ function App() {
             canLike={isLoggedIn}
             onToggleLike={(track) => void toggleLike(track)}
             onSaveToPlaylist={openSaveToPlaylist}
+            getDeckStats={playback.getDeckStats}
           />
         )}
       </WithCurrentTime>

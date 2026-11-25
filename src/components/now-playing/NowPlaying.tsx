@@ -23,6 +23,7 @@ import type { PlaybackModes } from "../../lib/playbackModes";
 import { NowPlayingBackdrop } from "./NowPlayingBackdrop";
 import { LyricsPanel } from "./LyricsPanel";
 import { AmLyricsPanel } from "./AmLyricsPanel";
+import { LyricsPicker } from "./LyricsPicker";
 import { ControlDeck } from "./ControlDeck";
 import { QueuePanel, type QueueContextMenuHandler } from "./QueuePanel";
 import { useLyrics } from "./useLyrics";
@@ -33,6 +34,8 @@ import { useWindowFullscreen } from "../../lib/useWindowFullscreen";
 import { useSettledArtwork } from "./useSettledArtwork";
 import { SettledArt } from "./SettledArt";
 import { loadSkin, saveSkin, type PlayerSkinId } from "../../lib/playerSkins";
+import { StatsForNerds } from "./StatsForNerds";
+import type { DeckStatsSnapshot } from "../../lib/usePlayback";
 
 export interface NowPlayingProps {
   isOpen: boolean;
@@ -69,6 +72,8 @@ export interface NowPlayingProps {
   canLike?: boolean;
   onToggleLike?: (track: SearchResult) => void;
   onSaveToPlaylist?: (track: SearchResult) => void;
+  /** Read by the "Stats for nerds" panel once a second while it is open. */
+  getDeckStats?: () => DeckStatsSnapshot;
 }
 
 const SHEET_SPRING = { type: "spring", stiffness: 380, damping: 38, mass: 0.9 } as const;
@@ -104,6 +109,9 @@ function NowPlayingScreen(props: NowPlayingProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [skin, setSkin] = useState<PlayerSkinId>(loadSkin);
   const [wheelOpen, setWheelOpen] = useState(false);
+  // Open state of the "Stats for nerds" panel; it lasts only as long as this view.
+  const [statsOpen, setStatsOpen] = useState(false);
+  const [lyricsPickerOpen, setLyricsPickerOpen] = useState(false);
   const edgeTimer = useRef<number | null>(null);
   // Theme switching. Reveals never overlap: if one is running, the latest choice waits and
   // plays when it finishes (overlapping view transitions get cancelled abruptly = flicker).
@@ -273,6 +281,10 @@ function NowPlayingScreen(props: NowPlayingProps) {
   const queueOpacity = useTransform(progress, [0.25, 0.85], [0, 1]);
 
   const closeWheel = useCallback(() => setWheelOpen(false), []);
+  // Stable: the stats panel lives through the view's 10×/s time updates.
+  const closeStats = useCallback(() => setStatsOpen(false), []);
+  const openLyricsPicker = useCallback(() => setLyricsPickerOpen(true), []);
+  const closeLyricsPicker = useCallback(() => setLyricsPickerOpen(false), []);
 
   const grabStart = useRef(0);
   const onCardPointerDown = (e: PointerEvent<HTMLDivElement>) => {
@@ -320,14 +332,17 @@ function NowPlayingScreen(props: NowPlayingProps) {
     // Capture phase so Esc is handled here before the app's global handler.
     const onKey = (e: KeyboardEvent) => {
       // Let open menus and dialogs close first (including the deck's "Play on" and speed menus).
+      // The lyrics picker is closed below instead, so Esc stops here and never reaches the app.
       if (document.querySelector(".music-context-menu, .nothing-modal-backdrop, .np-output-menu")) return;
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
-        // Innermost first: style wheel, queue sheet, then the player itself (back to the
-        // page underneath; full screen this view turned on ends with it). The steps after
-        // this, Home and then minimise, are the app's.
-        if (wheelOpen) setWheelOpen(false);
+        // Innermost first: lyrics picker, stats, style wheel, queue sheet, then the player itself (back to
+        // the page underneath; full screen this view turned on ends with it). The steps
+        // after this, Home and then minimise, are the app's.
+        if (lyricsPickerOpen) setLyricsPickerOpen(false);
+        else if (statsOpen) setStatsOpen(false);
+        else if (wheelOpen) setWheelOpen(false);
         else if (sheetOpen) setSheet(false);
         else onClose();
         return;
@@ -347,7 +362,7 @@ function NowPlayingScreen(props: NowPlayingProps) {
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [sheetOpen, wheelOpen, setSheet, onClose]);
+  }, [sheetOpen, wheelOpen, statsOpen, lyricsPickerOpen, setSheet, onClose]);
 
   useEffect(() => {
     if (sheetOpen) listScrollRef.current?.querySelector<HTMLElement>("[role='tab'][aria-selected='true']")?.focus({ preventScroll: true });
@@ -391,6 +406,24 @@ function NowPlayingScreen(props: NowPlayingProps) {
         onClose={closeWheel}
         reduceMotion={reduceMotion}
       />
+      {statsOpen && props.getDeckStats && (
+        <StatsForNerds
+          getStats={props.getDeckStats}
+          lyrics={lyrics}
+          lyricsStatus={lyricsStatus}
+          onClose={closeStats}
+        />
+      )}
+      {lyricsPickerOpen && track.videoId && (
+        <LyricsPicker
+          videoId={track.videoId}
+          title={track.title}
+          artist={track.artist}
+          duration={props.duration || undefined}
+          currentSource={lyrics?.source}
+          onClose={closeLyricsPicker}
+        />
+      )}
 
       <header className="np-topbar">
         <button
@@ -508,6 +541,7 @@ function NowPlayingScreen(props: NowPlayingProps) {
                         reduceMotion={reduceMotion}
                         paused={!stageLive || revealing}
                         trackKey={track?.videoId}
+                        onOpenLyricsPicker={openLyricsPicker}
                       />
                     ) : null
                   }
@@ -535,6 +569,7 @@ function NowPlayingScreen(props: NowPlayingProps) {
                     reduceMotion={reduceMotion}
                     paused={!stageLive || revealing}
                     trackKey={track?.videoId}
+                    onOpenLyricsPicker={openLyricsPicker}
                   />
                 </motion.section>
               )}
@@ -613,6 +648,8 @@ function NowPlayingScreen(props: NowPlayingProps) {
               onToggleShuffle={props.onToggleShuffle}
               queueOpen={sheetOpen}
               onToggleQueue={toggleSheet}
+              statsOpen={statsOpen}
+              onToggleStats={props.getDeckStats ? () => setStatsOpen((was) => !was) : undefined}
               like={
                 props.onToggleLike
                   ? {

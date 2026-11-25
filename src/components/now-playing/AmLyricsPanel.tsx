@@ -38,6 +38,8 @@ interface AmLyricsPanelProps {
   fontFamily?: string;
   /** Extra class on the outer box. */
   className?: string;
+  /** Opens the "Wrong lyrics?" source picker; left out where it can't be shown. */
+  onOpenLyricsPicker?: () => void;
 }
 
 /**
@@ -98,6 +100,7 @@ export function AmLyricsPanel({
   shadowCss = "",
   fontFamily,
   className,
+  onOpenLyricsPicker,
 }: AmLyricsPanelProps) {
   const [preferPlain, togglePlain] = usePlainPreference(trackKey);
   const [offset, setOffset] = useLyricOffset(trackKey);
@@ -226,6 +229,11 @@ export function AmLyricsPanel({
     return (
       <div className="np-lyrics-state" aria-live="polite">
         {data?.source === "instrumental" ? "Instrumental" : "No lyrics for this track"}
+        {tools && trackKey && onOpenLyricsPicker && (
+          <button type="button" className="np-lyrics-mode" onClick={onOpenLyricsPicker}>
+            Wrong lyrics?
+          </button>
+        )}
       </div>
     );
   }
@@ -233,7 +241,7 @@ export function AmLyricsPanel({
   return (
     <div className={className ? `np-lyrics-shell ${className}` : "np-lyrics-shell"}>
       <div ref={host} className="np-am-lyrics-host" aria-label="Lyrics" />
-      {tools && trackKey && (canChoose || ALTERNATES_SUPPORTED) && (
+      {tools && trackKey && (canChoose || ALTERNATES_SUPPORTED || onOpenLyricsPicker) && (
         <div className={`np-lyrics-tools ${offset !== 0 ? "has-offset" : ""}`}>
           {translateOn && (alternates.translating || translationNote(alternates.translation)) && (
             <span className="np-lyrics-note" role="status">
@@ -273,6 +281,11 @@ export function AmLyricsPanel({
           {canChoose && (
             <button type="button" className="np-lyrics-mode" onClick={togglePlain}>
               {showPlain ? "Show synced lyrics" : "Out of sync? Show as text"}
+            </button>
+          )}
+          {onOpenLyricsPicker && (
+            <button type="button" className="np-lyrics-mode" onClick={onOpenLyricsPicker}>
+              Wrong lyrics?
             </button>
           )}
         </div>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPlaybackClock } from "./playbackClock";
-import type { DeckError, DeckSlot, PlaybackDeck, PlaybackState } from "./engine/deck";
+import type { DeckError, DeckSlot, DeckStats, PlaybackDeck, PlaybackState } from "./engine/deck";
 import { getAutoplayTracks, recordPlayback, type SearchResult } from "./search";
 import { cacheTrack, cacheTracks } from "./trackCache";
 import {
@@ -74,6 +74,13 @@ interface CrossfadeTransition {
   handedOff: boolean;
   seconds: number;
   timer?: number;
+}
+
+/** The active deck's numbers for the Now Playing stats panel, and which deck that is. */
+export interface DeckStatsSnapshot {
+  deck: DeckStats | null;
+  deckLabel: "A" | "B" | null;
+  crossfading: boolean;
 }
 
 interface PlaybackOptions {
@@ -1137,6 +1144,16 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     [commitSession],
   );
 
+  /** The stats panel polls this once a second while it is open; it reads the active deck only. */
+  const getDeckStats = useCallback((): DeckStatsSnapshot => {
+    const deck = playerRef.current?.stats?.() ?? null;
+    return {
+      deck,
+      deckLabel: deck ? (activeSlotRef.current === 0 ? "A" : "B") : null,
+      crossfading: transitionRef.current?.phase === "fading",
+    };
+  }, []);
+
   return {
     session,
     currentTrack,
@@ -1185,5 +1202,6 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     cancelSleepTimer,
     // playback decks (two, for crossfade)
     deckSlots,
+    getDeckStats,
   };
 }

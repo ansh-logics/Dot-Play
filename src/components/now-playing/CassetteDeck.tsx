@@ -5,6 +5,7 @@ import type { SettledArtwork } from "./useSettledArtwork";
 import type { SearchResult } from "../../lib/search";
 import { useLyricClock } from "./useLyricClock";
 import { cleanDisplayTitle } from "../../lib/displayText";
+import { formatRemaining, useTimeDisplay } from "../../lib/timeDisplay";
 import {
   clunk,
   crateRattle,
@@ -900,6 +901,8 @@ function ScreenSeek({
 }) {
   const now = useLyricClock(currentTime, isPlaying);
   const [scrub, setScrub] = useState<number | null>(null);
+  const [timeDisplay, toggleTimeDisplay] = useTimeDisplay();
+  const timeDisplayLabel = timeDisplay === "total" ? "Show time left" : "Show total time";
   const fill = useMotionValue(0);
   useAnimationFrame(() => {
     fill.set(scrub ?? (duration > 0 ? Math.min(1, Math.max(0, now() / duration)) : 0));
@@ -936,7 +939,15 @@ function ScreenSeek({
       >
         <motion.span className="deck-seek-fill" style={{ width: fillWidth }} />
       </div>
-      <span className="deck-seek-time">{formatTime(duration)}</span>
+      <button
+        type="button"
+        className="deck-seek-time time-toggle"
+        onClick={toggleTimeDisplay}
+        aria-label={timeDisplayLabel}
+        title={timeDisplayLabel}
+      >
+        {timeDisplay === "total" ? formatTime(duration) : formatRemaining(duration, shownTime)}
+      </button>
     </div>
   );
 }

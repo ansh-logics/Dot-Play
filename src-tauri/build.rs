@@ -25,6 +25,8 @@ fn main() {
         "get_related_recommendations",
         "get_player_server_url",
         "get_lyrics",
+        "get_lyrics_candidates",
+        "lyrics_providers",
         "romanize_lyrics",
         "translate_lyrics",
         "perform_haptic",

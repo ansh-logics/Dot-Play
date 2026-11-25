@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { fetchLyricsMultiProvider, type TrackLyrics } from "../../lib/lyrics";
+import { lyricsPrefsVersion, subscribeLyricsPrefs } from "../../lib/lyricsPrefs";
 import type { SearchResult } from "../../lib/search";
 
 export type LyricsStatus = "idle" | "loading" | "synced" | "plain" | "unavailable";
@@ -12,6 +13,8 @@ export function useLyrics(track: SearchResult | null, duration: number) {
   // Results are tagged with the track they belong to; "loading" is simply
   // "the latest result isn't for the current track yet".
   const [result, setResult] = useState<{ videoId: string; data: TrackLyrics | null } | null>(null);
+  // Provider order, switches and this song's pin: a change means a different lookup.
+  const prefsVersion = useSyncExternalStore(subscribeLyricsPrefs, lyricsPrefsVersion);
   const durationRef = useRef(duration);
   useEffect(() => {
     durationRef.current = duration;
@@ -43,7 +46,7 @@ export function useLyrics(track: SearchResult | null, duration: number) {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [videoId, title, artist, hasDuration]);
+  }, [videoId, title, artist, hasDuration, prefsVersion]);
 
   const current = result && result.videoId === videoId ? result.data : null;
   let status: LyricsStatus;

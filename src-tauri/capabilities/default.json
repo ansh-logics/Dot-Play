@@ -29,6 +29,8 @@
     "allow-get-related-recommendations",
     "allow-get-player-server-url",
     "allow-get-lyrics",
+    "allow-get-lyrics-candidates",
+    "allow-lyrics-providers",
     "allow-romanize-lyrics",
     "allow-translate-lyrics",
     "allow-perform-haptic",

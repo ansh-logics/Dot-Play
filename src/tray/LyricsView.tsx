@@ -1,6 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { fetchLyricsMultiProvider, type TrackLyrics } from "../lib/lyrics";
+import { lyricsPrefsVersion, subscribeLyricsPrefs } from "../lib/lyricsPrefs";
 import { activeRowIndex, buildLyricRows } from "../components/now-playing/lyricRows";
+import { useFrameLoop, useLyricClock } from "../components/now-playing/useLyricClock";
 import { media, type NowPlaying } from "./types";
 
 interface LyricsViewProps {
@@ -8,14 +18,50 @@ interface LyricsViewProps {
   position: number;
 }
 
+const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
+
+function subscribeReducedMotion(onStoreChange: () => void) {
+  if (typeof window === "undefined" || !window.matchMedia) return () => {};
+  const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+  if (mq.addEventListener) {
+    mq.addEventListener("change", onStoreChange);
+    return () => mq.removeEventListener("change", onStoreChange);
+  }
+  mq.addListener(onStoreChange);
+  return () => mq.removeListener(onStoreChange);
+}
+
+function getReducedMotionSnapshot() {
+  return typeof window !== "undefined" && Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
+}
+
+function getReducedMotionServerSnapshot() {
+  return false;
+}
+
+function subscribeVisibility(onStoreChange: () => void) {
+  if (typeof document === "undefined") return () => {};
+  document.addEventListener("visibilitychange", onStoreChange);
+  return () => document.removeEventListener("visibilitychange", onStoreChange);
+}
+
+function getVisibilitySnapshot() {
+  return typeof document !== "undefined" ? document.hidden : false;
+}
+
+function getVisibilityServerSnapshot() {
+  return false;
+}
+
 /**
- * Line-synced lyrics for the popover. Loaded only when this view is opened (it's a lazy
- * chunk); `get_lyrics` serves repeat songs from the on-disk cache. Line-level highlight
- * only, so it stays near idle on the CPU.
+ * Line-synced lyrics for the popover with word-by-word karaoke sweep on the active line.
+ * Driven by an eased per-frame clock via refs to keep CPU near idle.
  */
 export default function LyricsView({ np, position }: LyricsViewProps) {
   const key = np.videoId ?? `${np.title}::${np.artist}`;
   const [result, setResult] = useState<{ key: string; data: TrackLyrics | null } | null>(null);
+  // A new provider order or pinned source (chosen in Now Playing) means a different lookup.
+  const prefsVersion = useSyncExternalStore(subscribeLyricsPrefs, lyricsPrefsVersion);
 
   useEffect(() => {
     let cancelled = false;
@@ -26,12 +72,64 @@ export default function LyricsView({ np, position }: LyricsViewProps) {
       cancelled = true;
     };
     // A repeat call for the same track is answered from lyrics.ts's in-memory cache.
-  }, [key, np.title, np.artist, np.duration, np.videoId]);
+  }, [key, np.title, np.artist, np.duration, np.videoId, prefsVersion]);
 
   const data = result?.key === key ? result.data : null;
-  const synced = data && data.syncType !== "plain" && data.syncType !== "unavailable";
+  const synced = Boolean(data && data.syncType !== "plain" && data.syncType !== "unavailable");
   const rows = useMemo(() => (synced && data ? buildLyricRows(data.lines) : []), [synced, data]);
   const active = synced ? activeRowIndex(rows, position) : -1;
+
+  const reduceMotion = useSyncExternalStore(subscribeReducedMotion, getReducedMotionSnapshot, getReducedMotionServerSnapshot);
+  const isHidden = useSyncExternalStore(subscribeVisibility, getVisibilitySnapshot, getVisibilityServerSnapshot);
+
+  const clockNow = useLyricClock(position, np.isPlaying);
+
+  const activeRow = synced && active >= 0 ? rows[active] : undefined;
+  const activeWords = useMemo(
+    () =>
+      activeRow?.kind === "line" && activeRow.line.words && activeRow.line.words.length > 0
+        ? activeRow.line.words
+        : null,
+    [activeRow],
+  );
+
+  const wordSpansRef = useRef<(HTMLElement | null)[]>([]);
+  // The fill last written to each word span. Keyed by the element, so spans that remount
+  // (a refetch, Reduce Motion toggled) are always written again rather than left dim.
+  const lastFill = useRef(new WeakMap<HTMLElement, string>());
+
+  const draw = useCallback(() => {
+    if (!activeWords) return;
+    const spans = wordSpansRef.current;
+    const n = activeWords.length;
+    const lastP = lastFill.current;
+    const t = clockNow();
+    for (let i = 0; i < n; i++) {
+      const span = spans[i];
+      if (!span) continue;
+      const w = activeWords[i];
+      const len = Math.max(w.endTime - w.startTime, 0.05);
+      const p = clamp01((t - w.startTime) / len);
+      const pStr = p <= 0 ? "0" : p >= 1 ? "1" : p.toFixed(3);
+      if (lastP.get(span) !== pStr) {
+        lastP.set(span, pStr);
+        span.style.setProperty("--w", pStr);
+      }
+    }
+  }, [activeWords, clockNow]);
+
+  const looping = Boolean(synced && activeWords && !reduceMotion && np.isPlaying && !isHidden);
+  useFrameLoop(draw, looping);
+
+  // Paused or scrubbing while paused: update active row styles once on position change
+  useEffect(() => {
+    if (!looping) draw();
+  }, [position, looping, draw]);
+
+  // Set initial word fills as soon as active row switches
+  useEffect(() => {
+    draw();
+  }, [active, draw]);
 
   const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -76,7 +174,27 @@ export default function LyricsView({ np, position }: LyricsViewProps) {
             className={`tray-lyric${index === active ? " is-active" : index < active ? " is-past" : ""}`}
             onClick={() => media({ action: "seek", position: row.start })}
           >
-            {row.line.text}
+            {index === active && activeWords && !reduceMotion ? (
+              activeWords.map((word, w) => {
+                const lead = word.text.match(/^\s*/)?.[0] ?? "";
+                const body = word.text.slice(lead.length);
+                return (
+                  <Fragment key={w}>
+                    {lead}
+                    <span
+                      ref={(el) => {
+                        wordSpansRef.current[w] = el;
+                      }}
+                      className="tray-lyric-word"
+                    >
+                      {body}
+                    </span>
+                  </Fragment>
+                );
+              })
+            ) : (
+              row.line.text
+            )}
             {row.line.background?.text && <span className="tray-lyric-bg">{row.line.background.text}</span>}
           </button>
         ),

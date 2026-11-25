@@ -61,4 +61,77 @@ describe("youtubeDeck", () => {
     expect(youtubeError(5).unplayable).toBe(false);
     expect(youtubeError(999).message).toBe("Playback failed with error code 999.");
   });
+
+  it("reports the numbers the player gives it", () => {
+    const player: YouTubePlayerInstance = {
+      ...fakePlayer(),
+      getVideoData: () => ({ video_id: "abc" }),
+      getVideoLoadedFraction: () => 0.42,
+      getPlaybackQuality: () => "hd720",
+      getPlaybackRate: () => 1.25,
+    };
+    expect(youtubeDeck(player).stats!()).toEqual({
+      source: "youtube",
+      videoId: "abc",
+      loadedFraction: 0.42,
+      quality: "hd720",
+      rate: 1.25,
+      bufferingEvents: 0,
+    });
+  });
+
+  it("falls back to the speed it was set to, then to normal speed", () => {
+    const player: YouTubePlayerInstance = {
+      ...fakePlayer(),
+      getPlaybackRate: () => {
+        throw new Error("not ready");
+      },
+    };
+    const deck = youtubeDeck(player);
+    expect(deck.stats!().rate).toBe(1);
+    deck.setRate(1.5);
+    expect(deck.stats!().rate).toBe(1.5);
+  });
+
+  it("leaves out what the player doesn't report", () => {
+    const player: YouTubePlayerInstance = {
+      ...fakePlayer(),
+      getVideoData: () => {
+        throw new Error("not ready");
+      },
+      getVideoLoadedFraction: () => Number.NaN,
+      getPlaybackQuality: () => "unknown",
+    };
+    expect(youtubeDeck(player).stats!()).toMatchObject({
+      videoId: null,
+      loadedFraction: null,
+      quality: null,
+    });
+  });
+
+  it("counts stalls after the song started playing, and starts over on the next", () => {
+    let onStateChange: ((event: { data: number }) => void) | undefined;
+    const player: YouTubePlayerInstance = {
+      ...fakePlayer(),
+      addEventListener: (_eventName, listener) => {
+        onStateChange = listener;
+      },
+    };
+    const deck = youtubeDeck(player);
+    // The first load's buffering isn't a stall.
+    onStateChange?.({ data: 3 });
+    expect(deck.stats!().bufferingEvents).toBe(0);
+    onStateChange?.({ data: 1 });
+    // One spell, however many buffering reports it takes, then another.
+    onStateChange?.({ data: 3 });
+    onStateChange?.({ data: 3 });
+    onStateChange?.({ data: 1 });
+    onStateChange?.({ data: 3 });
+    expect(deck.stats!().bufferingEvents).toBe(2);
+
+    deck.load({ videoId: "next" }, { autoplay: true });
+    expect(deck.stats!().bufferingEvents).toBe(0);
+    onStateChange?.({ data: 3 });
+    expect(deck.stats!().bufferingEvents).toBe(0);
+  });
 });

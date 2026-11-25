@@ -45,7 +45,7 @@ describe("sleep timer", () => {
     expect(sleepRemainingMs(null)).toBeNull();
   });
 
-  it("fades only in the last ten seconds", () => {
+  it("fades only in the last thirty seconds", () => {
     expect(sleepFadeGain(null)).toBe(1);
     expect(sleepFadeGain(SLEEP_FADE_MS + 1)).toBe(1);
     expect(sleepFadeGain(SLEEP_FADE_MS / 2)).toBeCloseTo(Math.SQRT1_2, 5);

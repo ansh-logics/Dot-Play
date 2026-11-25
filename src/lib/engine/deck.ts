@@ -24,6 +24,24 @@ export interface DeckError {
   unplayable: boolean;
 }
 
+/**
+ * What a deck can honestly say about the song it is playing. Anything the player doesn't
+ * report is null rather than a guess: there is no bitrate here because the player doesn't
+ * expose one.
+ */
+export interface DeckStats {
+  source: DeckSource;
+  videoId: string | null;
+  /** Share of the song the player has buffered, 0–1; null when it doesn't say. */
+  loadedFraction: number | null;
+  /** The quality name the player reports (e.g. "hd720"); null when it doesn't say. */
+  quality: string | null;
+  /** Playback speed (1 = normal). */
+  rate: number;
+  /** Times playback dropped into buffering since the current song was loaded. */
+  bufferingEvents: number;
+}
+
 export interface PlaybackDeck {
   readonly source: DeckSource;
   /** Loads a song, starting at `startSeconds`; playing it straight away, or left ready, paused. */
@@ -40,6 +58,9 @@ export interface PlaybackDeck {
   setMuted(muted: boolean): void;
   /** Playback speed (1 = normal). */
   setRate(rate: number): void;
+  /** The current song's technical numbers, for the "Stats for nerds" panel; optional
+   *  because a deck may have nothing to report. */
+  stats?(): DeckStats;
 }
 
 /** What a deck reports back. */

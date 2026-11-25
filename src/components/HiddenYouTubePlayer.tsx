@@ -24,6 +24,14 @@ export interface YouTubePlayerInstance {
   getVolume?: () => number
   /** Playback speed; YouTube allows 0.25–2. Not every engine (a linked TV) supports it. */
   setPlaybackRate?: (rate: number) => void
+  /** Share of the song buffered, 0–1 (the IFrame API's getVideoLoadedFraction). */
+  getVideoLoadedFraction?: () => number
+  /** The quality name YouTube reports ("small", "hd720"…), or "unknown". */
+  getPlaybackQuality?: () => string
+  /** The speed the player is actually running at. */
+  getPlaybackRate?: () => number
+  /** State changes, for the deck's stats; the IFrame API's own subscription. */
+  addEventListener?: (event: "onStateChange", listener: (event: { data: number }) => void) => void
 }
 
 type YouTubePlaybackState = PlaybackState
@@ -144,6 +152,8 @@ export function HiddenYouTubePlayer({
   const volumeRef = useRef(100)
   const isMutedRef = useRef(false)
   const videoDataRef = useRef<{ video_id?: string; title?: string; author?: string }>({})
+  /** State listeners the deck registered through the bridge player (see addEventListener). */
+  const stateListenersRef = useRef<Array<(event: { data: number }) => void>>([])
 
   const [bridgeUrl, setBridgeUrl] = useState<string | null>(null)
   const [useFallbackDirect, setUseFallbackDirect] = useState(false)
@@ -231,6 +241,11 @@ export function HiddenYouTubePlayer({
     },
     getVolume: () => volumeRef.current,
     setPlaybackRate: (rate) => postToBridge({ action: "setPlaybackRate", rate }),
+    // The bridge reports state changes as messages; the deck subscribes here to count
+    // buffering, and those messages are dispatched from the handler below.
+    addEventListener: (eventName, listener) => {
+      if (eventName === "onStateChange") stateListenersRef.current.push(listener)
+    },
     isMuted: () => isMutedRef.current,
     mute: () => {
       isMutedRef.current = true
@@ -292,6 +307,11 @@ export function HiddenYouTubePlayer({
         case "stateChange": {
           const state = getPlaybackState(data.stateCode)
           if (state === "playing") startedSinceLoadRef.current = true
+          for (const listener of stateListenersRef.current) {
+            try {
+              listener({ data: data.stateCode })
+            } catch {}
+          }
           callbacksRef.current.onStateChange(state)
           break
         }

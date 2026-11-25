@@ -18,6 +18,19 @@ static LYRICS_CLIENT: LazyLock<Result<reqwest::Client, String>> = LazyLock::new(
         .map_err(|e| e.to_string())
 });
 
+/// Supported lyrics providers in default ranking order. Word-synced sources come
+/// before line-synced and plain ones.
+pub(crate) const PROVIDERS: [&str; 8] = [
+    "SimpMusic",
+    "BiniLyrics",
+    "lrc.red",
+    "BetterLyrics",
+    "LyricsPlus",
+    "Unison",
+    "LRCLIB",
+    "YouTube Music",
+];
+
 /// The whole lookup ends after this; whatever the best answer is by then is used.
 const LOOKUP_DEADLINE: Duration = Duration::from_secs(6);
 
@@ -91,6 +104,89 @@ fn looks_like_ttml(body: &str) -> bool {
     body.contains("<tt") || body.contains("<p")
 }
 
+/// Sets up the query and spawns lookup tasks for the requested providers in `order`.
+///
+/// An empty `order` defaults to [`PROVIDERS`]. Unknown provider names are ignored.
+fn start_provider_tasks(
+    video_id: Option<String>,
+    title: &str,
+    artist: &str,
+    album: Option<String>,
+    duration: Option<f64>,
+    order: &[String],
+) -> Result<(Query, Vec<tauri::async_runtime::JoinHandle<Outcome>>), String> {
+    let client: &'static reqwest::Client = match &*LYRICS_CLIENT {
+        Ok(c) => c,
+        Err(e) => return Err(e.clone()),
+    };
+
+    let order_slice: Vec<&str> = if order.is_empty() {
+        PROVIDERS.to_vec()
+    } else {
+        order.iter().map(String::as_str).collect()
+    };
+    let has_binilyrics = order_slice.iter().any(|&name| name == "BiniLyrics");
+
+    let dur_secs = duration.map(|d| d.round() as i64).unwrap_or(0);
+    let query = Query {
+        video_id: video_id.map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
+        title: clean_query_title(title),
+        artist: clean_query_artist(artist).1,
+        album: album.unwrap_or_default(),
+        dur_secs,
+        dur_str: if dur_secs > 0 { dur_secs.to_string() } else { String::new() },
+        isrc: Arc::new(watch::channel(None).0),
+    };
+
+    let mut tasks = Vec::new();
+    macro_rules! spawn_provider {
+        ($func:ident) => {{
+            let q = query.clone();
+            tasks.push(tauri::async_runtime::spawn(async move { $func(client, &q).await }));
+        }};
+    }
+
+    for name in order_slice {
+        match name {
+            "SimpMusic" => spawn_provider!(simpmusic),
+            "BiniLyrics" => {
+                let q = query.clone();
+                tasks.push(tauri::async_runtime::spawn(async move {
+                    let out = binilyrics(client, &q).await;
+                    let isrc = out.isrc.clone().or_else(|| out.payload.as_ref().and_then(|p| p.isrc.clone()));
+                    q.isrc.send_replace(Some(isrc));
+                    out
+                }));
+            }
+            "lrc.red" => spawn_provider!(lrc_red),
+            "BetterLyrics" => spawn_provider!(better_lyrics),
+            "LyricsPlus" => spawn_provider!(lyrics_plus),
+            "Unison" => spawn_provider!(unison),
+            "LRCLIB" => spawn_provider!(lrclib),
+            "YouTube Music" => spawn_provider!(youtube_music),
+            _ => {}
+        }
+    }
+    // BiniLyrics switched off or not pinned: it still identifies the recording (its ISRC) for
+    // the providers that match by it, so a pinned source finds the same version the picker
+    // showed. Its lyrics are discarded; the others stop waiting for it after a short while.
+    if !has_binilyrics {
+        let q = query.clone();
+        spawn_isrc_lookup(client, q);
+    }
+
+    Ok((query, tasks))
+}
+
+/// Runs BiniLyrics only for the ISRC it reports, shared through the query's watch channel.
+fn spawn_isrc_lookup(client: &'static reqwest::Client, q: Query) {
+    tauri::async_runtime::spawn(async move {
+        let out = binilyrics(client, &q).await;
+        let isrc = out.isrc.clone().or_else(|| out.payload.as_ref().and_then(|p| p.isrc.clone()));
+        q.isrc.send_replace(Some(isrc));
+    });
+}
+
 pub(super) async fn fetch_lyrics_from_providers(
     reached: &mut bool,
     video_id: Option<String>,
@@ -98,48 +194,9 @@ pub(super) async fn fetch_lyrics_from_providers(
     artist: String,
     album: Option<String>,
     duration: Option<f64>,
+    order: &[String],
 ) -> Result<Option<LyricsPayload>, String> {
-    let client: &'static reqwest::Client = match &*LYRICS_CLIENT {
-        Ok(c) => c,
-        Err(e) => return Err(e.clone()),
-    };
-
-    let dur_secs = duration.map(|d| d.round() as i64).unwrap_or(0);
-    let query = Query {
-        video_id: video_id.map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
-        title: clean_query_title(&title),
-        artist: clean_query_artist(&artist).1,
-        album: album.unwrap_or_default(),
-        dur_secs,
-        dur_str: if dur_secs > 0 { dur_secs.to_string() } else { String::new() },
-        isrc: Arc::new(watch::channel(None).0),
-    };
-
-    // Ranked best first: word-synced sources before line-synced and plain ones.
-    let mut tasks = Vec::new();
-    macro_rules! start {
-        ($provider:ident) => {{
-            let q = query.clone();
-            tasks.push(tauri::async_runtime::spawn(async move { $provider(client, &q).await }));
-        }};
-    }
-    start!(simpmusic);
-    {
-        // BiniLyrics also tells the others which recording this is (its ISRC).
-        let q = query.clone();
-        tasks.push(tauri::async_runtime::spawn(async move {
-            let out = binilyrics(client, &q).await;
-            let isrc = out.isrc.clone().or_else(|| out.payload.as_ref().and_then(|p| p.isrc.clone()));
-            q.isrc.send_replace(Some(isrc));
-            out
-        }));
-    }
-    start!(lrc_red);
-    start!(better_lyrics);
-    start!(lyrics_plus);
-    start!(unison);
-    start!(lrclib);
-    start!(youtube_music);
+    let (query, mut tasks) = start_provider_tasks(video_id, &title, &artist, album, duration, order)?;
 
     let deadline = tokio::time::Instant::now() + LOOKUP_DEADLINE;
     let mut found = None;
@@ -166,6 +223,44 @@ pub(super) async fn fetch_lyrics_from_providers(
         }
     }
     Ok(found)
+}
+
+pub(super) async fn fetch_lyrics_candidates(
+    reached: &mut bool,
+    video_id: Option<String>,
+    title: String,
+    artist: String,
+    album: Option<String>,
+    duration: Option<f64>,
+    order: &[String],
+) -> Result<Vec<LyricsPayload>, String> {
+    let (query, mut tasks) = start_provider_tasks(video_id, &title, &artist, album, duration, order)?;
+
+    let deadline = tokio::time::Instant::now() + LOOKUP_DEADLINE;
+    let mut candidates = Vec::new();
+    for task in tasks.iter_mut() {
+        // A task that finished is still read after the deadline; one still running is skipped.
+        match tokio::time::timeout_at(deadline, task).await {
+            Ok(Ok(outcome)) => {
+                *reached |= outcome.reached;
+                if let Some(payload) = outcome.payload {
+                    candidates.push(payload);
+                }
+            }
+            Ok(Err(_)) | Err(_) => {}
+        }
+    }
+    for task in &tasks {
+        task.abort();
+    }
+    // Keep the recording's identity with the lyrics when another provider found it.
+    let shared_isrc = query.isrc.borrow().clone().flatten();
+    for candidate in &mut candidates {
+        if candidate.isrc.is_none() {
+            candidate.isrc = shared_isrc.clone();
+        }
+    }
+    Ok(candidates)
 }
 
 /// 1. SimpMusic, by YouTube video id.
