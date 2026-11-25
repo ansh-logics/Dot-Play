@@ -6,7 +6,7 @@ import { FXAAShader } from "three/examples/jsm/shaders/FXAAShader.js"
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js"
 import { LANE, ROAD_HALF, Road, STEP, groundHeight, rightOf, rng, type RoadSample } from "./road"
 import { buildCoupe, type Coupe } from "./car"
-import { FOLIAGE, broadleafTreeGeometry, bushGeometry, grassCardGeometry, grassMaterial, impostorGeometry, impostorMaterial, treeMaterials } from "./vegetation"
+import { FOLIAGE, broadleafTreeGeometry, bushGeometry, grassCardGeometry, grassFade, grassMaterial, impostorGeometry, impostorMaterial, treeMaterials } from "./vegetation"
 import { FarTerrain } from "./farTerrain"
 import { GrassField } from "./grassField"
 import { ColliderSet } from "./collisions"
@@ -83,6 +83,9 @@ interface QualityProfile {
   grass: number
   /** Radius (m) of the grass field around the car (it follows the car anywhere, off-road too). */
   grassRadius: number
+  /** Far grass field: tufts per 48 m cell, and how far it reaches (m). */
+  farGrass: number
+  farGrassRadius: number
   /** Far-terrain ring resolution and distant forest (impostor) count. */
   farN: number
   farTrees: number
@@ -93,9 +96,9 @@ interface QualityProfile {
 }
 
 const PROFILES: Record<Quality, QualityProfile> = {
-  low: { minDpr: 0.75, maxDpr: 1, shadows: false, shadowSize: 512, bloom: false, ahead: 4, density: 0.4, grass: 30, grassRadius: 56, farN: 80, farTrees: 1800, skyDownscale: 4, msaa: 0 },
-  medium: { minDpr: 0.85, maxDpr: 1.25, shadows: true, shadowSize: 1024, bloom: true, ahead: 6, density: 0.7, grass: 60, grassRadius: 72, farN: 120, farTrees: 4200, skyDownscale: 2, msaa: 2 },
-  high: { minDpr: 1, maxDpr: 1.5, shadows: true, shadowSize: 2048, bloom: true, ahead: 8, density: 1, grass: 100, grassRadius: 92, farN: 160, farTrees: 8000, skyDownscale: 2, msaa: 4 },
+  low: { minDpr: 0.75, maxDpr: 1, shadows: false, shadowSize: 512, bloom: false, ahead: 4, density: 0.4, grass: 30, grassRadius: 56, farGrass: 24, farGrassRadius: 150, farN: 80, farTrees: 1800, skyDownscale: 4, msaa: 0 },
+  medium: { minDpr: 0.85, maxDpr: 1.25, shadows: true, shadowSize: 1024, bloom: true, ahead: 6, density: 0.7, grass: 60, grassRadius: 72, farGrass: 40, farGrassRadius: 210, farN: 120, farTrees: 4200, skyDownscale: 2, msaa: 2 },
+  high: { minDpr: 1, maxDpr: 1.5, shadows: true, shadowSize: 2048, bloom: true, ahead: 8, density: 1, grass: 100, grassRadius: 92, farGrass: 60, farGrassRadius: 270, farN: 160, farTrees: 8000, skyDownscale: 2, msaa: 4 },
 }
 
 /** A first guess from the GPU's name: integrated/mobile/software → low, Apple silicon → medium. */
@@ -697,6 +700,10 @@ export class DriveEngine {
   private far: FarTerrain | null = null
   /** Grass in a field around the car, wherever it is (Slow Roads style). */
   private grassField: GrassField | null = null
+  /** Sparse, bigger tufts out to the horizon, so the grass never stops in a hard edge. */
+  private farGrass: GrassField | null = null
+  /** Camera view direction, reused each frame for the grass reach. */
+  private grassDir = new THREE.Vector3()
   private car: Coupe
   /** Use the heavy Datsun (public/drive/car.glb) instead of the built-in coupe. */
   private classicCar = false
@@ -970,9 +977,12 @@ export class DriveEngine {
     hazeObject(this.far.object)
     this.scene.add(this.far.object)
     // Grass: one field around the car, built from world cells (same grass when you return).
+    // Each field gets its own material, so its shader knows that field's reach.
+    const nearFade = grassFade()
     this.grassField = new GrassField({
       geometry: this.world.grass.geometry,
-      material: this.world.grass.material,
+      material: grassMaterial(this.world.time, nearFade),
+      fade: nearFade,
       query: new TerrainQuery(this.road),
       cell: 24,
       radius: this.profile.grassRadius,
@@ -980,6 +990,22 @@ export class DriveEngine {
     })
     hazeObject(this.grassField.mesh)
     this.scene.add(this.grassField.mesh)
+    const farFade = grassFade()
+    this.farGrass = new GrassField({
+      geometry: this.world.grass.geometry,
+      material: grassMaterial(this.world.time, farFade),
+      fade: farFade,
+      query: new TerrainQuery(this.road),
+      cell: 48,
+      radius: this.profile.farGrassRadius,
+      perCell: this.profile.farGrass,
+      scale: 1.6,
+      salt: 0x9e3779b9,
+    })
+    // Past the sun's shadow range anyway: skip the shadow lookups on all that overdraw.
+    this.farGrass.mesh.receiveShadow = false
+    hazeObject(this.farGrass.mesh)
+    this.scene.add(this.farGrass.mesh)
     // Build the first stretch up front, so the drive opens on a finished world.
     const current = Math.floor(this.s / CHUNK_LEN)
     for (let i = Math.max(0, current - BEHIND); i <= current + this.profile.ahead; i++) this.addChunk(i)
@@ -1223,6 +1249,13 @@ export class DriveEngine {
       hazeObject(this.grassField.mesh)
       this.scene.add(this.grassField.mesh)
     }
+    if (this.farGrass && (before.farGrass !== this.profile.farGrass || before.farGrassRadius !== this.profile.farGrassRadius)) {
+      this.scene.remove(this.farGrass.mesh)
+      this.farGrass.setDensity(this.profile.farGrass, this.profile.farGrassRadius)
+      this.farGrass.mesh.receiveShadow = false
+      hazeObject(this.farGrass.mesh)
+      this.scene.add(this.farGrass.mesh)
+    }
     this.far?.setDetail(this.profile.farN, this.profile.farTrees)
     if (this.far) hazeObject(this.far.object)
     this.syncCar()
@@ -1291,7 +1324,7 @@ export class DriveEngine {
       resolution: this.dpr,
       quality: this.quality,
       chunks: this.chunks.size,
-      grass: this.grassField?.cells ?? 0,
+      grass: (this.grassField?.cells ?? 0) + (this.farGrass?.cells ?? 0),
       /** Where the triangles go (scenery that exists, before culling), biggest first. */
       breakdown: this.triangleBreakdown(),
     }
@@ -1301,7 +1334,7 @@ export class DriveEngine {
     const t: Record<string, number> = {}
     for (const c of this.chunks.values())
       for (const [k, v] of Object.entries((c.group.userData.tris ?? {}) as Record<string, number>)) t[k] = (t[k] ?? 0) + v
-    t.grass = this.grassField && this.world ? triCount(this.world.grass.geometry) * this.grassField.count : 0
+    t.grass = this.world ? triCount(this.world.grass.geometry) * ((this.grassField?.count ?? 0) + (this.farGrass?.count ?? 0)) : 0
     if (this.far) t.far = triCount(this.far.mesh.geometry) + (this.far.forest ? triCount(this.far.forest.geometry) * this.far.forest.count : 0)
     t.car = 0
     ;(this.userCar?.group ?? this.car.group).traverse((o) => {
@@ -1636,7 +1669,10 @@ export class DriveEngine {
     this.sun.target.position.copy(car.position)
 
     this.updateCarLights(dt)
-    this.grassField?.update(car.position.x, car.position.z, this.camera.position.x, this.camera.position.z)
+    this.camera.getWorldDirection(this.grassDir)
+    const cp = this.camera.position
+    this.grassField?.update(car.position.x, car.position.z, cp.x, cp.z, this.grassDir.x, this.grassDir.z)
+    this.farGrass?.update(car.position.x, car.position.z, cp.x, cp.z, this.grassDir.x, this.grassDir.z)
     if (this.far) {
       // Only the chunks that exist right now (they appear one per frame).
       let lo = Infinity, hi = -Infinity
@@ -1687,6 +1723,7 @@ export class DriveEngine {
         if (o instanceof THREE.InstancedMesh) o.dispose()
       })
     this.grassField?.dispose()
+    this.farGrass?.dispose()
     this.far?.dispose()
     collect(this.scene)
     collect(this.car.group)

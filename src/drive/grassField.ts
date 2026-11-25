@@ -1,17 +1,18 @@
 /**
- * Grass field manager: maintains a continuous circular carpet of grass around the car
- * wherever it drives off-road or along the highway.
+ * Grass field manager: maintains a continuous carpet of grass following the camera's
+ * view direction (capsule) wherever the car drives off-road or along the highway.
  *
  * Instead of generating grass per road chunk (which leaves off-road terrain bare and stops
  * ~75 m from the asphalt), this field uses a single InstancedMesh (one draw call) populated
  * from a rolling grid of world cells. Each cell's clump transforms are seeded deterministically
  * by its grid coordinates, ensuring the exact same blades appear whenever returning to an area.
- * Cells stream in smoothly (at most 2 cells filled per frame) to prevent frame stutters, and
- * distant cells beyond the radius are recycled.
+ * Tufts fade at the edge so streaming is invisible, cells stream in smoothly with a time budget
+ * per frame to prevent frame stutters, and distant cells beyond the radius are recycled.
  */
 import * as THREE from "three"
 import { rng } from "./road"
 import { TerrainQuery } from "./terrainQuery"
+import type { GrassFade } from "./vegetation"
 
 export interface GrassFieldOptions {
   geometry: THREE.BufferGeometry
@@ -20,6 +21,12 @@ export interface GrassFieldOptions {
   cell: number
   radius: number
   perCell: number
+  /** Multiplies every tuft's size (the far field uses bigger, sparser tufts). Default 1. */
+  scale?: number
+  /** Mixed into each cell's seed so two fields never place identical tufts. Default 0. */
+  salt?: number
+  /** Shader uniforms this field keeps pointed at its reach (see grassFade()). */
+  fade?: GrassFade
 }
 
 interface PendingCell {
@@ -51,10 +58,29 @@ const scratchQuat = new THREE.Quaternion()
 const scratchMat = new THREE.Matrix4()
 const scratchColor = new THREE.Color()
 
+/** Squared distance from (px, pz) to the segment a→b. */
+function segDistSq(px: number, pz: number, ax: number, az: number, bx: number, bz: number) {
+  const abx = bx - ax, abz = bz - az
+  const l = abx * abx + abz * abz
+  const t = l > 0 ? Math.min(1, Math.max(0, ((px - ax) * abx + (pz - az) * abz) / l)) : 0
+  const dx = px - (ax + abx * t), dz = pz - (az + abz * t)
+  return dx * dx + dz * dz
+}
+
+/** Time per frame spent filling new cells, ms (at least one cell always fills). */
+const FILL_BUDGET_MS = 2
+
+/** How far past the car (× radius) coverage reaches, and its cap along the view (× radius). */
+const AHEAD = 0.8
+const MAX_REACH = 2.5
+
 export class GrassField {
   private readonly geometry: THREE.BufferGeometry
   private readonly material: THREE.Material
   private readonly query: TerrainQuery
+  private readonly scale: number
+  private readonly salt: number
+  private readonly fade: GrassFade | undefined
   private cell: number
   private radius: number
   private perCell: number
@@ -76,15 +102,16 @@ export class GrassField {
   /** Total active instances currently drawn (excluding hidden zero-scale instances). */
   private _inUseCount = 0
 
-  /** Car position when the needed-cell grid was last evaluated. */
-  private lastEvalX = Infinity
-  private lastEvalZ = Infinity
-  /** Camera position when the needed-cell grid was last evaluated. */
-  private lastEvalCamX = Infinity
-  private lastEvalCamZ = Infinity
+  private lastEvalAX = Infinity
+  private lastEvalAZ = Infinity
+  private lastEvalBX = Infinity
+  private lastEvalBZ = Infinity
 
-  /** Cell keys queued during the current evaluation pass to prevent duplicate queueing. */
-  private queuedKeys = new Set<string>()
+  /** Current reach segment (camera → past the car), world x/z. */
+  private ax = 0
+  private az = 0
+  private bx = 0
+  private bz = 0
 
   /** Pending needed cells sorted nearest-first for progressive filling. */
   private pendingQueue: PendingCell[] = []
@@ -106,6 +133,9 @@ export class GrassField {
     this.cell = opts.cell
     this.radius = opts.radius
     this.perCell = opts.perCell
+    this.scale = opts.scale ?? 1
+    this.salt = opts.salt ?? 0
+    this.fade = opts.fade
 
     this.allocate(opts.perCell, opts.radius, true)
   }
@@ -119,9 +149,8 @@ export class GrassField {
     this.perCell = perCell
     this.radius = radius
 
-    // Extra margin of +3 cells on each side ensures circular coverage without edge clipping
-    // regardless of offset. Doubled because car and camera coverage circles can be disjoint.
-    const newMaxCells = 2 * (Math.ceil((2 * radius) / this.cell) + 3) ** 2
+    // The reach is a capsule: radius around a segment up to MAX_REACH × radius long.
+    const newMaxCells = (Math.ceil(((2 + MAX_REACH) * radius) / this.cell) + 3) * (Math.ceil((2 * radius) / this.cell) + 3)
     const newCapacity = newMaxCells * perCell
 
     if (isInitial || newCapacity !== this.capacity) {
@@ -151,11 +180,10 @@ export class GrassField {
     this._inUseCount = 0
 
     this.pendingQueue.length = 0
-    this.lastEvalX = Infinity
-    this.lastEvalZ = Infinity
-    this.lastEvalCamX = Infinity
-    this.lastEvalCamZ = Infinity
-    this.queuedKeys.clear()
+    this.lastEvalAX = Infinity
+    this.lastEvalAZ = Infinity
+    this.lastEvalBX = Infinity
+    this.lastEvalBZ = Infinity
   }
 
   /**
@@ -193,7 +221,7 @@ export class GrassField {
    */
   private fillCell(cx: number, cz: number, slot: number, key: string): void {
     // 32-bit integer hash ensures exact same grass positions whenever returning to this cell
-    const seed = (Math.imul(cx, 73856093) ^ Math.imul(cz, 19349663)) >>> 0
+    const seed = ((Math.imul(cx, 73856093) ^ Math.imul(cz, 19349663)) ^ this.salt) >>> 0
     const r = rng(seed)
 
     const minX = cx * this.cell
@@ -220,6 +248,7 @@ export class GrassField {
       // Scale variation: smaller tufts on sand (dune grass), full-sized inland
       let s = 0.65 + r() * 0.7
       if (surface === "sand") s *= 0.75
+      s *= this.scale
 
       // Sink slightly into ground so blade bases do not hover above local terrain concavities
       scratchPos.set(px, y - GROUND_SINK, pz)
@@ -280,158 +309,102 @@ export class GrassField {
     this.freeSlots.push(slot)
   }
 
-  /** Call every frame with the car position and the camera position. Grass covers a circle of `radius` around the car and of 0.75 × radius around the camera. */
-  update(x: number, z: number, camX = x, camZ = z): void {
+  /**
+   * Call every frame with the car, the camera and the camera's view direction (x/z, any
+   * length). Grass covers every cell within `radius` of a segment from the camera along its
+   * view to a little past the car, so it follows what the camera sees, including the
+   * ground behind the car when a fly-by looks back at it.
+   */
+  update(x: number, z: number, camX = x, camZ = z, dirX = 0, dirZ = 0): void {
     if (this.disposed) return
 
-    // Throttle evaluation: only re-evaluate grid coverage when car or camera moved > cell/4 or unfinished work exists
-    const moveThreshold = this.cell * 0.25
-    const moveThresholdSq = moveThreshold * moveThreshold
-    const dx = x - this.lastEvalX
-    const dz = z - this.lastEvalZ
-    const dCamX = camX - this.lastEvalCamX
-    const dCamZ = camZ - this.lastEvalCamZ
-    const moved =
-      dx * dx + dz * dz > moveThresholdSq ||
-      dCamX * dCamX + dCamZ * dCamZ > moveThresholdSq
-
-    if (!moved && this.pendingQueue.length === 0) {
-      return
+    let fx = dirX, fz = dirZ
+    if (fx * fx + fz * fz < 1e-6) {
+      fx = x - camX
+      fz = z - camZ
+    }
+    const fl = Math.hypot(fx, fz)
+    if (fl > 1e-6) {
+      fx /= fl
+      fz /= fl
+    } else {
+      fx = 0
+      fz = 0
+    }
+    const reach = Math.min(MAX_REACH * this.radius, Math.hypot(x - camX, z - camZ) + AHEAD * this.radius)
+    this.ax = camX
+    this.az = camZ
+    this.bx = camX + fx * reach
+    this.bz = camZ + fz * reach
+    if (this.fade) {
+      this.fade.uGrassA.value.set(this.ax, this.az)
+      this.fade.uGrassB.value.set(this.bx, this.bz)
+      this.fade.uGrassR.value = this.radius
     }
 
+    // Re-evaluate coverage only when either end of the segment moved more than cell/4.
+    const th = (this.cell * 0.25) ** 2
+    const moved =
+      (this.ax - this.lastEvalAX) ** 2 + (this.az - this.lastEvalAZ) ** 2 > th ||
+      (this.bx - this.lastEvalBX) ** 2 + (this.bz - this.lastEvalBZ) ** 2 > th
+    if (!moved && this.pendingQueue.length === 0) return
+
     if (moved) {
-      this.lastEvalX = x
-      this.lastEvalZ = z
-      this.lastEvalCamX = camX
-      this.lastEvalCamZ = camZ
+      this.lastEvalAX = this.ax
+      this.lastEvalAZ = this.az
+      this.lastEvalBX = this.bx
+      this.lastEvalBZ = this.bz
+      const { ax, az, bx, bz } = this
 
-      const camRadius = 0.75 * this.radius
-      const dCamCarX = camX - x
-      const dCamCarZ = camZ - z
-      const samePoint = dCamCarX * dCamCarX + dCamCarZ * dCamCarZ <= this.cell * this.cell
-
-      // Free cells beyond (radius + cell) from car AND beyond (0.75 * radius + cell) from camera
-      const carFreeDist = this.radius + this.cell
-      const carFreeDistSq = carFreeDist * carFreeDist
-      const camFreeDist = camRadius + this.cell
-      const camFreeDistSq = camFreeDist * camFreeDist
-
+      // Free cells that left the reach (their tufts had already shrunk to nothing).
+      const freeSq = (this.radius + this.cell) ** 2
       for (const [key, slot] of this.cellsMap) {
-        const cellCenterX = (this.slotCx[slot] + 0.5) * this.cell
-        const cellCenterZ = (this.slotCz[slot] + 0.5) * this.cell
-        const dCarX = cellCenterX - x
-        const dCarZ = cellCenterZ - z
-        const distCarSq = dCarX * dCarX + dCarZ * dCarZ
-
-        if (distCarSq > carFreeDistSq) {
-          const dCamX = cellCenterX - camX
-          const dCamZ = cellCenterZ - camZ
-          const distCamSq = dCamX * dCamX + dCamZ * dCamZ
-          if (distCamSq > camFreeDistSq) {
-            this.freeCell(key, slot)
-          }
-        }
+        const ccx = (this.slotCx[slot] + 0.5) * this.cell
+        const ccz = (this.slotCz[slot] + 0.5) * this.cell
+        if (segDistSq(ccx, ccz, ax, az, bx, bz) > freeSq) this.freeCell(key, slot)
       }
 
+      // Queue every missing cell whose centre is within the reach, nearest the camera first.
       this.pendingQueue.length = 0
-      this.queuedKeys.clear()
       let poolIdx = 0
-
-      // Collect all cells whose center lies within the active radius of the car
-      const minCx = Math.floor((x - this.radius) / this.cell)
-      const maxCx = Math.floor((x + this.radius) / this.cell)
-      const minCz = Math.floor((z - this.radius) / this.cell)
-      const maxCz = Math.floor((z + this.radius) / this.cell)
-      const radiusSq = this.radius * this.radius
-
+      const r = this.radius
+      const minCx = Math.floor((Math.min(ax, bx) - r) / this.cell)
+      const maxCx = Math.floor((Math.max(ax, bx) + r) / this.cell)
+      const minCz = Math.floor((Math.min(az, bz) - r) / this.cell)
+      const maxCz = Math.floor((Math.max(az, bz) + r) / this.cell)
+      const rSq = r * r
       for (let cz = minCz; cz <= maxCz; cz++) {
         for (let cx = minCx; cx <= maxCx; cx++) {
-          const cellCenterX = (cx + 0.5) * this.cell
-          const cellCenterZ = (cz + 0.5) * this.cell
-          const dCarX = cellCenterX - x
-          const dCarZ = cellCenterZ - z
-          const distCarSq = dCarX * dCarX + dCarZ * dCarZ
-          if (distCarSq <= radiusSq) {
-            const key = `${cx},${cz}`
-            if (!this.cellsMap.has(key)) {
-              this.queuedKeys.add(key)
-              const distSq = samePoint
-                ? distCarSq
-                : Math.min(distCarSq, (cellCenterX - camX) ** 2 + (cellCenterZ - camZ) ** 2)
-
-              let item = this.pendingPool[poolIdx]
-              if (!item) {
-                item = { cx, cz, distSq }
-                this.pendingPool[poolIdx] = item
-              } else {
-                item.cx = cx
-                item.cz = cz
-                item.distSq = distSq
-              }
-              this.pendingQueue.push(item)
-              poolIdx++
-            }
+          const ccx = (cx + 0.5) * this.cell
+          const ccz = (cz + 0.5) * this.cell
+          if (segDistSq(ccx, ccz, ax, az, bx, bz) > rSq) continue
+          if (this.cellsMap.has(`${cx},${cz}`)) continue
+          const distSq = (ccx - ax) ** 2 + (ccz - az) ** 2
+          let item = this.pendingPool[poolIdx]
+          if (!item) {
+            item = { cx, cz, distSq }
+            this.pendingPool[poolIdx] = item
+          } else {
+            item.cx = cx
+            item.cz = cz
+            item.distSq = distSq
           }
+          this.pendingQueue.push(item)
+          poolIdx++
         }
       }
-
-      // Collect all cells within 0.75 * radius of the camera (skip if camera is at the car)
-      if (!samePoint) {
-        const minCamCx = Math.floor((camX - camRadius) / this.cell)
-        const maxCamCx = Math.floor((camX + camRadius) / this.cell)
-        const minCamCz = Math.floor((camZ - camRadius) / this.cell)
-        const maxCamCz = Math.floor((camZ + camRadius) / this.cell)
-        const camRadiusSq = camRadius * camRadius
-
-        for (let cz = minCamCz; cz <= maxCamCz; cz++) {
-          for (let cx = minCamCx; cx <= maxCamCx; cx++) {
-            const cellCenterX = (cx + 0.5) * this.cell
-            const cellCenterZ = (cz + 0.5) * this.cell
-            const dCamX = cellCenterX - camX
-            const dCamZ = cellCenterZ - camZ
-            const distCamSq = dCamX * dCamX + dCamZ * dCamZ
-            if (distCamSq <= camRadiusSq) {
-              const key = `${cx},${cz}`
-              if (!this.cellsMap.has(key) && !this.queuedKeys.has(key)) {
-                this.queuedKeys.add(key)
-                const dCarX = cellCenterX - x
-                const dCarZ = cellCenterZ - z
-                const distCarSq = dCarX * dCarX + dCarZ * dCarZ
-                const distSq = Math.min(distCarSq, distCamSq)
-
-                let item = this.pendingPool[poolIdx]
-                if (!item) {
-                  item = { cx, cz, distSq }
-                  this.pendingPool[poolIdx] = item
-                } else {
-                  item.cx = cx
-                  item.cz = cz
-                  item.distSq = distSq
-                }
-                this.pendingQueue.push(item)
-                poolIdx++
-              }
-            }
-          }
-        }
-      }
-
-      this.queuedKeys.clear()
-
-      // Sort descending so pop() takes the nearest cell in O(1) time
+      // Sort descending so pop() takes the nearest cell.
       this.pendingQueue.sort((a, b) => b.distSq - a.distSq)
     }
 
-    // Process up to 2 pending cells per frame to maintain 60 fps without frame spikes
-    let filled = 0
-    while (this.pendingQueue.length > 0 && filled < 2 && this.freeSlots.length > 0) {
+    // Fill nearest-first within a small time budget, so a jump in the camera never stutters.
+    const t0 = performance.now()
+    while (this.pendingQueue.length > 0 && this.freeSlots.length > 0) {
       const next = this.pendingQueue.pop()!
       const key = `${next.cx},${next.cz}`
-      if (!this.cellsMap.has(key)) {
-        const slot = this.freeSlots.pop()!
-        this.fillCell(next.cx, next.cz, slot, key)
-        filled++
-      }
+      if (this.cellsMap.has(key)) continue
+      this.fillCell(next.cx, next.cz, this.freeSlots.pop()!, key)
+      if (performance.now() - t0 > FILL_BUDGET_MS) break
     }
   }
 
@@ -459,7 +432,6 @@ export class GrassField {
     this.freeSlots.length = 0
     this.pendingQueue.length = 0
     this.pendingPool.length = 0
-    this.queuedKeys.clear()
     this._inUseCount = 0
     this.slotCounts = new Int32Array(0)
     this.slotCx = new Int32Array(0)

@@ -67,6 +67,10 @@ const STEER_FADE = 7
 /** Steering rates, rad/s: turning in, and returning (faster, like a self-centring wheel). */
 const STEER_RATE = 1.9
 const RETURN_RATE = 3.2
+/** Stability assist: how fast a sideways slide bleeds off (1/s, scaled by rear grip). */
+const SLIDE_DAMP = 3.5
+/** Stability assist: how fast yaw over the grip limit is pulled back (1/s). */
+const YAW_HOLD = 8
 
 /** Suspension: travel from full droop to bump stop, and the static compression at rest. */
 export const TRAVEL = 0.12
@@ -294,14 +298,15 @@ export class CarPhysics {
 
     // ---- Steering: speed-sensitive lock, rate-limited, self-centring ----------------
     // Steering assist: never steer much past the angle the tyres can still grip at this
-    // speed (ideal angle for ~0.95 g of cornering plus the tyre's peak slip). Beyond that
-    // the front tyres only scrub, which felt like slamming the brakes in sharp turns.
+    // speed (ideal angle for ~0.95 g of cornering). The margin past that ideal angle is
+    // small, so the fronts stay below their slip peak instead of scrubbing and scrubbing
+    // speed away, which felt like slamming the brakes in sharp turns.
     const v2 = Math.max(vx * vx, 1)
-    const assist = Math.atan((s.wheelbase * 9.3) / v2) + 0.11
+    const assist = Math.atan((s.wheelbase * 9.3) / v2) + 0.06
     const lock = vx > 7 ? Math.min(this.maxSteerAt(vx), assist) : this.maxSteerAt(vx)
     const target = steerIn * lock
     const returning = Math.abs(target) < Math.abs(this.steerAngle) && Math.sign(target) !== -Math.sign(this.steerAngle)
-    const rate = (returning ? RETURN_RATE : STEER_RATE) * h
+    const rate = (returning ? RETURN_RATE : STEER_RATE * (1 - 0.45 * smooth(12, 35, vx))) * h
     this.steerAngle += clamp(target - this.steerAngle, -rate, rate)
     this.steerAngle = clamp(this.steerAngle, -lock - 0.02, lock + 0.02)
     const delta = this.steerAngle
@@ -445,6 +450,15 @@ export class CarPhysics {
       // Without tyres doing it, a side slope or a slide still needs to bleed off.
       vr = vrK + (vr - vrK) * k
       rr = rrK + (rr - rrK) * k
+    }
+    // Stability assist (arcade): on the ground, bleed off sideways slide and cap the yaw
+    // rate near what the tyres can hold, so a quick flick through a tight bend neither
+    // spins the car nor slides it wide. The handbrake turns it off for deliberate slides.
+    if (k > 0 && !ctl.handbrake && this.grounded > 0.3) {
+      const rearGrip = (GRIP[this.wheelSurf[2]] + GRIP[this.wheelSurf[3]]) / 2
+      vr -= vr * clamp(SLIDE_DAMP * rearGrip * h, 0, 1)
+      const maxRate = (rearGrip * G * 1.1) / Math.max(vx, 1) + 0.05
+      if (Math.abs(rr) > maxRate) rr += (Math.sign(rr) * maxRate - rr) * clamp(YAW_HOLD * h, 0, 1)
     }
     // Off the ground nothing turns the car; keep what it had, slowly.
     if (this.grounded < 0.05) rr *= 1 - 0.5 * h

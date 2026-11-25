@@ -21,12 +21,13 @@ interface GtaDriveProps {
   onExit: () => void
 }
 
+// Keyed by KeyboardEvent.code: e.key changes with Shift and layout, e.code doesn't.
 const DRIVE_KEYS: Record<string, keyof DriveInput> = {
-  w: "throttle", arrowup: "throttle",
-  s: "brake", arrowdown: "brake",
-  a: "left", arrowleft: "left",
-  d: "right", arrowright: "right",
-  shift: "boost",
+  KeyW: "throttle", ArrowUp: "throttle",
+  KeyS: "brake", ArrowDown: "brake",
+  KeyA: "left", ArrowLeft: "left",
+  KeyD: "right", ArrowRight: "right",
+  ShiftLeft: "boost", ShiftRight: "boost",
 }
 
 const SEED_KEY = "dot_drive_seed"
@@ -203,10 +204,19 @@ export default function GtaDrive(props: GtaDriveProps) {
   // Keyboard: driving keys are ours (so the arrows don't also seek the song).
   const menuRef = useRef(menuOpen)
   const wheelRef = useRef(wheelOpen)
+  /** KeyboardEvent.code of every driving key currently held down. */
+  const heldRef = useRef(new Set<string>())
+  // Each control is on while ANY of its keys is held, so overlapping keys never cancel.
+  const syncInput = () => {
+    const input = inputRef.current
+    input.throttle = input.brake = input.left = input.right = input.boost = false
+    for (const code of heldRef.current) input[DRIVE_KEYS[code]] = true
+  }
   useEffect(() => {
     menuRef.current = menuOpen
     wheelRef.current = wheelOpen
     if (menuOpen || wheelOpen) {
+      heldRef.current.clear()
       const input = inputRef.current
       input.throttle = input.brake = input.left = input.right = input.boost = false
     }
@@ -216,6 +226,11 @@ export default function GtaDrive(props: GtaDriveProps) {
     const typing = (t: EventTarget | null) =>
       t instanceof HTMLElement && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)
     const down = (e: KeyboardEvent) => {
+      // macOS sends no keyup for keys released while Cmd is held: drop everything.
+      if (e.key === "Meta") {
+        heldRef.current.clear()
+        syncInput()
+      }
       if (wheelRef.current || typing(e.target)) return
       const k = e.key.toLowerCase()
       if (k === "escape") {
@@ -226,9 +241,9 @@ export default function GtaDrive(props: GtaDriveProps) {
       }
       if (menuRef.current || e.metaKey || e.ctrlKey || e.altKey) return
       const engine = engineRef.current
-      const control = DRIVE_KEYS[k]
-      if (control) {
-        inputRef.current[control] = true
+      if (DRIVE_KEYS[e.code]) {
+        heldRef.current.add(e.code)
+        syncInput()
       } else if (k === "h" && !e.repeat) {
         engine?.setAutopilot(!engine.isAutopilot)
       } else if (k === "c" && !e.repeat) {
@@ -245,10 +260,13 @@ export default function GtaDrive(props: GtaDriveProps) {
       setShowHints(false)
     }
     const up = (e: KeyboardEvent) => {
-      const control = DRIVE_KEYS[e.key.toLowerCase()]
-      if (control) inputRef.current[control] = false
+      if (DRIVE_KEYS[e.code]) {
+        heldRef.current.delete(e.code)
+        syncInput()
+      }
     }
     const blur = () => {
+      heldRef.current.clear()
       const input = inputRef.current
       input.throttle = input.brake = input.left = input.right = input.boost = false
     }

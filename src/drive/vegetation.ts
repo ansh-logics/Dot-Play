@@ -256,10 +256,41 @@ export const grassDepthMaterial = windDepth(null, 0.5, THREE.DoubleSide)
 patchWind(grassDepthMaterial, () => grassTime, GRASS_WIND, "grass-wind-depth")
 
 /**
+ * Where a grass field reaches, for its shader: a segment a→b (world x/z) and a radius.
+ * Tufts shrink to nothing over the outer fifth of the reach, so cells streaming in or out
+ * at the edge never pop.
+ */
+export interface GrassFade {
+  uGrassA: { value: THREE.Vector2 }
+  uGrassB: { value: THREE.Vector2 }
+  uGrassR: { value: number }
+}
+
+export function grassFade(): GrassFade {
+  return { uGrassA: { value: new THREE.Vector2() }, uGrassB: { value: new THREE.Vector2() }, uGrassR: { value: 1e6 } }
+}
+
+const GRASS_FADE_PARS = /* glsl */ `
+uniform vec2 uGrassA;
+uniform vec2 uGrassB;
+uniform float uGrassR;`
+
+const GRASS_FADE = /* glsl */ `
+#ifdef USE_INSTANCING
+{
+  vec2 gp = vec2(instanceMatrix[3].x, instanceMatrix[3].z);
+  vec2 gab = uGrassB - uGrassA;
+  float gt = clamp(dot(gp - uGrassA, gab) / max(dot(gab, gab), 1e-4), 0.0, 1.0);
+  float gd = length(gp - (uGrassA + gab * gt));
+  transformed *= 1.0 - smoothstep(uGrassR * 0.8, uGrassR, gd);
+}
+#endif`
+
+/**
  * Grass clump material. Per-clump tint comes from InstancedMesh.setColorAt (instanceColor
  * multiplies the diffuse), not vertex colours: vary hue/brightness per instance there.
  */
-export function grassMaterial(time: { value: number }): THREE.MeshStandardMaterial {
+export function grassMaterial(time: { value: number }, fade?: GrassFade): THREE.MeshStandardMaterial {
   const map = grassTexture()
   const mat = new THREE.MeshStandardMaterial({
     map,
@@ -268,12 +299,13 @@ export function grassMaterial(time: { value: number }): THREE.MeshStandardMateri
     roughness: 0.9,
     metalness: 0,
   })
-  mat.customProgramCacheKey = () => "grass-wind"
+  mat.customProgramCacheKey = () => (fade ? "grass-wind-fade" : "grass-wind")
   mat.onBeforeCompile = (shader) => {
+    if (fade) Object.assign(shader.uniforms, fade)
     shader.uniforms.uWindTime = time
     shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", WIND_PARS)
-      .replace("#include <begin_vertex>", GRASS_WIND)
+      .replace("#include <common>", WIND_PARS + (fade ? GRASS_FADE_PARS : ""))
+      .replace("#include <begin_vertex>", GRASS_WIND + (fade ? GRASS_FADE : ""))
     // Double-sided materials flip the normal on back faces; with up-leaning normals that
     // would light the back of every card from below. Undo the flip: both sides face the sky.
     shader.fragmentShader = shader.fragmentShader.replace(
