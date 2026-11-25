@@ -51,7 +51,7 @@ export class Road {
     return (this.xs.length - 1) * STEP
   }
 
-  /** Road height at distance s: rolling, never dipping into the sea. */
+  /** Road height at distance s: rolling, gentle rises and dips. */
   elevation(s: number) {
     const [a, b, c] = this.phases
     return 7 + 3.2 * Math.sin(s / 340 + a) + 1.6 * Math.sin(s / 131 + b) + 0.5 * Math.sin(s / 47 + c)
@@ -95,7 +95,7 @@ export class Road {
   }
 }
 
-/** Right-hand side of the road for a heading (the ocean side). */
+/** Right-hand side of the road for a heading (+ offsets). */
 export const rightOf = (heading: number) => [-Math.cos(heading), Math.sin(heading)] as const
 
 const smooth = (a: number, b: number, x: number) => {
@@ -140,7 +140,7 @@ function fbm(x: number, z: number, octaves: number) {
 /**
  * Inland terrain height: broad rolling hills with softer ridges, bent by a domain warp so
  * the shapes look grown rather than repeated. A pure function of world position, so
- * overlapping strips on bends agree. Never dips below sea level.
+ * overlapping strips on bends agree.
  */
 export function hills(x: number, z: number) {
   const s = 1 / 520
@@ -154,18 +154,12 @@ export function hills(x: number, z: number) {
 }
 
 /**
- * Ground height `off` metres to the side of the road (positive = ocean side).
- * Near the road it meets the asphalt; the ocean side falls away to a beach and the sea,
- * the inland side eases up into the hills over ~160 m (no walls beside the road).
+ * Ground height `off` metres to the side of the road (either side). Near the road it meets
+ * the asphalt, then eases up into the hills over ~160 m (no walls beside the road).
  */
 export function groundHeight(roadY: number, off: number, x: number, z: number) {
   const ad = Math.abs(off)
   const edge = roadY - 0.08
-  if (off > 0) {
-    const fall = smooth(ROAD_HALF + 2, 95, ad)
-    const embank = edge - smooth(ROAD_HALF + 0.5, ROAD_HALF + 8, ad) * 1.2
-    return embank + (-5 - embank) * fall
-  }
   const blend = smooth(ROAD_HALF + 3, 160, ad)
   return edge + (hills(x, z) - edge) * blend
 }

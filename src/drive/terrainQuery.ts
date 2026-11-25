@@ -3,9 +3,9 @@
  * high the visible ground is there and what it is made of.
  *
  * The drive's ground is not one heightfield: near the road it is road-relative strips
- * (columns at fixed lateral offsets, linear in between), inland beyond them the far ring
- * (`hills()`), and on the ocean side a beach that falls under the sea. Heights here follow
- * the same rules as the meshes, so the wheels touch what the player sees.
+ * (columns at fixed lateral offsets, linear in between), and beyond them the far ring
+ * (`hills()`). Heights here follow the same rules as the meshes, so the wheels touch
+ * what the player sees.
  *
  * Every query is allocation-free and O(1) amortised: the nearest road sample is found by
  * walking from the last answer (a car moves at most a sample or two per sub-step).
@@ -16,17 +16,15 @@ import { ROAD_HALF, Road, STEP, groundHeight, hills } from "./road"
 export type Surface = "road" | "shoulder" | "grass" | "sand" | "water"
 
 /**
- * Lateral offsets of the near ground strip columns (negative = inland, positive = ocean
- * side). Must match GROUND_OFFSETS in engine.ts, which builds the meshes from them.
+ * Lateral offsets of the near ground strip columns (- = left, + = right of travel).
+ * Must match GROUND_OFFSETS in engine.ts, which builds the meshes from them.
  */
-export const STRIP_OFFSETS = [-212, -190, -169, -149, -130, -112, -95, -79, -65, -52, -41, -32, -24, -17.5, -12, -8, -5.95, 5.95, 8, 11.5, 16, 22, 30, 40, 53, 70, 92, 125, 170]
+export const STRIP_OFFSETS = [-212, -190, -169, -149, -130, -112, -95, -79, -65, -52, -41, -32, -24, -17.5, -12, -8, -5.95, 5.95, 8, 12, 17.5, 24, 32, 41, 52, 65, 79, 95, 112, 130, 149, 169, 190, 212]
 
 /** Gravel/dust beside the asphalt, out to this lateral offset. */
 export const SHOULDER_TO = 9
-/** Ground below this is under the sea (y = 0) or the wet waterline. */
+/** Ground below this is under water (y = 0) or the wet waterline. */
 export const WATER_LEVEL = 0.15
-/** The beach turns into grassy bank above this height. */
-const SAND_BELOW = 5
 
 export interface RoadLocation {
   /** Nearest road sample: the point lies between sample `index` and `index + 1`. */
@@ -35,11 +33,11 @@ export interface RoadLocation {
   t: number
   /** Distance along the road, metres. */
   s: number
-  /** Signed lateral offset from the centreline, + = ocean side (right of travel). */
+  /** Signed lateral offset from the centreline, + = right of travel. */
   off: number
   /** Road (centreline) height at this point along the road. */
   roadY: number
-  /** Interpolated centreline point and right (ocean side) unit vector, for strip lookups. */
+  /** Interpolated centreline point and right (+ offsets) unit vector, for strip lookups. */
   cx: number
   cz: number
   rx: number
@@ -159,8 +157,7 @@ export class TerrainQuery {
     const off = loc.off
     if (Math.abs(off) <= ROAD_HALF) return loc.roadY + 0.02 // asphalt ribbon lift
     const first = STRIP_OFFSETS[0], last = STRIP_OFFSETS[STRIP_OFFSETS.length - 1]
-    if (off < first) return hills(x, z) // the far ring inland
-    if (off > last) return groundHeight(loc.roadY, off, x, z) // sea floor
+    if (off < first || off > last) return hills(x, z) // the far ring, either side
     // Between two strip columns on this side: linear, like the mesh's triangles.
     let c = 0
     while (c < STRIP_OFFSETS.length - 2 && STRIP_OFFSETS[c + 1] <= off) c++
@@ -177,13 +174,12 @@ export class TerrainQuery {
     if (ad <= ROAD_HALF) return "road"
     if (ground < WATER_LEVEL) return "water"
     if (ad <= SHOULDER_TO) return "shoulder"
-    if (loc.off > 0 && ground < SAND_BELOW) return "sand"
     return "grass"
   }
 
   /**
-   * Ground height under (x, z): asphalt on the road, the strips beside it, hills inland
-   * past the strips. On the ocean side it can be below 0 (under the sea).
+   * Ground height under (x, z): asphalt on the road, the strips beside it, hills
+   * past the strips on either side.
    */
   heightAt(x: number, z: number): number {
     return this.heightAtLocation(this.locate(x, z, this.scratch), x, z)

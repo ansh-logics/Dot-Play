@@ -5,7 +5,6 @@ import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPa
 import { FXAAShader } from "three/examples/jsm/shaders/FXAAShader.js"
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js"
 import { LANE, ROAD_HALF, Road, STEP, groundHeight, rightOf, rng, type RoadSample } from "./road"
-import { PALM_SPECIES, palmGeometry, palmMaterials } from "./palms"
 import { buildCoupe, type Coupe } from "./car"
 import { FOLIAGE, broadleafTreeGeometry, bushGeometry, grassCardGeometry, grassMaterial, impostorGeometry, impostorMaterial, treeMaterials } from "./vegetation"
 import { FarTerrain } from "./farTerrain"
@@ -14,7 +13,7 @@ import { ColliderSet } from "./collisions"
 import { CarPhysics, autopilot, type DriveControls } from "./physics"
 import { STRIP_OFFSETS, TerrainQuery } from "./terrainQuery"
 import { HAZE, HAZE_PARS, hazeApply, hazeObject } from "./haze"
-import { analyseSky, downscaleHdr, loadHdr, loadKit, loadPbr, loadUserCar, type Kit, type PbrSet, type UserCar } from "./assets"
+import { analyseSky, downscaleHdr, loadHdr, loadPbr, loadUserCar, type Kit, type PbrSet, type UserCar } from "./assets"
 
 // ---- Time of day ---------------------------------------------------------------------
 
@@ -78,7 +77,7 @@ interface QualityProfile {
   bloom: boolean
   /** Chunks of road built ahead of the car (128 m each). */
   ahead: number
-  /** Scales how many palms and shrubs a chunk gets. */
+  /** Scales how many trees and shrubs a chunk gets. */
   density: number
   /** Grass clumps per 24 m cell of the grass field around the car. */
   grass: number
@@ -298,9 +297,9 @@ const WATER_SEGMENTS = 96
 const GROUND_UV_M = 3.2
 const CHUNK_LEN = CHUNK_SAMPLES * STEP
 const BEHIND = 1
-/** Cross-section offsets for the ground (negative = inland, positive = ocean side). */
+/** Cross-section offsets for the ground (negative = inland, positive = right side). */
 /**
- * Cross-section offsets for the near ground (negative = inland, positive = ocean side).
+ * Cross-section offsets for the near ground (negative = inland, positive = right side).
  * Starts just under the asphalt edge (no gap). Inland it stops at 212 m, inside the
  * tightest bend radius (240 m) so strips never fold; the far-terrain ring takes over.
  */
@@ -311,61 +310,14 @@ interface World {
   roadMat: THREE.MeshStandardMaterial
   markMat: THREE.MeshStandardMaterial
   groundMat: THREE.MeshStandardMaterial
-  /** One kit per palm species (coconut, royal, fan). */
-  palm: Kit[]
   /** Light code-built bushes (two shapes). */
   shrubs: Kit[]
-  barrier: Kit
   grass: { geometry: THREE.BufferGeometry; material: THREE.MeshStandardMaterial }
   /** A few broadleaf tree shapes (live oaks on the hills). */
   trees: Kit[]
   /** Textures referenced only from shader uniforms (not material slots). */
   extraTextures: THREE.Texture[]
   time: { value: number }
-}
-
-/** Vertex patch for the breeze: sway grows with height; instances get their own phase. */
-function windPatch(height: number, flutter: number) {
-  return `#include <begin_vertex>
-        #ifdef USE_INSTANCING
-          vec3 ip = vec3(instanceMatrix[3]);
-        #else
-          vec3 ip = vec3(0.0);
-        #endif
-        float hh = clamp(position.y / ${height.toFixed(1)}, 0.0, 1.2);
-        float ph = ip.x * 0.07 + ip.z * 0.05;
-        float sway = sin(uWindTime * 0.9 + ph) * 0.16 + sin(uWindTime * 2.1 + ph * 1.7) * 0.05;
-        transformed.x += sway * hh * hh;
-        transformed.z += cos(uWindTime * 0.7 + ph) * 0.09 * hh * hh;
-        transformed.y += sin(uWindTime * 3.3 + position.z * 1.3 + ph) * ${flutter.toFixed(3)} * hh;`
-}
-
-/**
- * Sways vertices with height (palms and shrubs in the sea breeze). Instanced: phase from
- * position. Also builds a matching shadow-pass material, so shadows sway with the leaves.
- */
-function addWind(mat: THREE.Material, time: { value: number }, height: number, flutter: number) {
-  const patch = (target: THREE.Material, key: string) => {
-    // Each variant compiles its own program (the callbacks share source text, so three's
-    // default cache key would hand every material the first one).
-    target.customProgramCacheKey = () => `${key}:${height}:${flutter}`
-    target.onBeforeCompile = (shader) => {
-      shader.uniforms.uWindTime = time
-      shader.vertexShader = shader.vertexShader
-        .replace("#include <common>", "#include <common>\nuniform float uWindTime;")
-        .replace("#include <begin_vertex>", windPatch(height, flutter))
-    }
-  }
-  patch(mat, "wind")
-  const src = mat as THREE.MeshStandardMaterial
-  const depth = new THREE.MeshDepthMaterial({
-    depthPacking: THREE.RGBADepthPacking,
-    map: src.map ?? null,
-    alphaTest: src.alphaTest,
-    side: src.side,
-  })
-  patch(depth, "wind-depth")
-  mat.userData.windDepth = depth
 }
 
 /**
@@ -565,11 +517,9 @@ function buildChunk(road: Road, index: number, w: World, density: number): Chunk
         if (Math.abs(off) < 10) {
           sand = 0.6
           bright = 0.85 // dusty shoulder
-        } else if (off > 0) {
-          sand = 1 - Math.max(0, Math.min(1, (y - 3.5) / 3))
-          bright = y < 0.4 ? 0.62 : 1 // wet sand at the waterline
         } else {
-          sand = Math.max(0, Math.sin(x * 0.013) * Math.cos(z * 0.011) * 0.5) * (1 - Math.min(1, -off / 200))
+          // Dry, sun-bleached patches in open meadows.
+          sand = Math.max(0, Math.sin(x * 0.013) * Math.cos(z * 0.011) * 0.5) * (1 - Math.min(1, Math.abs(off) / 200))
           bright = 0.88 + Math.sin(x * 0.02 + z * 0.015) * 0.12
         }
         // b = slope (0 flat .. 1 vertical): bare earth on steep banks.
@@ -589,9 +539,9 @@ function buildChunk(road: Road, index: number, w: World, density: number): Chunk
     const ground = new THREE.Mesh(geo, w.groundMat)
     ground.receiveShadow = true
     group.add(ground)
-    // Skirt: a strip hanging 30 m down from the inland edge, so the seam where this near
+    // Skirt: a strip hanging 30 m down from each outer edge, so the seam where this near
     // ground meets the coarser far terrain never shows a gap (visible when off-roading).
-    {
+    for (const [edge, sgn] of [[0, -1], [cols - 1, 1]] as const) {
       const sp = new Float32Array(rows * 2 * 3)
       const sn = new Float32Array(rows * 2 * 3)
       const sc = new Float32Array(rows * 2 * 3)
@@ -601,14 +551,15 @@ function buildChunk(road: Road, index: number, w: World, density: number): Chunk
         const [rx, rz] = rightOf(road.hs[i0 + r])
         for (let k = 0; k < 2; k++) {
           const v = r * 2 + k
-          sp.set([at(r, 0, 0), at(r, 0, 1) - k * 30, at(r, 0, 2)], v * 3)
-          sn.set([-rx, 0, -rz], v * 3)
-          sc.set([col[r * cols * 3], col[r * cols * 3 + 1], col[r * cols * 3 + 2]], v * 3)
-          su.set([guv[r * cols * 2], guv[r * cols * 2 + 1] + k * 9], v * 2)
+          sp.set([at(r, edge, 0), at(r, edge, 1) - k * 30, at(r, edge, 2)], v * 3)
+          sn.set([sgn * rx, 0, sgn * rz], v * 3)
+          sc.set([col[(r * cols + edge) * 3], col[(r * cols + edge) * 3 + 1], col[(r * cols + edge) * 3 + 2]], v * 3)
+          su.set([guv[(r * cols + edge) * 2], guv[(r * cols + edge) * 2 + 1] + k * 9], v * 2)
         }
         if (r < rows - 1) {
           const a = r * 2, b = a + 1, c = a + 2, d = a + 3
-          sidx.push(a, c, b, b, c, d)
+          if (sgn === -1) sidx.push(a, c, b, b, c, d)
+          else sidx.push(a, b, c, b, d, c)
         }
       }
       const sg = new THREE.BufferGeometry()
@@ -631,66 +582,30 @@ function buildChunk(road: Road, index: number, w: World, density: number): Chunk
   const mat = (x: number, y: number, z: number, yaw: number, scale: number) =>
     new THREE.Matrix4().compose(p3.set(x, y, z), q.setFromAxisAngle(up, yaw), s3.setScalar(scale))
 
-  // Palms: a promenade row of coconut and royal palms by the beach, a mix inland (fan palms
-  // stand tall behind). Species per tree from the chunk's own random sequence.
-  {
-    const per: THREE.Matrix4[][] = w.palm.map(() => [])
-    for (let k = 0; k < CHUNK_LEN / 16; k++) {
-      const p = at(i0 + (k * 16 + rand() * 6) / STEP, 10.5 + rand() * 3)
-      const sp = rand() < 0.7 ? 0 : 1 // coconut or royal by the beach
-      per[sp].push(mat(p.x, p.y - 0.2, p.z, rand() * Math.PI * 2, 0.85 + rand() * 0.3))
-    }
-    const extra = Math.round((12 + Math.floor(rand() * 12)) * density)
-    for (let k = 0; k < extra; k++) {
-      const beach = rand() < 0.35
-      const off = beach ? 16 + rand() * 30 : -(10 + rand() * 120)
-      const p = at(i0 + rand() * CHUNK_SAMPLES, off)
-      if (p.y < 0.5) continue
-      const sp = beach ? (rand() < 0.8 ? 0 : 1) : Math.floor(rand() * w.palm.length)
-      per[sp].push(mat(p.x, p.y - 0.2, p.z, rand() * Math.PI * 2, 0.8 + rand() * 0.4))
-    }
-    w.palm.forEach((kit, i) => instance(group, kit, per[i], true, "palms", 0.32))
-  }
-
-  // Bushes: thick along the inland verge, sparse on the dunes (cheap code-built shapes).
+  // Bushes: along both verges, thinning out into the fields (cheap code-built shapes).
   if (w.shrubs.length) {
     const per: THREE.Matrix4[][] = w.shrubs.map(() => [])
     const n = Math.round((22 + Math.floor(rand() * 14)) * density)
     for (let k = 0; k < n; k++) {
-      const inland = rand() < 0.75
-      const off = inland ? -(8 + rand() * rand() * 70) : 12 + rand() * 26
+      const off = (rand() < 0.5 ? -1 : 1) * (8 + rand() * rand() * 70)
       const p = at(i0 + rand() * CHUNK_SAMPLES, off)
-      if (p.y < 0.6) continue
       per[Math.floor(rand() * per.length)].push(mat(p.x, p.y - 0.1, p.z, rand() * Math.PI * 2, 0.8 + rand() * 0.9))
     }
     w.shrubs.forEach((kit, i) => instance(group, kit, per[i], false, "bushes"))
   }
 
-  // Broadleaf trees inland, in clumps (a slow noise decides where the woods are).
+  // Broadleaf trees on both sides, only in the woods: open hills with the occasional dense forest (a slow noise decides where).
   if (w.trees.length) {
     const per: THREE.Matrix4[][] = w.trees.map(() => [])
-    const n = Math.round((20 + rand() * 18) * density)
+    const n = Math.round((46 + rand() * 20) * density)
     for (let k = 0; k < n; k++) {
-      const off = -(20 + rand() * 180)
+      const off = (rand() < 0.5 ? -1 : 1) * (11 + rand() * 195)
       const p = at(i0 + rand() * CHUNK_SAMPLES, off)
       const woods = Math.sin(p.x * 0.006 + 1.7) * Math.cos(p.z * 0.0051 - 0.4) + Math.sin(p.x * 0.017 - p.z * 0.013) * 0.4
-      if (woods < -0.15 || p.y < 1.2) continue
+      if (woods < 0.45) continue
       per[Math.floor(rand() * per.length)].push(mat(p.x, p.y - 0.15, p.z, rand() * Math.PI * 2, 0.75 + rand() * 0.6))
     }
     w.trees.forEach((kit, i) => instance(group, kit, per[i], true, "trees", 0.42))
-  }
-
-  // Concrete barriers on the sea side through bends.
-  {
-    const bend = Math.abs(road.hs[i0 + CHUNK_SAMPLES] - road.hs[i0])
-    if (bend > 0.12 && w.barrier.length) {
-      const mats: THREE.Matrix4[] = []
-      for (let d = 0; d < CHUNK_LEN; d += 1.6) {
-        const p = at(i0 + d / STEP, ROAD_HALF + 0.6)
-        mats.push(mat(p.x, p.y, p.z, p.heading + Math.PI / 2, 1))
-      }
-      instance(group, w.barrier, mats, false, "barriers", 0.55)
-    }
   }
 
   return { index, group, colliders: new Float32Array((group.userData.colliders ?? []) as number[]) }
@@ -818,7 +733,7 @@ export class DriveEngine {
   private ctl: DriveControls = { throttle: 0, brake: 0, steer: 0, boost: false, handbrake: false }
   /** A second terrain lookup for things other than the car (it keeps its own walk hint). */
   private ground: TerrainQuery
-  /** Obstacles the car can hit (trunks, poles, barriers), from the chunks around it. */
+  /** Obstacles the car can hit (trunks and poles), from the chunks around it. */
   private colliders = new ColliderSet()
   /** 0..1: headlights fade on at dusk and off at dawn. */
   private headlightsOn = 0
@@ -949,7 +864,8 @@ export class DriveEngine {
         ])),
       }),
     )
-    this.scene.add(this.water)
+    // Countryside: no sea. The mesh is kept (its uniforms are still updated) but never drawn.
+    this.water.visible = false
 
     this.car = buildCoupe(this.carColor)
     this.shadowQuad = contactShadow()
@@ -988,30 +904,13 @@ export class DriveEngine {
   private async init() {
     const time = { value: 0 }
     const startTime = this.time
-    const [sand, grass, bark, asphalt, barrierKits, sky] = await Promise.all([
+    const [sand, grass, asphalt, sky] = await Promise.all([
       loadPbr("coast_sand_01"),
       loadPbr("sparse_grass"),
-      loadPbr("palm_tree_bark"),
       loadPbr("asphalt_02"),
-      loadKit("concrete_road_barrier").catch(() => [[]] as Kit[]),
       this.loadSky(startTime),
     ])
     if (this.disposed) return
-
-    // Palms: three species built in code (palms.ts); bark texture on the trunks.
-    const palmMats = palmMaterials()
-    palmMats.trunk.map = bark.map
-    palmMats.trunk.normalMap = bark.normalMap
-    palmMats.trunk.roughnessMap = bark.arm
-    addWind(palmMats.trunk, time, 12, 0)
-    addWind(palmMats.crown, time, 12, 0.04)
-    const palms: Kit[] = PALM_SPECIES.map((sp, i) => {
-      const g = palmGeometry(sp, 101 + i * 37)
-      return [
-        { geometry: g.trunk, material: palmMats.trunk },
-        { geometry: g.crown, material: palmMats.crown },
-      ]
-    })
 
     // Bushes: two code-built shapes sharing a foliage material.
     const bushMat = treeMaterials(time).canopy
@@ -1039,9 +938,7 @@ export class DriveEngine {
       roadMat,
       markMat,
       groundMat: groundMaterial(sand, grass),
-      palm: palms,
       shrubs: bushes,
-      barrier: barrierKits[0] ?? [],
       grass: { geometry: grassCardGeometry(), material: grassMaterial(time) },
       trees: (() => {
         const mats = treeMaterials(time)
@@ -1053,7 +950,7 @@ export class DriveEngine {
           ]
         })
       })(),
-      extraTextures: [sand.map, sand.normalMap, sand.arm, grass.arm, bark.arm, asphalt.arm],
+      extraTextures: [sand.map, sand.normalMap, sand.arm, grass.arm, asphalt.arm],
       time,
     }
     // The user may already have picked another time while the world loaded.
@@ -1805,7 +1702,7 @@ export class DriveEngine {
     })
     const w = this.world
     if (w) {
-      for (const kit of [...w.palm, w.barrier, ...w.shrubs])
+      for (const kit of w.shrubs)
         for (const part of kit) {
           geometries.add(part.geometry)
           materials.add(part.material)

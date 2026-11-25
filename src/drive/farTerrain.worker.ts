@@ -3,9 +3,9 @@
  * `buildFarTerrain` is imported on the main thread as a fallback when workers fail.
  *
  * The ring is a world-space grid, so it never folds on bends the way road-relative strips
- * do. Each vertex is classified against the nearest road sample: inland vertices close to
- * the road sink out of sight under the near strips, the ocean side drops below the sea, and
- * everything else is the same `hills()` field the near strips blend into.
+ * do. Each vertex is classified against the nearest road sample: vertices close to
+ * the road sink out of sight under the near strips, and everything else is the same
+ * `hills()` field the near strips blend into.
  */
 import { hills, rightOf } from "./road"
 
@@ -44,17 +44,16 @@ export interface FarResult {
 const UV_M = 3.2
 /** Inner grid spacing we aim for, metres. */
 const INNER_SPACING = 10
-/** Inland, the near strips reach ~210 m; below this the ring hides under them. */
+/** Beside the road, the near strips reach ~210 m; below this the ring hides under them. */
 const SINK_TO = 190
 const SINK_BLEND = 212
-const SEA_FLOOR = -9
 /** Trees: none closer to the centre than this needs thinning; none past TREE_MAX_R. */
 // Flat distant tree cards start where the haze hides that they're flat; 3D trees cover nearer.
 const TREE_NEAR = 420
 const TREE_MAX_R = 2700
 /**
  * Cell area × tree budget: cell size = sqrt(TREE_AREA / trees). Tuned (seed 7) so dense
- * woods fill the budget about as the old rejection sampler did; sparse coasts place fewer.
+ * woods fill the budget about as the old rejection sampler did; sparse countryside places fewer.
  */
 const TREE_AREA = 5e5
 
@@ -93,7 +92,7 @@ function vnoise(x: number, z: number) {
 function forestMask(x: number, z: number) {
   const broad = vnoise(x / 1100 + 13.7, z / 1100 - 4.1) * 0.6 + vnoise(x / 520 - 2.3, z / 520 + 8.8) * 0.3
   const edge = vnoise(x / 170 + 5.1, z / 170 + 1.9) * 0.12
-  return smooth(0.02, 0.22, broad + edge)
+  return smooth(0.1, 0.2, broad + edge)
 }
 
 // ---- Road lookup ---------------------------------------------------------------------
@@ -137,7 +136,7 @@ interface Lookup {
 // Results of the last `nearest` call (module scratch: no allocation per query).
 let lkI = -1
 let lkDist = 0
-/** Signed lateral offset: + = ocean side. */
+/** Signed lateral offset: + = right of travel. */
 let lkD = 0
 /** Point lies beyond either end of the known road (distance measured to its straight extension). */
 let lkExtrap = false
@@ -242,9 +241,7 @@ export function buildFarTerrain(req: FarRequest): FarResult {
   const side = n + 1
   const verts = side * side
   const H = new Float64Array(verts)
-  /** Per vertex: distance to the road (Infinity = none) and whether it may grow forest. */
-  const dist = new Float64Array(verts)
-  const ocean = new Uint8Array(verts)
+  /** Per vertex: whether it may grow forest. */
   const woodsOk = new Uint8Array(verts)
 
   for (let j = 0; j <= n; j++) {
@@ -254,19 +251,11 @@ export function buildFarTerrain(req: FarRequest): FarResult {
       const wx = cx + lx, wz = cz + lz
       if (!nearest(L, lx, lz)) {
         H[v] = hills(wx, wz)
-        dist[v] = Infinity
         woodsOk[v] = 1
         continue
       }
       const covered = !lkExtrap && lkI >= req.coveredFrom && lkI <= req.coveredTo
       const y0 = ys[lkI]
-      dist[v] = lkDist
-      if (lkD > 0) {
-        ocean[v] = 1
-        // Beyond the strips the coast still needs a shore: fall from road height to the sea floor.
-        H[v] = covered ? SEA_FLOOR : y0 - 5 + (SEA_FLOOR - (y0 - 5)) * smooth(0, 100, lkDist)
-        continue
-      }
       const hl = hills(wx, wz)
       if (covered) {
         // Sink well under the near strips so the two meshes never fight; rejoin hills just past their edge.
@@ -310,17 +299,12 @@ export function buildFarTerrain(req: FarRequest): FarResult {
       uvs[v * 2 + 1] = wz / UV_M - uvBaseZ
 
       let sand: number, bright: number
-      if (ocean[v]) {
-        sand = 1 // seabed, seen through the water
-        bright = 0.8
-      } else {
-        const d = dist[v]
-        bright = 0.9 + 0.1 * vnoise(wx / 260, wz / 260)
-        const f = woodsOk[v] ? forestMask(wx, wz) * (1 - smooth(70, 90, y)) : 0
-        // Woods: darker, a little mottled, so distant forest reads in the terrain itself.
-        bright += (0.62 * (0.94 + 0.12 * vnoise(wx / 90, wz / 90)) - bright) * f
-        sand = d === Infinity ? 0 : 0.5 * (1 - smooth(4, 9, y)) * (1 - smooth(260, 700, d)) * (1 - f)
-      }
+      bright = 0.9 + 0.1 * vnoise(wx / 260, wz / 260)
+      const f = woodsOk[v] ? forestMask(wx, wz) * (1 - smooth(70, 90, y)) : 0
+      // Woods: darker, a little mottled, so distant forest reads in the terrain itself.
+      bright += (0.62 * (0.94 + 0.12 * vnoise(wx / 90, wz / 90)) - bright) * f
+      // Dry, sun-bleached patches in open meadows (none inside woods).
+      sand = 0.35 * smooth(0.25, 0.6, vnoise(wx / 380 + 3.3, wz / 380 - 7.1)) * (1 - f)
       colors[v * 3] = sand
       colors[v * 3 + 1] = bright
       colors[v * 3 + 2] = 1 - ny
