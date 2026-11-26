@@ -3,7 +3,7 @@
 use crate::lyrics::matching::{clean_query_artist, clean_query_title};
 use crate::models::SearchResult;
 use crate::session::SessionState;
-use crate::ytmusic::parse::upscale_thumbnail_url;
+use crate::ytmusic::parse::{parse_artist_refs_from_runs, upscale_thumbnail_url};
 use crate::ytmusic::{attach_youtube_auth, web_remix_context, with_ytm_headers, HTTP_CLIENT};
 use serde::Deserialize;
 use tauri::State;
@@ -42,13 +42,17 @@ fn parse_radio_item(item: &serde_json::Value) -> Option<SearchResult> {
     let r = item.get("playlistPanelVideoRenderer")?;
     let vid = r.get("videoId").and_then(|v| v.as_str()).filter(|v| !v.is_empty())?;
     let title = r.pointer("/title/runs/0/text").and_then(|v| v.as_str()).unwrap_or("Unknown Title");
-    let artist = r
+    let byline_runs = r
         .pointer("/longBylineText/runs")
         .or_else(|| r.pointer("/shortBylineText/runs"))
-        .and_then(|v| v.as_array())
+        .and_then(|v| v.as_array());
+    let artist = byline_runs
         .map(|runs| runs.iter().filter_map(|run| run.get("text").and_then(|t| t.as_str())).collect::<String>())
         .filter(|a| !a.is_empty())
         .unwrap_or_else(|| "Artist".to_string());
+    let artists = byline_runs
+        .map(|runs| parse_artist_refs_from_runs(runs))
+        .unwrap_or_default();
     let thumb = r
         .pointer("/thumbnail/thumbnails")
         .and_then(|arr| arr.as_array())
@@ -65,6 +69,7 @@ fn parse_radio_item(item: &serde_json::Value) -> Option<SearchResult> {
         video_id: vid.to_string(),
         title: title.to_string(),
         artist,
+        artists,
         thumbnail_url,
         playlist_id: None,
         item_type: Some("song".to_string()),

@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPlaybackClock } from "./playbackClock";
-import type {
-  YouTubePlayerInstance,
-  YouTubePlaybackState,
-} from "../components/HiddenYouTubePlayer";
+import type { DeckError, DeckSlot, DeckStats, PlaybackDeck, PlaybackState } from "./engine/deck";
 import { getAutoplayTracks, recordPlayback, type SearchResult } from "./search";
 import { cacheTrack, cacheTracks } from "./trackCache";
 import {
@@ -42,28 +39,49 @@ import {
   sleepRemainingMs,
   type SleepTimer,
 } from "./playbackExtras";
+import {
+  crossfadeStep,
+  crossfadeVolumes,
+  FADE_STEP_MS,
+  fadeProgress,
+  fadeSpan,
+  HANDOFF_AT,
+  HANDOFF_GUARD_S,
+  secondsLeft,
+  useCrossfadeSeconds,
+} from "./crossfade";
 import { useTrayBridge } from "./useTrayBridge";
 import { useImmersiveBridge } from "./useImmersiveBridge";
 import { usePlayerSkin } from "./usePlayerSkin";
 
-const PLAYER_ERROR_MESSAGES: Record<number, string> = {
-  [-1]: "Could not load YouTube Player API.",
-  2: "Invalid video track ID.",
-  5: "YouTube HTML5 player error.",
-  100: "Track is unavailable or private.",
-  101: "Embedded playback blocked by track owner.",
-  150: "Embedded playback blocked by track owner.",
-  153: "Embedded player origin error.",
-};
-
-/** Errors that mean this song can never play here (removed, private, or not allowed in an
- *  embedded player); playback moves on to the next song instead of stopping. */
-const UNPLAYABLE_ERRORS = new Set([2, 100, 101, 150, 153]);
 /** Songs skipped in a row before giving up, so a queue of only blocked songs doesn't spin. */
 const MAX_SKIPS_IN_A_ROW = 5;
 
 /** Seconds of playback before a song counts as played in YouTube Music history. */
 const RECORD_AFTER_SECONDS = 10;
+
+/** A crossfade from the song playing to the next, on the idle player (`slot`). */
+interface CrossfadeTransition {
+  /** "arming": the next song is loading silently; "fading": both are playing. */
+  phase: "arming" | "fading";
+  slot: 0 | 1;
+  /** The song fading out, and the one coming in. */
+  after: string;
+  nextTrack: SearchResult;
+  /** The incoming song is buffered at its start, paused, ready to sound at once. */
+  ready: boolean;
+  /** The incoming song has become the current one (halfway through the fade). */
+  handedOff: boolean;
+  seconds: number;
+  timer?: number;
+}
+
+/** The active deck's numbers for the Now Playing stats panel, and which deck that is. */
+export interface DeckStatsSnapshot {
+  deck: DeckStats | null;
+  deckLabel: "A" | "B" | null;
+  crossfading: boolean;
+}
 
 interface PlaybackOptions {
   showToast: (message: string) => void;
@@ -91,7 +109,7 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
   const [initialPlaybackSeconds, setInitialPlaybackSeconds] = useState(0);
   const [autoPlayOnMount, setAutoPlayOnMount] = useState(false);
   const [isPlayerReady, setIsPlayerReady] = useState(false);
-  const [playerState, setPlayerState] = useState<YouTubePlaybackState>("unstarted");
+  const [playerState, setPlayerState] = useState<PlaybackState>("unstarted");
   // The position lives outside React state so App doesn't re-render 10 times a second.
   const [clock] = useState(createPlaybackClock);
   const [duration, setDuration] = useState(0);
@@ -105,13 +123,13 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
   const [sleepTimer, setSleepTimerState] = useState<SleepTimer>(null);
   const sleepTimerRef = useRef<SleepTimer>(null);
 
-  const playerRef = useRef<YouTubePlayerInstance | null>(null);
+  const playerRef = useRef<PlaybackDeck | null>(null);
   const isScrubbingRef = useRef(false);
   // Same value as the clock, under the name the callbacks below already use.
   const currentTimeRef = useMemo(() => ({ get current() { return clock.get(); } }), [clock]);
   const setCurrentTime = clock.set;
   const durationRef = useRef(0);
-  const playerStateRef = useRef<YouTubePlaybackState>("unstarted");
+  const playerStateRef = useRef<PlaybackState>("unstarted");
   const volumeRef = useRef(volume);
   const isMutedRef = useRef(isMuted);
   const playbackModesRef = useRef(playbackModes);
@@ -119,6 +137,32 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
   const recordedTrackIdRef = useRef<string | null>(null);
   const shouldAutoPlayRef = useRef(false);
   const queueFilledForRef = useRef<string | null>(null);
+
+  // Crossfade (crossfade.ts has the rules): two hidden players. The active one is playerRef and
+  // drives everything on screen; the other buffers the next song, then the two swap roles.
+  const [activeSlot, setActiveSlot] = useState<0 | 1>(0);
+  const activeSlotRef = useRef<0 | 1>(0);
+  const slotPlayersRef = useRef<[PlaybackDeck | null, PlaybackDeck | null]>([null, null]);
+  /** The song the idle slot has loaded, so its videoId prop matches it (and nothing reloads). */
+  const [standbyVideoIds, setStandbyVideoIds] = useState<[string | undefined, string | undefined]>([undefined, undefined]);
+  const transitionRef = useRef<CrossfadeTransition | null>(null);
+  /** A song whose next one failed to load on the idle player: it plays out normally. */
+  const noFadeAfterRef = useRef<string | null>(null);
+  /**
+   * Stops a transition: the idle player is silenced and paused, and the active one goes back to
+   * full volume. Before the halfway handover that keeps the song that was playing; after it, the
+   * new one.
+   */
+  const cancelCrossfade = useCallback(() => {
+    const transition = transitionRef.current;
+    if (!transition) return;
+    transitionRef.current = null;
+    if (transition.timer) window.clearInterval(transition.timer);
+    const idle = slotPlayersRef.current[activeSlotRef.current === 0 ? 1 : 0];
+    idle?.pause();
+    idle?.setVolume(0);
+    playerRef.current?.setVolume(volumeRef.current);
+  }, []);
 
   // Latest values for callbacks that are handed to memoized children and native bridges.
   const onPlaybackRecordedRef = useRef(onPlaybackRecorded);
@@ -316,12 +360,12 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     const v = Math.max(0, Math.min(100, Math.round(next)));
     setVolume(v);
     volumeRef.current = v;
-    playerRef.current?.setVolume?.(v);
+    playerRef.current?.setVolume(v);
     if (v === 0 && !isMutedRef.current) {
-      playerRef.current?.mute?.();
+      playerRef.current?.setMuted(true);
       setIsMuted(true);
     } else if (v > 0 && isMutedRef.current) {
-      playerRef.current?.unMute?.();
+      playerRef.current?.setMuted(false);
       setIsMuted(false);
     }
     if (v > 0) saveVolume(v);
@@ -330,16 +374,21 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
   const toggleMute = useCallback(() => {
     const player = playerRef.current;
     if (!player) return;
+    // Mid-fade both songs are audible, so both follow the mute.
+    const fading = transitionRef.current?.phase === "fading";
+    const idle = fading ? slotPlayersRef.current[activeSlotRef.current === 0 ? 1 : 0] : null;
     if (isMutedRef.current) {
-      player.unMute?.();
+      player.setMuted(false);
+      idle?.setMuted(false);
       setIsMuted(false);
       if (volumeRef.current === 0) {
         setVolume(100);
         volumeRef.current = 100;
-        player.setVolume?.(100);
+        player.setVolume(100);
       }
     } else {
-      player.mute?.();
+      player.setMuted(true);
+      idle?.setMuted(true);
       setIsMuted(true);
     }
   }, []);
@@ -350,7 +399,7 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     playbackRateRef.current = rate;
     setPlaybackRate(rate);
     savePlaybackRate(rate);
-    playerRef.current?.setPlaybackRate?.(rate);
+    playerRef.current?.setRate(rate);
   }, []);
 
   // Sleep timer
@@ -372,43 +421,46 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
   const seekTo = useCallback(
     (seconds: number) => {
       if (!playerRef.current) return;
+      cancelCrossfade();
       const total = durationRef.current;
       const target = Math.max(0, Math.min(total > 0 ? total : seconds, seconds));
-      playerRef.current.seekTo(target, true);
+      playerRef.current.seek(target);
       setCurrentTime(target);
       persistCurrentPosition(target);
     },
-    [persistCurrentPosition],
+    [persistCurrentPosition, cancelCrossfade],
   );
 
   const seekRelative = useCallback(
     (deltaSeconds: number) => {
       if (!playerRef.current || !isPlayerReady) return;
+      cancelCrossfade();
       const total = durationRef.current;
       const target = Math.max(
         0,
         Math.min(total > 0 ? total : 999999, currentTimeRef.current + deltaSeconds),
       );
-      playerRef.current.seekTo(target, true);
+      playerRef.current.seek(target);
       setCurrentTime(target);
       persistCurrentPosition(target);
     },
-    [isPlayerReady, persistCurrentPosition],
+    [isPlayerReady, persistCurrentPosition, cancelCrossfade],
   );
 
   const togglePlayPause = useCallback(() => {
     if (!playerRef.current || !isPlayerReady) return;
+    cancelCrossfade();
     if (playerStateRef.current === "playing") {
-      playerRef.current.pauseVideo();
+      playerRef.current.pause();
       persistCurrentPosition(currentTimeRef.current);
     } else {
       if (playerStateRef.current === "ended") {
-        playerRef.current.seekTo(0, true);
+        playerRef.current.seek(0);
         setCurrentTime(0);
       }
-      playerRef.current.playVideo();
+      playerRef.current.play();
     }
-  }, [isPlayerReady, persistCurrentPosition]);
+  }, [isPlayerReady, persistCurrentPosition, cancelCrossfade]);
 
   /** Scrubber drag: the slider moves freely and the player seeks once on release. */
   const beginScrub = useCallback(() => {
@@ -418,17 +470,19 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
   const scrubTo = useCallback((seconds: number) => {
     setCurrentTime(seconds);
     if (!isScrubbingRef.current) {
-      playerRef.current?.seekTo(seconds, true);
+      cancelCrossfade();
+      playerRef.current?.seek(seconds);
     }
-  }, []);
+  }, [cancelCrossfade]);
 
   const endScrub = useCallback(
     (seconds: number) => {
       isScrubbingRef.current = false;
-      playerRef.current?.seekTo(seconds, true);
+      cancelCrossfade();
+      playerRef.current?.seek(seconds);
       persistCurrentPosition(seconds);
     },
-    [persistCurrentPosition],
+    [persistCurrentPosition, cancelCrossfade],
   );
 
   const recordIfNeeded = useCallback((track: SearchResult | null) => {
@@ -444,6 +498,7 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
       console.warn("Attempted to play track without valid videoId:", track);
       return;
     }
+    cancelCrossfade();
     recordedTrackIdRef.current = null;
     cacheTrack(track);
     setCurrentTime(0);
@@ -451,14 +506,8 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     setPlaybackError(null);
     setPlayerState("buffering");
 
-    const player = playerRef.current;
-    if (player) {
-      if (typeof player.loadVideoById === "function") {
-        player.loadVideoById({ videoId: track.videoId, startSeconds: 0 });
-      }
-      player.playVideo?.();
-    }
-  }, []);
+    playerRef.current?.load({ videoId: track.videoId }, { autoplay: true });
+  }, [cancelCrossfade]);
 
   /** Plays a song and makes it current in the queue. */
   const startTrack = useCallback(
@@ -560,7 +609,7 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
         setCurrentTime(0);
         setDuration(0);
         setPlayerState("paused");
-        playerRef.current?.cueVideoById?.({ videoId: nextTrack.videoId, startSeconds: 0 });
+        playerRef.current?.load({ videoId: nextTrack.videoId }, { autoplay: false });
       }
       commitSession(() => nextSession);
       showToast("Sleep timer: stopped after the song.");
@@ -568,9 +617,9 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     }
 
     if (repeat === "one" && current.currentTrack && playerRef.current) {
-      playerRef.current.seekTo(0, true);
+      playerRef.current.seek(0);
       setCurrentTime(0);
-      playerRef.current.playVideo();
+      playerRef.current.play();
       return;
     }
 
@@ -653,7 +702,7 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
 
   const handlePreviousTrack = useCallback(() => {
     if (currentTimeRef.current > 3) {
-      playerRef.current?.seekTo(0, true);
+      playerRef.current?.seek(0);
       setCurrentTime(0);
       return;
     }
@@ -665,7 +714,7 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
       return;
     }
 
-    playerRef.current?.seekTo(0, true);
+    playerRef.current?.seek(0);
     setCurrentTime(0);
   }, [startTrack]);
 
@@ -675,31 +724,35 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     handleNextTrackRef.current = handleNextTrack;
   }, [handleTrackCompleted, handleNextTrack]);
 
-  const handlePlayerReady = useCallback((player: YouTubePlayerInstance) => {
+  const handlePlayerReady = useCallback((player: PlaybackDeck) => {
     playerRef.current = player;
     setIsPlayerReady(true);
-    player.setVolume?.(volumeRef.current);
-    if (playbackRateRef.current !== 1) player.setPlaybackRate?.(playbackRateRef.current);
-    const initialDuration = player.getDuration();
+    player.setVolume(volumeRef.current);
+    if (playbackRateRef.current !== 1) player.setRate(playbackRateRef.current);
+    const initialDuration = player.duration();
     if (initialDuration > 0) {
       setDuration(initialDuration);
     }
     if (shouldAutoPlayRef.current) {
-      player.playVideo();
+      player.play();
       shouldAutoPlayRef.current = false;
     }
   }, []);
 
   const skipsInARowRef = useRef(0);
+  /** Set below: true when an "ended" was taken by a crossfade's handover. */
+  const crossfadeEndedRef = useRef<() => boolean>(() => false);
   const handlePlayerStateChange = useCallback(
-    (state: YouTubePlaybackState) => {
+    (state: PlaybackState) => {
       setPlayerState(state);
       if (state === "playing") {
         skipsInARowRef.current = 0;
         setPlaybackError(null);
         // YouTube resets the speed when it loads a song; put the chosen one back.
-        if (playbackRateRef.current !== 1) playerRef.current?.setPlaybackRate?.(playbackRateRef.current);
+        if (playbackRateRef.current !== 1) playerRef.current?.setRate(playbackRateRef.current);
       } else if (state === "ended") {
+        // Mid-crossfade the next song is already playing: it takes over now.
+        if (crossfadeEndedRef.current()) return;
         recordIfNeeded(sessionRef.current.currentTrack);
         void handleTrackCompletedRef.current();
       }
@@ -708,11 +761,10 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
   );
 
   const handlePlayerError = useCallback(
-    (code: number) => {
+    (error: DeckError) => {
       setPlayerState("paused");
-      const message = PLAYER_ERROR_MESSAGES[code] ?? `Playback failed with error code ${code}.`;
-      setPlaybackError(message);
-      if (UNPLAYABLE_ERRORS.has(code) && skipsInARowRef.current < MAX_SKIPS_IN_A_ROW) {
+      setPlaybackError(error.message);
+      if (error.unplayable && skipsInARowRef.current < MAX_SKIPS_IN_A_ROW) {
         skipsInARowRef.current += 1;
         const title = sessionRef.current.currentTrack?.title;
         showToast(title ? `Skipped “${title}”: it can't be played here.` : "Skipped a song that can't be played here.");
@@ -742,6 +794,239 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     [commitSession],
   );
 
+  /** Loads the next song on the idle player, muted, and starts it so it buffers (rule 1). */
+  const bufferNext = useCallback((player: PlaybackDeck, videoId: string) => {
+    player.setMuted(true);
+    player.setVolume(0);
+    player.load({ videoId }, { autoplay: true });
+  }, []);
+
+  /** The idle player's events: they only matter while it's getting the next song ready. */
+  const onIdleState = useCallback((slot: 0 | 1, state: PlaybackState, player: PlaybackDeck | null) => {
+    const transition = transitionRef.current;
+    if (!transition || transition.slot !== slot || transition.phase !== "arming" || transition.ready) return;
+    if (state === "playing" && player) {
+      // It has started, so its start is buffered: park it there until the fade.
+      player.pause();
+      player.seek(0);
+      transition.ready = true;
+    }
+  }, []);
+
+  const onIdleError = useCallback(
+    (slot: 0 | 1) => {
+      const transition = transitionRef.current;
+      if (!transition || transition.slot !== slot || transition.handedOff) return;
+      // The next song can't play here: let this one end normally (the usual skip follows).
+      noFadeAfterRef.current = transition.after;
+      cancelCrossfade();
+    },
+    [cancelCrossfade],
+  );
+
+  // Each hidden player reports to the playback handlers only while it's the active one.
+  const slotHandlers = useMemo(
+    () =>
+      ([0, 1] as const).map((slot) => ({
+        onReady: (player: PlaybackDeck) => {
+          slotPlayersRef.current[slot] = player;
+          if (slot === activeSlotRef.current) {
+            handlePlayerReady(player);
+            return;
+          }
+          player.setMuted(true);
+          player.setVolume(0);
+          // Created for a transition: start buffering once the player has cued its prop
+          // (it does that straight after this callback).
+          const transition = transitionRef.current;
+          if (transition?.slot === slot && transition.phase === "arming") {
+            window.setTimeout(() => {
+              if (transitionRef.current === transition) bufferNext(player, transition.nextTrack.videoId!);
+            }, 0);
+          }
+        },
+        onStateChange: (state: PlaybackState) => {
+          if (slot === activeSlotRef.current) handlePlayerStateChange(state);
+          else onIdleState(slot, state, slotPlayersRef.current[slot]);
+        },
+        onError: (error: DeckError) => {
+          if (slot === activeSlotRef.current) handlePlayerError(error);
+          else onIdleError(slot);
+        },
+        onTrackInfo: (info: { videoId: string; title?: string; artist?: string }) => {
+          if (slot === activeSlotRef.current) handleTrackChangeFromIframe(info);
+        },
+      })),
+    [handlePlayerReady, handlePlayerStateChange, handlePlayerError, handleTrackChangeFromIframe, bufferNext, onIdleState, onIdleError],
+  );
+
+  /**
+   * Halfway through the fade (rule 4): the incoming song becomes the current one, and the
+   * player it's on becomes the one the clock, controls and events follow.
+   */
+  const handOff = useCallback(
+    (transition: CrossfadeTransition) => {
+      if (transition.handedOff) return;
+      const incoming = slotPlayersRef.current[transition.slot];
+      if (!incoming) return;
+      transition.handedOff = true;
+      const { nextTrack } = transition;
+      recordIfNeeded(sessionRef.current.currentTrack);
+
+      const outgoingSlot = activeSlotRef.current;
+      activeSlotRef.current = transition.slot;
+      setActiveSlot(transition.slot);
+      playerRef.current = incoming;
+      // The outgoing player keeps the song it's playing as its prop, so it never reloads one.
+      setStandbyVideoIds((ids) => (outgoingSlot === 0 ? [transition.after, ids[1]] : [ids[0], transition.after]));
+
+      recordedTrackIdRef.current = null;
+      cacheTrack(nextTrack);
+      setCurrentTime(incoming.position() || 0);
+      setDuration(incoming.duration() || 0);
+      setPlaybackError(null);
+      setPlayerState("playing");
+      setAutoPlayOnMount(true);
+      const { repeat } = playbackModesRef.current;
+      const advanced = advanceOnTrackEnd(sessionRef.current, { repeat });
+      // The queue was edited mid-fade so the next song isn't the one fading in: it still
+      // becomes the current song.
+      commitSession(() =>
+        advanced.nextTrack?.videoId === nextTrack.videoId
+          ? advanced.session
+          : playTrackImmediate(sessionRef.current, nextTrack),
+      );
+    },
+    [commitSession, recordIfNeeded, setCurrentTime],
+  );
+
+  /** The next song is ready and the current one has reached its fade: start the blend (rules 2, 3). */
+  const startFade = useCallback(
+    (transition: CrossfadeTransition) => {
+      const outgoing = playerRef.current;
+      const incoming = slotPlayersRef.current[transition.slot];
+      if (!outgoing || !incoming || outgoing === incoming) return;
+
+      incoming.setVolume(0);
+      incoming.setMuted(isMutedRef.current);
+      if (playbackRateRef.current !== 1) incoming.setRate(playbackRateRef.current);
+      incoming.play();
+      transition.phase = "fading";
+
+      const tick = () => {
+        if (transitionRef.current !== transition) return;
+        const rate = playbackRateRef.current;
+        const span = fadeSpan(transition.seconds, incoming.duration() / (rate > 0 ? rate : 1));
+        const progress = fadeProgress({
+          incomingPlayed: incoming.position() / (rate > 0 ? rate : 1),
+          outgoingLeft: secondsLeft(outgoing.position(), outgoing.duration(), rate),
+          span,
+        });
+        const volumes = crossfadeVolumes(progress, volumeRef.current);
+        outgoing.setVolume(volumes.outgoing);
+        incoming.setVolume(volumes.incoming);
+
+        const outgoingLeft = secondsLeft(outgoing.position(), outgoing.duration(), rate);
+        if (!transition.handedOff && (progress >= HANDOFF_AT || outgoingLeft <= HANDOFF_GUARD_S)) {
+          handOff(transition);
+        }
+        if (progress >= 1) {
+          handOff(transition);
+          window.clearInterval(transition.timer);
+          transitionRef.current = null;
+          outgoing.pause();
+          outgoing.setVolume(0);
+          incoming.setVolume(volumeRef.current);
+        }
+      };
+      transition.timer = window.setInterval(tick, FADE_STEP_MS);
+    },
+    [handOff],
+  );
+
+  // The outgoing song ending by itself before the handover: the incoming one takes over now.
+  useEffect(() => {
+    crossfadeEndedRef.current = () => {
+      const transition = transitionRef.current;
+      if (transition?.phase !== "fading" || transition.handedOff) return false;
+      handOff(transition);
+      return true;
+    };
+  }, [handOff]);
+
+  // Near the end of a song: get the next one ready on the idle player, then fade into it once
+  // it is. Left to play out normally with repeat-one, "stop after this song", or when the next
+  // song isn't known yet (autoplay still to fetch).
+  const crossfadeSeconds = useCrossfadeSeconds();
+  useEffect(() => {
+    const currentId = currentTrack?.videoId;
+    if (crossfadeSeconds === 0 || playerState !== "playing" || !currentId) return;
+    const check = () => {
+      const transition = transitionRef.current;
+      if (transition?.phase === "fading" || isScrubbingRef.current) return;
+      const step = crossfadeStep({
+        fade: crossfadeSeconds,
+        position: clock.get(),
+        duration: durationRef.current,
+        rate: playbackRateRef.current,
+      });
+      if (step === "wait" || noFadeAfterRef.current === currentId) return;
+      const { repeat } = playbackModesRef.current;
+      if (repeat === "one" || sleepTimerRef.current?.kind === "endOfTrack") return;
+      // The sleep timer is about to fade playback out: no new song fading in over that.
+      const sleepLeft = sleepTimerRef.current ? sleepRemainingMs(sleepTimerRef.current) : null;
+      if (sleepLeft !== null && sleepLeft < 60_000) return;
+      const { nextTrack } = advanceOnTrackEnd(sessionRef.current, { repeat });
+      const nextId = nextTrack?.videoId;
+      if (!nextTrack || !nextId || nextId === currentId) return;
+
+      if (transition?.after !== currentId || transition.nextTrack.videoId !== nextId) {
+        cancelCrossfade();
+        const slot: 0 | 1 = activeSlotRef.current === 0 ? 1 : 0;
+        const armed: CrossfadeTransition = {
+          phase: "arming",
+          slot,
+          after: currentId,
+          nextTrack,
+          ready: false,
+          handedOff: false,
+          seconds: crossfadeSeconds,
+        };
+        transitionRef.current = armed;
+        const player = slotPlayersRef.current[slot];
+        if (player) bufferNext(player, nextId);
+        // Creates the idle player the first time (onReady then buffers), or just matches its
+        // prop to what it was told to load.
+        setStandbyVideoIds((ids) => (slot === 0 ? [nextId, ids[1]] : [ids[0], nextId]));
+        return;
+      }
+      // Not ready yet at the fade point: keep waiting. If the song ends first it moves on as
+      // it would without crossfade.
+      if (step === "fade" && transition.ready) startFade(transition);
+    };
+    check();
+    return clock.subscribe(check);
+  }, [clock, crossfadeSeconds, currentTrack, playerState, startFade, cancelCrossfade, bufferNext]);
+
+  // A new song (picked, skipped to, or faded into) is allowed a crossfade again.
+  useEffect(() => {
+    if (noFadeAfterRef.current && noFadeAfterRef.current !== currentTrack?.videoId) noFadeAfterRef.current = null;
+  }, [currentTrack]);
+
+  // A fade still running when the app closes this hook down.
+  useEffect(() => () => cancelCrossfade(), [cancelCrossfade]);
+
+  const deckSlots = ([0, 1] as const).map((slot): DeckSlot => {
+    const videoId = slot === activeSlot ? currentTrack?.videoId : standbyVideoIds[slot];
+    return {
+      key: `deck-${slot}`,
+      track: videoId ? { videoId } : undefined,
+      initialSeconds: slot === activeSlot ? initialPlaybackSeconds : 0,
+      autoplay: slot === activeSlot ? autoPlayOnMount : false,
+      ...slotHandlers[slot],
+    };
+  });
+
   // Progress sync: 100 ms while playing keeps lyrics tight, 250 ms otherwise.
   useEffect(() => {
     if (!isPlayerReady || !currentTrack) return;
@@ -750,9 +1035,9 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
       const player = playerRef.current;
       if (!player) return;
       if (!isScrubbingRef.current) {
-        setCurrentTime(player.getCurrentTime());
+        setCurrentTime(player.position());
       }
-      const currentDuration = player.getDuration();
+      const currentDuration = player.duration();
       if (currentDuration > 0) {
         setDuration(currentDuration);
       }
@@ -781,7 +1066,7 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     const restoreVolume = () => {
       if (!fading) return;
       fading = false;
-      playerRef.current?.setVolume?.(volumeRef.current);
+      playerRef.current?.setVolume(volumeRef.current);
     };
     const tick = () => {
       const remaining = sleepRemainingMs(sleepTimer);
@@ -789,7 +1074,8 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
       const playing = playerStateRef.current === "playing" || playerStateRef.current === "buffering";
       if (remaining <= 0) {
         if (playing) {
-          playerRef.current?.pauseVideo();
+          cancelCrossfade();
+          playerRef.current?.pause();
           persistCurrentPosition(currentTimeRef.current);
         }
         restoreVolume();
@@ -801,7 +1087,7 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
       const gain = sleepFadeGain(remaining);
       if (gain < 1 && playing) {
         fading = true;
-        playerRef.current?.setVolume?.(Math.round(volumeRef.current * gain));
+        playerRef.current?.setVolume(Math.round(volumeRef.current * gain));
       }
     };
     tick();
@@ -810,7 +1096,7 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
       window.clearInterval(timer);
       restoreVolume();
     };
-  }, [sleepTimer, persistCurrentPosition, currentTimeRef, showToast]);
+  }, [sleepTimer, persistCurrentPosition, currentTimeRef, showToast, cancelCrossfade]);
 
   useDiscordPresence({ track: currentTrack, playerState, clock, duration, rate: playbackRate });
   useScrobbler({ track: currentTrack, playerState, clock, duration });
@@ -858,6 +1144,16 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     [commitSession],
   );
 
+  /** The stats panel polls this once a second while it is open; it reads the active deck only. */
+  const getDeckStats = useCallback((): DeckStatsSnapshot => {
+    const deck = playerRef.current?.stats?.() ?? null;
+    return {
+      deck,
+      deckLabel: deck ? (activeSlotRef.current === 0 ? "A" : "B") : null,
+      crossfading: transitionRef.current?.phase === "fading",
+    };
+  }, []);
+
   return {
     session,
     currentTrack,
@@ -904,10 +1200,8 @@ export function usePlayback({ showToast, onPlaybackRecorded, playlistTracks, can
     startSleepTimer,
     sleepAtEndOfTrack,
     cancelSleepTimer,
-    // hidden player
-    handlePlayerReady,
-    handlePlayerStateChange,
-    handlePlayerError,
-    handleTrackChangeFromIframe,
+    // playback decks (two, for crossfade)
+    deckSlots,
+    getDeckStats,
   };
 }

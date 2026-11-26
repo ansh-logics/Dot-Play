@@ -12,14 +12,14 @@ import {
   VolumeX,
 } from "lucide-react";
 import { ArtworkImage } from "../ArtworkImage";
+import { ArtistLinks } from "../ArtistLinks";
 import { LikeButton } from "../LikeButton";
 import { MiniVinyl } from "../vinyl/MiniVinyl";
-import type { YouTubePlaybackState } from "../HiddenYouTubePlayer";
+import type { PlaybackState } from "../../lib/engine/deck";
 import { cleanDisplayTitle } from "../../lib/displayText";
 import { formatTime } from "../../lib/formatTime";
 import { useArtwork } from "../../lib/imagePipeline";
 import type { SearchResult } from "../../lib/search";
-import { useArtworkPalette } from "../../lib/useArtworkPalette";
 import { openImmersive } from "../../lib/immersive";
 import { isTauriEnvironment } from "../../lib/search";
 import { usePlayerSkin } from "../../lib/usePlayerSkin";
@@ -28,7 +28,7 @@ interface SidebarPlayerProps {
   track: SearchResult;
   isQueueOpen: boolean;
   isPlayerReady: boolean;
-  playerState: YouTubePlaybackState;
+  playerState: PlaybackState;
   currentTime: number;
   duration: number;
   playbackError: string | null;
@@ -50,7 +50,7 @@ interface SidebarPlayerProps {
   children: React.ReactNode;
 }
 
-function playButtonLabel(isPlayerReady: boolean, state: YouTubePlaybackState): string {
+function playButtonLabel(isPlayerReady: boolean, state: PlaybackState): string {
   if (!isPlayerReady) return "Loading...";
   if (state === "buffering") return "Buffering...";
   if (state === "playing") return "Pause";
@@ -58,7 +58,7 @@ function playButtonLabel(isPlayerReady: boolean, state: YouTubePlaybackState): s
   return "Play";
 }
 
-/** Now-playing card at the bottom of the sidebar, tinted from the artwork. */
+/** Now-playing card at the bottom of the sidebar: glass over its own blurred artwork. */
 export function SidebarPlayer({
   track,
   isQueueOpen,
@@ -82,24 +82,28 @@ export function SidebarPlayer({
   onContextMenu,
   children,
 }: SidebarPlayerProps) {
-  // Same URL the artwork below resolves to, so the tint matches the pixels on screen.
+  // The artwork, also used blurred behind the glass.
   const { currentUrl: artUrl } = useArtwork({
     sourceUrl: track.thumbnailUrl ?? "",
     videoId: track.videoId,
     variant: "hero",
     priority: true,
   });
-  const palette = useArtworkPalette(artUrl);
   // The Vinyl player style carries over to the card: the artwork becomes a turning record.
   const isVinyl = usePlayerSkin() === "vinyl";
   const isBusy = playerState === "buffering" || !isPlayerReady;
+  const artworkUrl = artUrl || track.thumbnailUrl;
 
   return (
     <div
       className={`sidebar-player-card ${isQueueOpen ? "queue-mode" : "hero-mode"}`}
-      style={palette ? ({ "--tint": palette.colors[0] } as React.CSSProperties) : undefined}
       aria-label="Audio Player"
     >
+      {artworkUrl ? (
+        <div className="sidebar-player-ambient" aria-hidden="true">
+          <img src={artworkUrl} alt="" draggable={false} />
+        </div>
+      ) : null}
       <div
         className={`sidebar-player-header ${isQueueOpen ? "queue-view" : "hero-view"}`}
         onContextMenu={onContextMenu}
@@ -177,7 +181,7 @@ export function SidebarPlayer({
               className={`sidebar-player-artist ${playbackError ? "error" : ""}`}
               title={playbackError || track.artist}
             >
-              {playbackError || track.artist}
+              {playbackError || <ArtistLinks artist={track.artist} artists={track.artists} />}
             </span>
           </div>
           <LikeButton
@@ -203,6 +207,8 @@ export function SidebarPlayer({
           onPointerUp={(event) => onEndScrub(Number(event.currentTarget.value))}
           disabled={!isPlayerReady || duration <= 0}
           aria-label="Seek track"
+          // Played fraction, for the filled part of the track behind the knob.
+          style={{ "--played": duration > 0 ? Math.min(1, Math.max(0, currentTime / duration)) : 0 } as React.CSSProperties}
         />
         <div className="sidebar-player-times">
           <span>{formatTime(currentTime)}</span>

@@ -63,13 +63,15 @@
 
 .np-backdrop-colour {
   position: absolute;
-  inset: -12%;
+  inset: -25%;
   opacity: 0;
   background:
-    radial-gradient(60% 55% at 18% 12%, var(--np-c0) 0%, transparent 100%),
-    radial-gradient(50% 50% at 46% 58%, var(--np-c1) 0%, transparent 100%),
-    radial-gradient(55% 60% at 88% 26%, var(--np-c2) 0%, transparent 100%),
-    radial-gradient(60% 50% at 80% 96%, var(--np-c3) 0%, transparent 100%),
+    radial-gradient(75% 70% at 12% 18%, var(--np-c0) 0%, transparent 70%),
+    radial-gradient(70% 75% at 88% 12%, var(--np-c1) 0%, transparent 70%),
+    radial-gradient(85% 70% at 50% 55%, var(--np-c2) 0%, transparent 72%),
+    radial-gradient(70% 70% at 10% 92%, var(--np-c3) 0%, transparent 70%),
+    radial-gradient(75% 65% at 92% 88%, var(--np-c0) 0%, transparent 70%),
+    radial-gradient(60% 60% at 55% 8%, var(--np-c3) 0%, transparent 70%),
     var(--np-base);
   transition:
     opacity 0.8s ease,
@@ -78,15 +80,16 @@
     --np-c2 1.4s ease,
     --np-c3 1.4s ease,
     --np-base 1.4s ease;
-  animation: np-drift 48s ease-in-out infinite alternate;
+  animation: np-drift 36s ease-in-out infinite alternate;
 }
 
 .np-backdrop-colour.is-ready { opacity: 1; }
 
 @keyframes np-drift {
-  0%   { transform: translate3d(0, 0, 0) scale(1); }
-  50%  { transform: translate3d(3%, 2%, 0) scale(1.05); }
-  100% { transform: translate3d(-2%, 4%, 0) scale(0.98); }
+  0%   { transform: translate3d(0, 0, 0) scale(1) rotate(0deg); }
+  33%  { transform: translate3d(3%, -2%, 0) scale(1.08) rotate(4deg); }
+  66%  { transform: translate3d(-3%, 3%, 0) scale(1.04) rotate(-3deg); }
+  100% { transform: translate3d(2%, 2%, 0) scale(1.1) rotate(2deg); }
 }
 
 .np-vignette {
@@ -610,6 +613,27 @@
   font-variant-numeric: tabular-nums;
   color: var(--np-text-dim);
   margin-top: -2px;
+}
+
+/* The right-hand time flips between the length and the time left: plain text, no button look. */
+.time-toggle {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.time-toggle:hover { color: var(--np-text, currentColor); }
+
+.time-toggle:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.5);
+  outline-offset: 2px;
+  border-radius: 3px;
 }
 
 .np-deck-row {
@@ -1519,15 +1543,6 @@
   flex-direction: column;
   gap: 2px;
   border-radius: 16px;
-  /* The same frosted glass as the app's right-click menu (context-menu.css). */
-  background: linear-gradient(
-    145deg,
-    rgba(255, 255, 255, 0.09) 0%,
-    rgba(255, 255, 255, 0.02) 35%,
-    rgba(14, 14, 18, 0.65) 100%
-  ), rgba(16, 16, 20, 0.72);
-  backdrop-filter: blur(28px) saturate(190%) contrast(105%);
-  -webkit-backdrop-filter: blur(28px) saturate(190%) contrast(105%);
   border: 1px solid rgba(255, 255, 255, 0.16);
   box-shadow:
     0 24px 50px rgba(0, 0, 0, 0.6),
@@ -1535,6 +1550,23 @@
     inset 0 1px 1px rgba(255, 255, 255, 0.22);
   animation: np-menu-in 0.14s cubic-bezier(0.16, 1, 0.3, 1);
   transform-origin: 100% 100%;
+}
+
+.liquid-glass-surface.np-output-menu {
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+}
+
+.np-output-menu .liquid-glass-content-layer {
+  display: flex;
+  flex-direction: column;
+  /* The glass layer centres its content by default; menu rows are full-width and left-aligned. */
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 2px;
+  width: 100%;
+  height: auto;
 }
 @keyframes np-menu-in {
   from { opacity: 0; transform: scale(0.96) translateY(4px); }
@@ -1595,3 +1627,19 @@
 .np-extras-rate:disabled { opacity: 0.4; cursor: default; }
 .np-extras-note { padding: 0 10px 4px; font-size: 11px; color: rgba(255, 255, 255, 0.5); }
 .np-extras .np-output-on { font-variant-numeric: tabular-nums; }
+
+/* Romanize / Translate: lit while on for this song. */
+.np-lyrics-mode.is-on { background: rgba(255, 255, 255, 0.86); color: #111; }
+.np-lyrics-mode.is-on:hover { background: #fff; }
+/* Why a translation isn't showing (needs a download, already in that language…). */
+.np-lyrics-note {
+  max-width: 260px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.45);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 11px;
+  line-height: 1.35;
+}

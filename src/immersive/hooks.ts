@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { fetchLyricsMultiProvider, type TrackLyrics } from "../lib/lyrics";
+import { lyricsPrefsVersion, subscribeLyricsPrefs } from "../lib/lyricsPrefs";
 import { buildLyricRows, type LyricRow } from "../components/now-playing/lyricRows";
 import {
   defaultView,
@@ -154,6 +155,8 @@ export function useLyricRows(np: NowPlaying | null, wanted: boolean): LyricsResu
   const artist = np?.artist ?? "";
   const duration = np?.duration ?? 0;
   const videoId = np?.videoId ?? undefined;
+  // A new provider order or pinned source (chosen in Now Playing) means a different lookup.
+  const prefsVersion = useSyncExternalStore(subscribeLyricsPrefs, lyricsPrefsVersion);
   useEffect(() => {
     if (!key || !wanted) return;
     let cancelled = false;
@@ -164,7 +167,7 @@ export function useLyricRows(np: NowPlaying | null, wanted: boolean): LyricsResu
       cancelled = true;
     };
     // A repeat call for the same track is answered from lyrics.ts's cache.
-  }, [key, wanted, title, artist, duration, videoId]);
+  }, [key, wanted, title, artist, duration, videoId, prefsVersion]);
 
   const data = result?.key === key ? result.data : undefined;
   const synced = data && data.syncType !== "plain" && data.syncType !== "unavailable";

@@ -35,9 +35,10 @@
   --hero-progress: 0;
   position: relative;
   isolation: isolate;
-  margin: -28px -36px 0;
-  min-height: clamp(320px, 46vh, 460px);
-  padding: 72px 36px 32px;
+  /* Reaches up under the floating top bar, so the glass search pill sits on the artwork. */
+  margin: calc(-1 * (var(--topbar-height) + 28px)) -36px 0;
+  min-height: calc(clamp(320px, 46vh, 460px) + var(--topbar-height));
+  padding: calc(72px + var(--topbar-height)) 36px 32px;
   display: flex;
   align-items: flex-end;
   overflow: hidden;
@@ -247,7 +248,7 @@
 
 .album-back {
   position: absolute;
-  top: 20px;
+  top: calc(20px + var(--topbar-height));
   left: 28px;
   width: 36px;
   height: 36px;
@@ -256,10 +257,11 @@
 
 /* ---------- Slim bar once the banner has scrolled away ---------- */
 
-/* Fixed over the scroll area's top edge; PlaylistView measures where that is. */
+/* Fixed over the scroll area's content edge (below the floating top bar);
+   PlaylistView measures where the scroll area is. */
 .album-sticky-bar {
   position: fixed;
-  top: var(--bar-top, 0);
+  top: calc(var(--bar-top, 0px) + var(--topbar-height));
   left: var(--bar-left, 0);
   width: var(--bar-width, 100%);
   z-index: 30;

@@ -1,5 +1,6 @@
 /* App styles, split by area. Order matters: later files win ties in the cascade. */
 @import "./styles/base.css";
+@import "./styles/glass.css";
 @import "./styles/layout.css";
 @import "./styles/sidebar.css";
 @import "./styles/main-area.css";
@@ -8,6 +9,7 @@
 @import "./styles/search.css";
 @import "./styles/track-cards.css";
 @import "./styles/playlist.css";
+@import "./styles/artist.css";
 @import "./styles/loaders.css";
 @import "./styles/history.css";
 @import "./styles/sidebar-player.css";

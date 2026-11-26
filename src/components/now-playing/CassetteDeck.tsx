@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { AnimatePresence, animate, motion, useAnimationFrame, useMotionValue, useTransform, type MotionValue } from "motion/react";
 import { CassetteTape } from "./CassetteTape";
+import { ArtistLinks } from "../ArtistLinks";
 import type { SettledArtwork } from "./useSettledArtwork";
 import type { SearchResult } from "../../lib/search";
 import { useLyricClock } from "./useLyricClock";
 import { cleanDisplayTitle } from "../../lib/displayText";
+import { formatRemaining, useTimeDisplay } from "../../lib/timeDisplay";
 import {
   clunk,
   crateRattle,
@@ -425,7 +427,9 @@ export function CassetteDeck(props: CassetteDeckProps) {
               <div className="deck-screen-info">
                 <span className="deck-screen-kicker">{isPlaying ? "▶ Playing" : "❚❚ Paused"}</span>
                 <span className="deck-screen-title">{cleanDisplayTitle(track.title)}</span>
-                <span className="deck-screen-artist">{track.artist}</span>
+                <span className="deck-screen-artist">
+                  <ArtistLinks artist={track.artist} artists={track.artists} />
+                </span>
               </div>
             )}
           </div>
@@ -900,6 +904,8 @@ function ScreenSeek({
 }) {
   const now = useLyricClock(currentTime, isPlaying);
   const [scrub, setScrub] = useState<number | null>(null);
+  const [timeDisplay, toggleTimeDisplay] = useTimeDisplay();
+  const timeDisplayLabel = timeDisplay === "total" ? "Show time left" : "Show total time";
   const fill = useMotionValue(0);
   useAnimationFrame(() => {
     fill.set(scrub ?? (duration > 0 ? Math.min(1, Math.max(0, now() / duration)) : 0));
@@ -936,7 +942,15 @@ function ScreenSeek({
       >
         <motion.span className="deck-seek-fill" style={{ width: fillWidth }} />
       </div>
-      <span className="deck-seek-time">{formatTime(duration)}</span>
+      <button
+        type="button"
+        className="deck-seek-time time-toggle"
+        onClick={toggleTimeDisplay}
+        aria-label={timeDisplayLabel}
+        title={timeDisplayLabel}
+      >
+        {timeDisplay === "total" ? formatTime(duration) : formatRemaining(duration, shownTime)}
+      </button>
     </div>
   );
 }

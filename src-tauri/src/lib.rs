@@ -1,3 +1,4 @@
+mod artist;
 mod discord;
 mod feed;
 mod fsutil;
@@ -43,6 +44,7 @@ const MAIN_WINDOW_PERMISSIONS: &[&str] = &[
     "allow-get-home-feed",
     "allow-get-home-feed-continuation",
     "allow-get-playlist-details",
+    "allow-get-artist",
     "allow-get-playlist-continuation",
     "allow-get-highres-thumbnails",
     "allow-get-user-profile",
@@ -54,6 +56,10 @@ const MAIN_WINDOW_PERMISSIONS: &[&str] = &[
     "allow-get-related-recommendations",
     "allow-get-player-server-url",
     "allow-get-lyrics",
+    "allow-get-lyrics-candidates",
+    "allow-lyrics-providers",
+    "allow-romanize-lyrics",
+    "allow-translate-lyrics",
     "allow-perform-haptic",
     "allow-set-now-playing",
     "allow-discord-presence-available",
@@ -115,6 +121,10 @@ const AUX_WINDOW_PERMISSIONS: &[&str] = &[
     "allow-set-immersive-display",
     "allow-leave-immersive-to-player",
     "allow-get-lyrics",
+    "allow-get-lyrics-candidates",
+    "allow-lyrics-providers",
+    "allow-romanize-lyrics",
+    "allow-translate-lyrics",
 ];
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -209,6 +219,7 @@ pub fn run() {
             feed::get_home_feed_continuation,
             playlist::get_playlist_details,
             playlist::get_playlist_continuation,
+            artist::get_artist,
             thumbnails::get_highres_thumbnails,
             session::get_user_profile,
             feed::get_history,
@@ -219,6 +230,10 @@ pub fn run() {
             recommendations::get_related_recommendations,
             player_server::get_player_server_url,
             lyrics::get_lyrics,
+            lyrics::get_lyrics_candidates,
+            lyrics::lyrics_providers,
+            lyrics::alternates::romanize_lyrics,
+            lyrics::alternates::translate_lyrics,
             haptics::perform_haptic,
             media_controls::set_now_playing,
             discord::discord_presence_available,

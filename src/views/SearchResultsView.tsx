@@ -2,6 +2,7 @@ import { activateOnKey } from "../lib/a11y";
 import { memo } from "react";
 import { ListMusic, Music, Play, SearchX, X } from "lucide-react";
 import { ArtworkImage } from "../components/ArtworkImage";
+import { ArtistLinks } from "../components/ArtistLinks";
 import { CardGrid } from "../components/TrackCard";
 import { playableOnly } from "../lib/trackItems";
 import { SkeletonGrid } from "../components/SkeletonGrid";
@@ -143,12 +144,14 @@ export const SearchResultsView = memo(function SearchResultsView({
 
                 <div className="top-match-meta">
                   <span className={`card-type-pill ${topMatch.itemType || "song"}`}>
-                    {topMatch.itemType === "playlist" ? "Playlist" : "Song"}
+                    {topMatch.itemType === "playlist" ? "Playlist" : topMatch.itemType === "album" ? "Album" : "Song"}
                   </span>
                   <h3 className="top-match-title" title={topMatch.title}>
                     {cleanDisplayTitle(topMatch.title)}
                   </h3>
-                  <p className="top-match-artist">{topMatch.artist}</p>
+                  <p className="top-match-artist">
+                    <ArtistLinks artist={topMatch.artist} artists={topMatch.artists} />
+                  </p>
                 </div>
               </div>
             </div>

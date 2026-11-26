@@ -20,6 +20,7 @@ import type { PlaybackModes } from "../../lib/playbackModes";
 import { LikeButton } from "../LikeButton";
 import { PlaybackExtrasPicker } from "./PlaybackExtrasPicker";
 import { formatTime } from "../../lib/formatTime";
+import { formatRemaining, useTimeDisplay } from "../../lib/timeDisplay";
 
 interface SliderProps {
   value: number;
@@ -124,6 +125,9 @@ export interface ControlDeckProps {
   onToggleShuffle: () => void;
   queueOpen: boolean;
   onToggleQueue: () => void;
+  /** Whether the technical panel is open, and how to toggle it (absent: no panel). */
+  statsOpen?: boolean;
+  onToggleStats?: () => void;
   /** The current song's heart; absent where liking isn't possible. */
   like?: { videoId: string; enabled: boolean; onToggle: () => void; onSave?: () => void };
 }
@@ -132,6 +136,8 @@ export function ControlDeck(props: ControlDeckProps) {
   const { currentTime, duration, isPlaying, isBuffering, isReady, volume, isMuted, modes } = props;
   const [scrubTime, setScrubTime] = useState<number | null>(null);
   const shownTime = scrubTime ?? currentTime;
+  const [timeDisplay, toggleTimeDisplay] = useTimeDisplay();
+  const timeDisplayLabel = timeDisplay === "total" ? "Show time left" : "Show total time";
   const effectiveVolume = isMuted ? 0 : volume;
   const VolumeIcon = effectiveVolume === 0 ? VolumeX : effectiveVolume < 34 ? Volume : effectiveVolume < 67 ? Volume1 : Volume2;
   const repeatLabel = { off: "Repeat off", all: "Repeat all", one: "Repeat one" }[modes.repeat];
@@ -152,9 +158,18 @@ export function ControlDeck(props: ControlDeckProps) {
             props.onSeek(t);
           }}
         />
-        <div className="np-times" aria-hidden="true">
-          <span>{formatTime(shownTime)}</span>
-          <span>{formatTime(duration)}</span>
+        <div className="np-times">
+          {/* The slider already announces the position. */}
+          <span aria-hidden="true">{formatTime(shownTime)}</span>
+          <button
+            type="button"
+            className="time-toggle"
+            onClick={toggleTimeDisplay}
+            aria-label={timeDisplayLabel}
+            title={timeDisplayLabel}
+          >
+            {timeDisplay === "total" ? formatTime(duration) : formatRemaining(duration, shownTime)}
+          </button>
         </div>
       </div>
 
@@ -239,7 +254,7 @@ export function ControlDeck(props: ControlDeckProps) {
             )}
           </div>
         )}
-        <PlaybackExtrasPicker />
+        <PlaybackExtrasPicker statsOpen={props.statsOpen} onToggleStats={props.onToggleStats} />
         <div className="np-pill np-volume">
           <button
             type="button"

@@ -1,0 +1,90 @@
+/* Stats for nerds: a small monospace overlay, top-left under the close button.
+   Everything here is what the player reports; nothing is estimated. */
+
+.np-stats {
+  position: absolute;
+  top: calc(clamp(16px, 4.5vh, 44px) + 52px);
+  left: var(--np-gutter);
+  z-index: 5;
+  width: min(276px, calc(100% - 2 * var(--np-gutter)));
+  padding: 10px 12px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background:
+    linear-gradient(150deg, rgba(255, 255, 255, 0.08) 0%, rgba(14, 14, 18, 0.72) 100%),
+    rgba(16, 16, 20, 0.78);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+  color: rgba(255, 255, 255, 0.86);
+  font-family: "SF Mono", Menlo, Consolas, "Courier New", monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  user-select: text;
+}
+
+.np-stats-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.np-stats-title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.np-stats-close {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.8);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.np-stats-close:hover,
+.np-stats-close:focus-visible {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  outline: none;
+}
+
+.np-stats-rows {
+  margin: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.np-stats-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.np-stats-row dt {
+  flex: none;
+  width: 100px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.np-stats-row dd {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}

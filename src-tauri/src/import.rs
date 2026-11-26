@@ -753,6 +753,7 @@ mod tests {
                 video_id: "v".into(),
                 title: title.into(),
                 artist: artist.into(),
+                artists: Vec::new(),
                 thumbnail_url: String::new(),
                 playlist_id: None,
                 item_type: None,

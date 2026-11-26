@@ -96,7 +96,8 @@
   padding: 10px 14px;
   border-radius: var(--radius-sm);
   background: transparent;
-  border: none;
+  /* Reserved so the active item's glass rim doesn't move anything. */
+  border: 1px solid transparent;
   color: var(--text-secondary);
   font-family: var(--font-heading);
   font-size: var(--fs-lg);
@@ -113,7 +114,9 @@
 }
 
 .sidebar-nav-item.active {
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--glass-fill);
+  border-color: var(--glass-rim);
+  box-shadow: var(--glass-highlight);
   color: #fff;
   font-weight: 600;
 }

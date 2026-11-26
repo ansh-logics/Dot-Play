@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
-import { HiddenYouTubePlayer } from "./components/HiddenYouTubePlayer";
+import { PlaybackDecks } from "./components/PlaybackDecks";
+import { ArtistNavigationContext } from "./components/ArtistLinks";
 import { MusicContextMenu, type MusicContextTarget } from "./components/MusicContextMenu";
 import { Toast } from "./components/Toast";
 import { UpdatePrompt } from "./components/UpdatePrompt";
@@ -16,16 +17,16 @@ import { HomeView } from "./views/HomeView";
 import { HistoryView } from "./views/HistoryView";
 import { LibraryView } from "./views/LibraryView";
 import { PlaylistView } from "./views/PlaylistView";
+import { ArtistView } from "./views/ArtistView";
 import { ImportView } from "./views/ImportView";
 import { SearchLandingView } from "./views/SearchLandingView";
 import { PlaybackExtrasContext } from "./components/now-playing/playbackExtrasContext";
 import { PlaybackRateContext } from "./components/now-playing/useLyricClock";
-import { useArtworkAccent } from "./lib/artworkAccent";
 import { SearchResultsView } from "./views/SearchResultsView";
 import type { CardClickHandler, CardContextMenuHandler, NavTab } from "./views/types";
 import { ArrowLeft } from "lucide-react";
 import { WithCurrentTime } from "./lib/playbackClock";
-import { getPlaylistDetails, loadRemainingPlaylistPages, type PlaylistDetails, type PlaylistTrack, type SearchResult } from "./lib/search";
+import { fetchArtist, getPlaylistDetails, loadRemainingPlaylistPages, type ArtistPage, type PlaylistDetails, type PlaylistTrack, type SearchResult } from "./lib/search";
 import {
   deleteLocalPlaylist,
   getLocalPlaylist,
@@ -81,6 +82,11 @@ function App() {
   const [isLoadingPlaylist, setIsLoadingPlaylist] = useState(false);
   const [playlistError, setPlaylistError] = useState<string | null>(null);
   const playlistRequestRef = useRef(0);
+  /** The artist page under the same rules: one at a time, and only the latest request may show. */
+  const [selectedArtist, setSelectedArtist] = useState<ArtistPage | null>(null);
+  const [isLoadingArtist, setIsLoadingArtist] = useState(false);
+  const [artistError, setArtistError] = useState<string | null>(null);
+  const artistRequestRef = useRef(0);
   /** The open playlist when it's an import kept on this Mac. */
   const [openLocal, setOpenLocal] = useState<LocalPlaylist | null>(null);
   const [localPlaylists, setLocalPlaylists] = useState<LocalPlaylist[]>([]);
@@ -135,6 +141,10 @@ function App() {
       setPlaylistError(null);
       setSelectedPlaylist(null);
       setOpenLocal(null);
+      artistRequestRef.current++;
+      setIsLoadingArtist(false);
+      setArtistError(null);
+      setSelectedArtist(null);
       setActiveNav((current) => (current === "library" || current === "history" ? "home" : current));
       playback.clearSessionHistory();
       clearLikes();
@@ -170,7 +180,22 @@ function App() {
     [isLoggedIn, showToast],
   );
 
-  const playableTracks = useMemo(() => selectedPlaylist?.tracks.filter((t) => !t.missing), [selectedPlaylist]);
+  // The songs of whichever detail page is open, so "next" walks through them in order.
+  const playableTracks = useMemo(() => {
+    const fromPlaylist = selectedPlaylist?.tracks.filter((t) => !t.missing);
+    if (fromPlaylist) return fromPlaylist;
+    return selectedArtist?.songs
+      .filter((t) => !t.missing)
+      .map((t): SearchResult => ({
+        videoId: t.videoId,
+        title: t.title,
+        artist: t.artist,
+        artists: t.artists,
+        thumbnailUrl: t.thumbnailUrl,
+        playlistId: selectedArtist.songsPlaylistId,
+        itemType: "song",
+      }));
+  }, [selectedPlaylist, selectedArtist]);
   const playback = usePlayback({
     showToast,
     onPlaybackRecorded: account.addToHistory,
@@ -179,7 +204,6 @@ function App() {
     onToggleLike: toggleLike,
   });
   const { currentTrack, selectTrack } = playback;
-  useArtworkAccent(currentTrack);
   const { playbackRate, changePlaybackRate, sleepTimer, startSleepTimer, sleepAtEndOfTrack, cancelSleepTimer } = playback;
   const extrasContext = useMemo(
     () => ({
@@ -229,14 +253,50 @@ function App() {
     return list;
   }, [homeSections]);
 
+  // Artists: the same one-at-a-time, latest-request-wins shape as a playlist open.
+  const closeArtist = useCallback(() => {
+    // Also abandons an artist still loading (and its error), so it can't pop in afterwards.
+    artistRequestRef.current++;
+    setIsLoadingArtist(false);
+    setArtistError(null);
+    setSelectedArtist(null);
+  }, []);
+
+  // One level of history between detail pages: an album opened from an artist page goes back
+  // to that artist, and an artist opened from a playlist's row goes back to the playlist.
+  const openArtistIdRef = useRef<string | null>(null);
+  const openPlaylistIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    openArtistIdRef.current = selectedArtist?.id ?? null;
+  }, [selectedArtist]);
+  useEffect(() => {
+    openPlaylistIdRef.current = selectedPlaylist?.id ?? null;
+  }, [selectedPlaylist]);
+  const returnToRef = useRef<{ kind: "artist" | "playlist"; id: string } | null>(null);
+  /** Set while Back reopens the previous page, so that reopening doesn't record a new step. */
+  const goingBackRef = useRef(false);
+  const rememberReturn = useCallback((previous: { kind: "artist" | "playlist"; id: string } | null) => {
+    if (goingBackRef.current) {
+      goingBackRef.current = false;
+      returnToRef.current = null;
+    } else {
+      returnToRef.current = previous;
+    }
+  }, []);
+
   // Playlists: only the latest request may fill the view.
   const openPlaylist = useCallback(async (playlistId: string) => {
+    const fromArtist = openArtistIdRef.current;
+    rememberReturn(fromArtist ? { kind: "artist", id: fromArtist } : null);
     const requestId = ++playlistRequestRef.current;
     setIsLoadingPlaylist(true);
     setPlaylistError(null);
     setSelectedPlaylist(null);
     setOpenLocal(null);
     setImportOpen(false);
+    // A playlist opened from an artist page (or the other way round) replaces it: one
+    // detail page at a time, and Back leaves it the same way it arrived.
+    closeArtist();
     try {
       const local = isLocalPlaylistId(playlistId) ? await getLocalPlaylist(playlistId) : null;
       const details = local ? toPlaylistDetails(local) : await getPlaylistDetails(playlistId);
@@ -268,7 +328,7 @@ function App() {
     } finally {
       if (requestId === playlistRequestRef.current) setIsLoadingPlaylist(false);
     }
-  }, []);
+  }, [closeArtist, rememberReturn]);
 
   const closePlaylist = useCallback(() => {
     // Also abandons a playlist still loading (and its error), so it can't pop in afterwards.
@@ -280,16 +340,77 @@ function App() {
   }, []);
   const dismissPlaylistError = useCallback(() => setPlaylistError(null), []);
 
+  // Opening an artist by its channel id. It takes over the page exactly like a playlist:
+  // one level deep, so Back and Esc leave it the way they leave a playlist.
+  const openArtist = useCallback(
+    async (browseId: string) => {
+      // The artist already on screen (their own name in their top songs): nothing to do.
+      if (browseId === openArtistIdRef.current) return;
+      const fromPlaylist = openPlaylistIdRef.current;
+      rememberReturn(fromPlaylist ? { kind: "playlist", id: fromPlaylist } : null);
+      const requestId = ++artistRequestRef.current;
+      setIsLoadingArtist(true);
+      setArtistError(null);
+      setSelectedArtist(null);
+      closePlaylist();
+      setImportOpen(false);
+      // Now Playing covers the page it would jump to, so it goes first.
+      setShowNowPlaying(false);
+      try {
+        const page = await fetchArtist(browseId);
+        if (requestId !== artistRequestRef.current) return;
+        setSelectedArtist(page);
+      } catch (err) {
+        if (requestId !== artistRequestRef.current) return;
+        setArtistError("Could not load this artist.");
+        console.error(err);
+      } finally {
+        if (requestId === artistRequestRef.current) setIsLoadingArtist(false);
+      }
+    },
+    [closePlaylist, rememberReturn],
+  );
+
+  // Anything that opens "a collection" by id: artist channels (UC…) get the artist page.
+  const openCollection = useCallback(
+    (id: string) => (id.startsWith("UC") ? openArtist(id) : openPlaylist(id)),
+    [openArtist, openPlaylist],
+  );
+
+  // Back from a detail page: to the page it was opened from (one level), else to the list.
+  const backFromPlaylist = useCallback(() => {
+    const previous = returnToRef.current;
+    returnToRef.current = null;
+    closePlaylist();
+    if (previous?.kind === "artist") {
+      goingBackRef.current = true;
+      void openArtist(previous.id);
+    }
+  }, [closePlaylist, openArtist]);
+  const backFromArtist = useCallback(() => {
+    const previous = returnToRef.current;
+    returnToRef.current = null;
+    closeArtist();
+    if (previous?.kind === "playlist") {
+      goingBackRef.current = true;
+      void openPlaylist(previous.id);
+    }
+  }, [closeArtist, openPlaylist]);
+
   const handleCardClick = useCallback<CardClickHandler>(
     (item) => {
       rememberSearch(searchQueryRef.current);
-      if (item.itemType === "playlist" && item.playlistId) {
+      // Albums and playlists are pages behind a browse id; songs just play.
+      // Artist cards carry the artist's channel id (UC…): that's an artist page, not a playlist.
+      if (item.playlistId?.startsWith("UC")) {
+        void openArtist(item.playlistId);
+      } else if ((item.itemType === "playlist" || item.itemType === "album") && item.playlistId) {
         void openPlaylist(item.playlistId);
       } else if (item.videoId) {
         selectTrack(item);
       }
     },
-    [openPlaylist, rememberSearch, selectTrack],
+    [openArtist, openPlaylist, rememberSearch, selectTrack],
   );
 
   const handleContextMenu = useCallback<CardContextMenuHandler>((e, track, source, extra) => {
@@ -346,16 +467,24 @@ function App() {
       }
       setSearchQuery("");
       closePlaylist();
+      closeArtist();
       setImportOpen(false);
       if (tab === "library" && isLoggedIn && librarySections.length === 0) void fetchLibrary();
     },
-    [setSearchQuery, closePlaylist, isLoggedIn, librarySections.length, fetchLibrary],
+    [setSearchQuery, closePlaylist, closeArtist, isLoggedIn, librarySections.length, fetchLibrary],
   );
 
   // History page: opening it fetches YouTube's history when the saved copy is 5+ minutes
   // old, and while it stays open it re-fetches every 5 minutes.
   const isHistoryPageOpen =
-    activeNav === "history" && !isSearchActive && !selectedPlaylist && !isLoadingPlaylist && !playlistError;
+    activeNav === "history" &&
+    !isSearchActive &&
+    !selectedPlaylist &&
+    !isLoadingPlaylist &&
+    !playlistError &&
+    !selectedArtist &&
+    !isLoadingArtist &&
+    !artistError;
   useEffect(() => {
     if (!isHistoryPageOpen || !isLoggedIn) return;
     refreshHistoryIfStale();
@@ -376,13 +505,15 @@ function App() {
       setSearchQuery(query);
       setActiveNav("search");
       setImportOpen(false);
-      // A failed playlist's error screen would otherwise hide the results.
+      // A failed playlist's or artist's error screen would otherwise hide the results.
       setPlaylistError(null);
+      setArtistError(null);
     },
     [setSearchQuery],
   );
   const clearSearch = useCallback(() => setSearchQuery(""), [setSearchQuery]);
-  const hasOpenPlaylist = selectedPlaylist !== null;
+  // A detail page (playlist or artist) is showing, so a click in the field must not steal it.
+  const hasOpenPlaylist = selectedPlaylist !== null || selectedArtist !== null;
   const handleSearchFocus = useCallback(() => {
     if (!hasOpenPlaylist) setActiveNav("search");
   }, [hasOpenPlaylist]);
@@ -489,7 +620,9 @@ function App() {
       else if (showSupportModal) setShowSupportModal(false);
       else if (showProfileMenu) setShowProfileMenu(false);
       else if (showQueue) setShowQueue(false);
-      else if (selectedPlaylist) closePlaylist();
+      // Also a page still loading or showing an error, not only a loaded one.
+      else if (selectedPlaylist || isLoadingPlaylist || playlistError) backFromPlaylist();
+      else if (selectedArtist || isLoadingArtist || artistError) backFromArtist();
       // Esc never abandons an import that's still merging.
       else if (importOpen) {
         if (!importBusy) setImportOpen(false);
@@ -523,8 +656,9 @@ function App() {
 
   const openImport = useCallback(() => {
     closePlaylist();
+    closeArtist();
     setImportOpen(true);
-  }, [closePlaylist]);
+  }, [closePlaylist, closeArtist]);
   const closeImport = useCallback(() => setImportOpen(false), []);
   const addLocalPlaylist = useCallback(
     (playlist: LocalPlaylist) => setLocalPlaylists((list) => [playlist, ...list.filter((p) => p.id !== playlist.id)]),
@@ -578,7 +712,7 @@ function App() {
         <PlaylistView
           playlist={selectedPlaylist}
           currentVideoId={currentVideoId}
-          onBack={closePlaylist}
+          onBack={backFromPlaylist}
           onSelectTrack={selectTrack}
           onAppendToQueue={playback.handleAppendTracksToQueue}
           onPlayNext={playback.handlePlayNext}
@@ -589,11 +723,25 @@ function App() {
         />
       );
     }
+    if (isLoadingArtist || selectedArtist || artistError) {
+      return (
+        <ArtistView
+          {...browse}
+          artist={selectedArtist}
+          isLoading={isLoadingArtist}
+          error={artistError}
+          onBack={backFromArtist}
+          onSelectTrack={selectTrack}
+          onPlayNext={playback.handlePlayNext}
+          onAddToQueue={playback.handleAddToQueue}
+        />
+      );
+    }
     if (importOpen) {
       return (
         <ImportView
           onClose={closeImport}
-          onOpenPlaylist={openPlaylist}
+          onOpenPlaylist={openCollection}
           onImported={addLocalPlaylist}
           onBusyChange={setImportBusy}
         />
@@ -674,7 +822,7 @@ function App() {
         isLoadingMore={account.isLoadingMore}
         isPlaying={playback.playerState === "playing"}
         onPlay={selectTrack}
-        onOpenPlaylist={openPlaylist}
+        onOpenPlaylist={openCollection}
         {...browse}
       />
     );
@@ -682,6 +830,8 @@ function App() {
 
   return (
     <div className="music-app-layout">
+      {/* One place to open an artist: rows, the mini player and Now Playing all reach it here. */}
+      <ArtistNavigationContext.Provider value={openArtist}>
       <div className="app-body-container">
         <aside className="app-sidebar">
           <div className="sidebar-brand">
@@ -775,16 +925,8 @@ function App() {
       </div>
 
       {/* Hidden audio engine */}
-      <HiddenYouTubePlayer
-        key="global-audio-engine"
-        videoId={currentVideoId}
-        initialSeconds={playback.initialPlaybackSeconds}
-        autoPlayOnMount={playback.autoPlayOnMount}
-        onReady={playback.handlePlayerReady}
-        onStateChange={playback.handlePlayerStateChange}
-        onError={playback.handlePlayerError}
-        onTrackChange={playback.handleTrackChangeFromIframe}
-      />
+      {/* Two hidden players: the second cues the next song for crossfades (usePlayback). */}
+      <PlaybackDecks slots={playback.deckSlots} />
 
       {showSettingsModal && (
         <SettingsModal
@@ -838,6 +980,7 @@ function App() {
             canLike={isLoggedIn}
             onToggleLike={(track) => void toggleLike(track)}
             onSaveToPlaylist={openSaveToPlaylist}
+            getDeckStats={playback.getDeckStats}
           />
         )}
       </WithCurrentTime>
@@ -851,7 +994,7 @@ function App() {
         onPlayNext={playback.handlePlayNext}
         onAddToQueue={playback.handleAddToQueue}
         onRemoveFromQueue={handleContextRemove}
-        onOpenPlaylist={openPlaylist}
+        onOpenPlaylist={openCollection}
         canLike={isLoggedIn}
         onToggleLike={(track) => void toggleLike(track)}
         onSaveToPlaylist={openSaveToPlaylist}
@@ -883,6 +1026,7 @@ function App() {
       <Toast message={toastMessage} onDismiss={dismissToast} />
 
       <UpdatePrompt />
+      </ArtistNavigationContext.Provider>
     </div>
   );
 }

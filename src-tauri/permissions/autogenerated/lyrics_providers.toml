@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-lyrics-providers"
+description = "Enables the lyrics_providers command without any pre-configured scope."
+commands.allow = ["lyrics_providers"]
+
+[[permission]]
+identifier = "deny-lyrics-providers"
+description = "Denies the lyrics_providers command without any pre-configured scope."
+commands.deny = ["lyrics_providers"]

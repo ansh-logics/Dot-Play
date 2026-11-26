@@ -1,12 +1,20 @@
 import { invoke } from "@tauri-apps/api/core"
 
+/** An artist credited on a track, album or playlist; browseId opens their channel page. */
+export interface ArtistRef {
+  name: string
+  browseId: string
+}
+
 export interface SearchResult {
   videoId: string
   title: string
   artist: string
+  /** Every credited artist, when YouTube Music says. The `artist` string stays as it was. */
+  artists?: ArtistRef[]
   thumbnailUrl: string
   playlistId?: string
-  itemType?: "playlist" | "song"
+  itemType?: "playlist" | "song" | "album"
   /**
    * "user": queued by the listener (Add to Queue / Play Next / add playlist to queue).
    * Those stay when a different song is played directly; autoplay suggestions and the rest
@@ -19,6 +27,8 @@ export interface PlaylistTrack {
   videoId: string
   title: string
   artist: string
+  /** Every credited artist, when YouTube Music says (absent on old saved queues and imports). */
+  artists?: ArtistRef[]
   duration: string
   thumbnailUrl: string
   /** An imported song that wasn't found on YouTube Music (its videoId is empty). */
@@ -34,6 +44,8 @@ export interface PlaylistDetails {
   kind?: string
   /** The album's artist or the playlist's owner. */
   artist?: string
+  /** The credited artists of an album, so each name can open its page. */
+  artists?: ArtistRef[]
   year?: string
   thumbnailUrl: string
   trackCount: string
@@ -42,6 +54,23 @@ export interface PlaylistDetails {
   source?: string
   /** Set when YouTube Music has more songs than the first page (about 100). */
   continuation?: string
+}
+
+/** An opened artist channel page. */
+export interface ArtistPage {
+  /** The channel (browse) id, e.g. "UCxxxx". */
+  id: string
+  name: string
+  description?: string
+  /** The artist's photo, blown up for the banner; "" when they have none. */
+  thumbnailUrl: string
+  /** As YouTube shows it, e.g. "1.2M subscribers". */
+  subscribers?: string
+  songs: PlaylistTrack[]
+  /** The "See all" playlist behind the songs shelf, when there is one. */
+  songsPlaylistId?: string
+  albums: SearchResult[]
+  singles: SearchResult[]
 }
 
 export interface PlaylistPage {
@@ -224,6 +253,38 @@ export async function getFullPlaylistDetails(playlistId: string): Promise<Playli
   const tracks = [...details.tracks]
   await loadRemainingPlaylistPages(details, (more) => tracks.push(...more))
   return { ...details, tracks: tracks.slice(0, MAX_PLAYLIST_TRACKS), continuation: undefined }
+}
+
+/** Artist pages, kept per channel so reopening one (Back, then forward again) is instant. */
+const artistPages = new Map<string, ArtistPage>()
+const artistRequests = new Map<string, Promise<ArtistPage>>()
+
+/**
+ * An artist's page: banner, top songs and their albums/singles. The first request for a
+ * channel is shared by everyone asking for it at the same time; failures are not cached,
+ * so a flaky connection doesn't stick an error on the artist for the rest of the session.
+ */
+export async function fetchArtist(browseId: string): Promise<ArtistPage> {
+  const cached = artistPages.get(browseId)
+  if (cached) return cached
+  const pending = artistRequests.get(browseId)
+  if (pending) return pending
+  if (!isTauriEnvironment() || !browseId) {
+    throw new Error("Tauri environment not available")
+  }
+  const request = invoke<ArtistPage>("get_artist", { browseId }).then(
+    (page) => {
+      artistPages.set(browseId, page)
+      artistRequests.delete(browseId)
+      return page
+    },
+    (error) => {
+      artistRequests.delete(browseId)
+      throw error
+    },
+  )
+  artistRequests.set(browseId, request)
+  return request
 }
 
 /** Rejects when YouTube can't be reached, so callers keep their saved history. */

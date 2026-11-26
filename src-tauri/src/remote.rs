@@ -658,6 +658,9 @@ async fn lyrics(app: &AppHandle, out: &mpsc::UnboundedSender<String>, device: &D
         q("artist").unwrap_or_default(),
         None,
         message.pointer("/q/duration").and_then(Value::as_f64),
+        // The phone shows the default providers' best match (shared disk cache).
+        None,
+        None,
     )
     .await
     .unwrap_or(None);

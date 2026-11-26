@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, Play, Pause } from "lucide-react";
 import type { SearchResult } from "../lib/search";
 import { useArtwork } from "../lib/imagePipeline";
 import { cleanDisplayTitle } from "../lib/displayText";
+import { ArtistLinks } from "./ArtistLinks";
 
 /** Horizontal distance between neighbouring cards, in px. */
 const CARD_SPACING = 220;
@@ -60,7 +61,7 @@ const CarouselCardItem: React.FC<CarouselCardItemProps> = ({
     if (!isCenter) {
       setActiveIndex((prev) => (prev + Math.round(offset) + total) % total);
     } else {
-      if (item.itemType === "playlist" && item.playlistId && onOpenPlaylist) {
+      if ((item.itemType === "playlist" || item.itemType === "album") && item.playlistId && onOpenPlaylist) {
         onOpenPlaylist(item.playlistId);
       } else {
         onPlay(item);
@@ -70,7 +71,7 @@ const CarouselCardItem: React.FC<CarouselCardItemProps> = ({
 
   const handlePlayClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (item.itemType === "playlist" && item.playlistId && onOpenPlaylist) {
+    if ((item.itemType === "playlist" || item.itemType === "album") && item.playlistId && onOpenPlaylist) {
       onOpenPlaylist(item.playlistId);
     } else {
       onPlay(item);
@@ -352,7 +353,7 @@ export const TopPicksCarousel: React.FC<TopPicksCarouselProps> = ({
             {cleanDisplayTitle(items[activeIndex].title)}
           </h3>
           <p className="carousel-caption-artist" title={items[activeIndex].artist}>
-            {items[activeIndex].artist}
+            <ArtistLinks artist={items[activeIndex].artist} artists={items[activeIndex].artists} />
           </p>
         </div>
       )}

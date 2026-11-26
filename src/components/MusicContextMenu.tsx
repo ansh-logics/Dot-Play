@@ -1,9 +1,10 @@
-import React, { useEffect, useRef, useState, useLayoutEffect } from "react";
-import { Play, CornerDownRight, ListEnd, ListPlus, Trash2, FolderOpen, Heart } from "lucide-react";
+import React, { useEffect, useRef, useState, useLayoutEffect, useContext } from "react";
+import { Play, CornerDownRight, ListEnd, ListPlus, Trash2, FolderOpen, Heart, UserRound } from "lucide-react";
 import type { SearchResult } from "../lib/search";
 import { ArtworkImage } from "./ArtworkImage";
 import { LiquidGlassSurface } from "./ui/LiquidGlassSurface";
 import { useLikeStatus } from "../lib/likes";
+import { ArtistNavigationContext } from "./ArtistLinks";
 
 export type MusicContextTarget = {
   track: SearchResult;
@@ -41,6 +42,7 @@ export const MusicContextMenu: React.FC<MusicContextMenuProps> = ({
   onSaveToPlaylist,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
+  const openArtist = useContext(ArtistNavigationContext);
   const [coords, setCoords] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   useLayoutEffect(() => {
@@ -99,8 +101,12 @@ export const MusicContextMenu: React.FC<MusicContextMenuProps> = ({
   if (!target) return null;
 
   const { track, source, upcomingIndex, contextList } = target;
-  const isPlaylistType = Boolean(track.playlistId && track.itemType === "playlist");
+  const isPlaylistType = Boolean(track.playlistId && (track.itemType === "playlist" || track.itemType === "album"));
+  const openLabel = track.itemType === "album" ? "Open Album" : "Open Playlist";
   const hasPlayableTrack = Boolean(track.videoId);
+  const artistRefs = (track.artists ?? []).filter(
+    (a, i, arr) => Boolean(a.browseId) && arr.findIndex((x) => x.browseId === a.browseId) === i,
+  );
 
   return (
     <LiquidGlassSurface
@@ -156,9 +162,41 @@ export const MusicContextMenu: React.FC<MusicContextMenuProps> = ({
             }}
           >
             <FolderOpen size={14} className="music-context-icon" />
-            <span>Open Playlist</span>
+            <span>{openLabel}</span>
           </button>
         )}
+
+        {/* Go to Artist */}
+        {artistRefs.length === 1 && (
+          <button
+            type="button"
+            className="music-context-item"
+            role="menuitem"
+            onClick={() => {
+              onClose();
+              openArtist(artistRefs[0].browseId);
+            }}
+          >
+            <UserRound size={14} className="music-context-icon" />
+            <span>Go to Artist</span>
+          </button>
+        )}
+        {artistRefs.length > 1 &&
+          artistRefs.map((ref, idx) => (
+            <button
+              key={`${ref.browseId}-${idx}`}
+              type="button"
+              className="music-context-item"
+              role="menuitem"
+              onClick={() => {
+                onClose();
+                openArtist(ref.browseId);
+              }}
+            >
+              <UserRound size={14} className="music-context-icon" />
+              <span>Go to {ref.name}</span>
+            </button>
+          ))}
 
         {/* Play Now */}
         {hasPlayableTrack && (

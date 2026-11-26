@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { getPlayerServerUrl } from "../lib/search"
+import type { PlaybackState } from "../lib/engine/deck"
 
 export interface YouTubePlayerInstance {
   destroy: () => void
@@ -23,15 +24,17 @@ export interface YouTubePlayerInstance {
   getVolume?: () => number
   /** Playback speed; YouTube allows 0.25–2. Not every engine (a linked TV) supports it. */
   setPlaybackRate?: (rate: number) => void
+  /** Share of the song buffered, 0–1 (the IFrame API's getVideoLoadedFraction). */
+  getVideoLoadedFraction?: () => number
+  /** The quality name YouTube reports ("small", "hd720"…), or "unknown". */
+  getPlaybackQuality?: () => string
+  /** The speed the player is actually running at. */
+  getPlaybackRate?: () => number
+  /** State changes, for the deck's stats; the IFrame API's own subscription. */
+  addEventListener?: (event: "onStateChange", listener: (event: { data: number }) => void) => void
 }
 
-export type YouTubePlaybackState =
-  | "buffering"
-  | "cued"
-  | "ended"
-  | "paused"
-  | "playing"
-  | "unstarted"
+type YouTubePlaybackState = PlaybackState
 
 declare global {
   interface Window {
@@ -149,6 +152,8 @@ export function HiddenYouTubePlayer({
   const volumeRef = useRef(100)
   const isMutedRef = useRef(false)
   const videoDataRef = useRef<{ video_id?: string; title?: string; author?: string }>({})
+  /** State listeners the deck registered through the bridge player (see addEventListener). */
+  const stateListenersRef = useRef<Array<(event: { data: number }) => void>>([])
 
   const [bridgeUrl, setBridgeUrl] = useState<string | null>(null)
   const [useFallbackDirect, setUseFallbackDirect] = useState(false)
@@ -236,6 +241,11 @@ export function HiddenYouTubePlayer({
     },
     getVolume: () => volumeRef.current,
     setPlaybackRate: (rate) => postToBridge({ action: "setPlaybackRate", rate }),
+    // The bridge reports state changes as messages; the deck subscribes here to count
+    // buffering, and those messages are dispatched from the handler below.
+    addEventListener: (eventName, listener) => {
+      if (eventName === "onStateChange") stateListenersRef.current.push(listener)
+    },
     isMuted: () => isMutedRef.current,
     mute: () => {
       isMutedRef.current = true
@@ -256,6 +266,10 @@ export function HiddenYouTubePlayer({
 
     const handleMessage = (event: MessageEvent) => {
       if (bridgeOriginRef.current && event.origin !== bridgeOriginRef.current) {
+        return
+      }
+      // Two players can be mounted at once (crossfade); each listens only to its own iframe.
+      if (iframeRef.current && event.source !== iframeRef.current.contentWindow) {
         return
       }
 
@@ -293,6 +307,11 @@ export function HiddenYouTubePlayer({
         case "stateChange": {
           const state = getPlaybackState(data.stateCode)
           if (state === "playing") startedSinceLoadRef.current = true
+          for (const listener of stateListenersRef.current) {
+            try {
+              listener({ data: data.stateCode })
+            } catch {}
+          }
           callbacksRef.current.onStateChange(state)
           break
         }
@@ -405,14 +424,16 @@ export function HiddenYouTubePlayer({
               if (instance) {
                 playerRef.current = instance
                 currentVideoIdRef.current = targetVideoId
-                // Like the bridge player, remember what the app itself loads, so the videoId
-                // effect below doesn't load the same song a second time when the prop catches up.
+                // Like the bridge player, remember what the app itself loads or cues, so the
+                // videoId effect below doesn't load (and start) the same song again when the prop
+                // catches up.
                 const tracked = new Proxy(instance, {
                   get(target, prop) {
-                    if (prop === "loadVideoById") {
+                    if (prop === "loadVideoById" || prop === "cueVideoById") {
                       return (opts: string | { videoId: string; startSeconds?: number }) => {
                         currentVideoIdRef.current = typeof opts === "string" ? opts : opts.videoId
-                        target.loadVideoById?.(opts)
+                        if (prop === "loadVideoById") target.loadVideoById?.(opts)
+                        else target.cueVideoById?.(opts)
                       }
                     }
                     const value = Reflect.get(target, prop)
@@ -465,8 +486,14 @@ export function HiddenYouTubePlayer({
 
   // Watchdog: ensure track doesn't freeze in unstarted/paused state when auto-advancing.
   // Once the song has started, any pause is the listener's, so it is left alone.
+  // Only a new song resets it: a crossfade's incoming player becomes the active one (and gets
+  // autoPlayOnMount) while already playing the song it buffered.
+  const watchedVideoIdRef = useRef<string | undefined>(undefined)
   useEffect(() => {
-    startedSinceLoadRef.current = false
+    if (watchedVideoIdRef.current !== videoId) {
+      watchedVideoIdRef.current = videoId
+      startedSinceLoadRef.current = false
+    }
     if (!videoId || !autoPlayOnMount || !isFirstMountPlaybackHandled.current) return
     const timer = setTimeout(() => {
       if (startedSinceLoadRef.current) return

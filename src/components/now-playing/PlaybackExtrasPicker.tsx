@@ -10,6 +10,7 @@ import {
   type SleepTimer,
 } from "../../lib/playbackExtras";
 import { PlaybackExtrasContext } from "./playbackExtrasContext";
+import { LiquidGlassSurface } from "../ui/LiquidGlassSurface";
 
 
 /** Re-renders every second while a timed sleep timer runs, for the countdown. */
@@ -61,8 +62,15 @@ function useMenuPlacement(open: boolean, anchor: RefObject<HTMLElement | null>) 
   return placement;
 }
 
+export interface PlaybackExtrasPickerProps {
+  /** Whether the Now Playing view's technical panel is open. */
+  statsOpen?: boolean;
+  /** Opens or closes it; left out where there is no panel (e.g. a TV deck). */
+  onToggleStats?: () => void;
+}
+
 /** "Speed and sleep": playback speed, and a timer that stops the music. */
-export function PlaybackExtrasPicker() {
+export function PlaybackExtrasPicker({ statsOpen, onToggleStats }: PlaybackExtrasPickerProps) {
   const context = useContext(PlaybackExtrasContext);
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -76,15 +84,19 @@ export function PlaybackExtrasPicker() {
       const target = event.target as Node;
       if (!rootRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
     };
-    // The player leaves Esc alone while a menu is open (NowPlaying.tsx), so this closes only the menu.
+    // The player leaves Esc alone while a menu is open (NowPlaying.tsx). Caught in the capture
+    // phase and stopped, so the app's own Esc (back to Home, then minimise) never sees it.
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setOpen(false);
     };
     window.addEventListener("pointerdown", onPointer);
-    window.addEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
     return () => {
       window.removeEventListener("pointerdown", onPointer);
-      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onKey, true);
     };
   }, [open]);
 
@@ -117,14 +129,18 @@ export function PlaybackExtrasPicker() {
         {summary && <span className="np-output-on">{summary}</span>}
       </button>
       {open && placement && createPortal(
-        <div
+        <LiquidGlassSurface
           ref={menuRef}
+          as="div"
+          variant="menu"
+          radius={16}
           className="np-output-menu np-extras-menu"
           role="menu"
           aria-label="Speed and sleep timer"
           style={placement.style}
           // Keep clicks in the menu from starting a drag of the card or other screen gestures.
           onPointerDown={(event) => event.stopPropagation()}
+          filterResolution={1}
         >
           <span className="np-output-title">Speed</span>
           <div className="np-extras-rates" role="group" aria-label="Playback speed">
@@ -179,7 +195,23 @@ export function PlaybackExtrasPicker() {
               <span className="np-output-name">Turn off timer</span>
             </button>
           )}
-        </div>,
+
+          {onToggleStats && (
+            <>
+              <span className="np-output-title">Diagnostics</span>
+              <button
+                type="button"
+                role="menuitemcheckbox"
+                aria-checked={Boolean(statsOpen)}
+                className="np-output-item"
+                onClick={() => pick(onToggleStats)}
+              >
+                <span className="np-output-name">Stats for nerds</span>
+                {statsOpen && <Check size={16} />}
+              </button>
+            </>
+          )}
+        </LiquidGlassSurface>,
         placement.host,
       )}
     </div>

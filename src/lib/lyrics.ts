@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { isTauriEnvironment } from "./search";
+import { DEFAULT_PROVIDERS, getPin, providerOrderArg, readProviderSettings } from "./lyricsPrefs";
 
 export interface LyricWord {
   text: string;
@@ -531,6 +532,12 @@ export function parsePlainLyrics(plain: string): RichLyricLine[] {
   }));
 }
 
+/** One provider's answer, parsed the same way whether it came from a lookup or the picker. */
+function parsePayload(payload: LyricsPayload, duration?: number): TrackLyrics | null {
+  const parsed = processLyricsPayload(payload, duration);
+  return parsed.lines.length > 0 ? parsed : null;
+}
+
 /**
  * Multi-provider Rich-Synced Lyrics Fetcher (BitChord Architecture).
  *
@@ -549,7 +556,10 @@ export async function fetchLyricsMultiProvider(
   videoId?: string,
   album?: string,
 ): Promise<TrackLyrics> {
-  const cacheKey = videoId || `${title}::${artist}`;
+  const providerOrder = providerOrderArg(readProviderSettings(DEFAULT_PROVIDERS));
+  const pinned = videoId ? getPin(videoId) : undefined;
+  const baseKey = videoId || `${title}::${artist}`;
+  const cacheKey = `${baseKey}::${providerOrder?.join("|") ?? "default"}::${pinned ?? ""}`;
   if (lyricsCache.has(cacheKey)) {
     return lyricsCache.get(cacheKey)!;
   }
@@ -568,11 +578,13 @@ export async function fetchLyricsMultiProvider(
         artist: primaryArtist || cleanArtist,
         album: album || null,
         duration: duration || null,
+        providerOrder,
+        pinned,
       });
 
       if (payload) {
-        const parsed = processLyricsPayload(payload, duration);
-        if (parsed.lines.length > 0) {
+        const parsed = parsePayload(payload, duration);
+        if (parsed) {
           rememberLyrics(cacheKey, parsed);
           return parsed;
         }
@@ -594,6 +606,40 @@ export async function fetchLyricsMultiProvider(
   };
   if (!failed) rememberLyrics(cacheKey, notFound);
   return notFound;
+}
+
+/**
+ * Every provider's answer for a song, best-ranked first, for the "Wrong lyrics?" picker.
+ *
+ * Like the normal lookup, providers are only asked through Tauri. Candidates are not cached:
+ * the picker is opened rarely, and a provider's answer can change between songs.
+ */
+export async function fetchLyricsCandidates(
+  title: string,
+  artist: string,
+  duration?: number,
+  videoId?: string,
+  album?: string,
+): Promise<TrackLyrics[]> {
+  if (!isTauriEnvironment()) return [];
+
+  const cleanTitle = cleanTrackTitle(title);
+  const { cleanArtist, primaryArtist } = cleanArtistName(artist);
+  const providerOrder = providerOrderArg(readProviderSettings(DEFAULT_PROVIDERS));
+
+  const payloads = await invoke<LyricsPayload[]>("get_lyrics_candidates", {
+    videoId: videoId || null,
+    title: cleanTitle,
+    artist: primaryArtist || cleanArtist,
+    album: album || null,
+    duration: duration || null,
+    providerOrder,
+  });
+
+  if (!Array.isArray(payloads)) return [];
+  return payloads
+    .map((payload) => parsePayload(payload, duration))
+    .filter((candidate): candidate is TrackLyrics => candidate !== null);
 }
 
 /**

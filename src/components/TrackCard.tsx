@@ -1,5 +1,6 @@
 import { Play } from "lucide-react";
 import { ArtworkImage } from "./ArtworkImage";
+import { ArtistLinks } from "./ArtistLinks";
 import { cleanDisplayTitle } from "../lib/displayText";
 import type { SearchResult } from "../lib/search";
 import type { CardClickHandler, CardContextMenuHandler } from "../views/types";
@@ -20,6 +21,8 @@ interface TrackCardProps {
 export function TrackCard({ item, isActive, fallbackKind, onClick, onContextMenu }: TrackCardProps) {
   const kind = item.itemType || fallbackKind;
   const isPlaylist = fallbackKind === "song" ? kind === "playlist" : kind !== "song";
+  // An album is neither a playlist nor a plain song, but it is a page you can open.
+  const pillLabel = kind === "album" ? "Album" : isPlaylist ? "Playlist" : "Song";
   return (
     <button
       type="button"
@@ -29,7 +32,7 @@ export function TrackCard({ item, isActive, fallbackKind, onClick, onContextMenu
     >
       <div className="card-thumb-wrap">
         <ArtworkImage src={item.thumbnailUrl} videoId={item.videoId} alt={item.title} />
-        <span className={`card-type-pill ${kind}`}>{isPlaylist ? "Playlist" : "Song"}</span>
+        <span className={`card-type-pill ${kind}`}>{pillLabel}</span>
         <span className="card-play-indicator">
           <Play size={13} fill="currentColor" strokeWidth={0} style={{ marginLeft: 1 }} />
         </span>
@@ -38,7 +41,9 @@ export function TrackCard({ item, isActive, fallbackKind, onClick, onContextMenu
         <p className="card-title" title={item.title}>
           {cleanDisplayTitle(item.title)}
         </p>
-        <p className="card-artist">{item.artist}</p>
+        <p className="card-artist">
+          <ArtistLinks artist={item.artist} artists={item.artists} />
+        </p>
       </div>
     </button>
   );

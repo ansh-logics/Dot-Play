@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { YouTubePlaybackState } from "../components/HiddenYouTubePlayer";
+import type { PlaybackState } from "./engine/deck";
 import { cleanDisplayTitle } from "./displayText";
 import type { PlaybackClock } from "./playbackClock";
 import { isTauriEnvironment, type SearchResult } from "./search";
@@ -136,7 +136,7 @@ const RETRY_MS = 30_000;
 
 interface DiscordPresenceOptions {
   track: SearchResult | null | undefined;
-  playerState: YouTubePlaybackState;
+  playerState: PlaybackState;
   clock: PlaybackClock;
   duration: number;
   rate: number;

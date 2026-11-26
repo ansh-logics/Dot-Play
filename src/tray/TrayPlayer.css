@@ -372,6 +372,42 @@ button.tray-lyric:hover {
   color: rgb(var(--tray-ink));
 }
 
+/* Word-by-word karaoke sweep on the active line */
+.tray-lyric-word {
+  display: inline-block;
+  white-space: pre-wrap;
+  vertical-align: baseline;
+  color: transparent;
+  background-image: linear-gradient(
+    to right,
+    rgb(var(--tray-ink)) calc(var(--w, 0) * 116% - 16%),
+    rgba(var(--tray-ink), 0.3) calc(var(--w, 0) * 116%)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  padding: 0.2em 0;
+  margin: -0.2em 0;
+}
+
+.tray-lyric:not(.is-active) .tray-lyric-word {
+  color: inherit;
+  background: none;
+  -webkit-background-clip: border-box;
+  background-clip: border-box;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tray-lyric-word {
+    display: inline;
+    color: inherit;
+    background: none;
+    -webkit-background-clip: border-box;
+    background-clip: border-box;
+    padding: 0;
+    margin: 0;
+  }
+}
+
 .tray-lyric--dots {
   font-size: 15px;
   letter-spacing: 0.2em;
