@@ -20,6 +20,7 @@
       "@app/*": ["../src/*"],
       "@tauri-apps/api/core": ["./src/embed/tauriMock.ts"],
       "@tauri-apps/api/event": ["./src/embed/tauriMock.ts"],
+      "@uimaxbai/am-lyrics/am-lyrics.js": ["./node_modules/@uimaxbai/am-lyrics/dist/src/am-lyrics.d.ts"],
       "*": ["./node_modules/@types/*", "./node_modules/*"]
     }
   },
