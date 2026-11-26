@@ -5,7 +5,7 @@ export interface TrackMetadata {
   thumbnailUrl: string;
   duration?: string;
   playlistId?: string;
-  itemType?: "song" | "playlist";
+  itemType?: "song" | "playlist" | "album";
   verifiedArtwork?: boolean;
   updatedAt: number;
 }

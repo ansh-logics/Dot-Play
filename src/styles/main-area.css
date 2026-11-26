@@ -2,6 +2,7 @@
    Right Main Content Area
    -------------------------------------------------------------------------- */
 .app-main-area {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -11,19 +12,23 @@
   background: var(--bg-oled);
 }
 
-/* Top Bar / Search */
+/* Top Bar / Search: floats over the page, so content scrolls underneath it.
+   The scrim fades to nothing instead of an opaque edge, and the bar itself
+   swallows clicks (only the search pill takes them) so the page stays clickable. */
 .app-top-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   height: var(--topbar-height);
   min-height: var(--topbar-height);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0 36px;
-  background: rgba(0, 0, 0, 1);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-bottom: 1px solid var(--border-subtle);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.35) 70%, rgba(0, 0, 0, 0) 100%);
   z-index: 40;
+  pointer-events: none;
 }
 
 .top-search-wrap {
@@ -32,6 +37,7 @@
   max-width: 500px;
   display: flex;
   align-items: center;
+  pointer-events: auto;
 }
 
 .top-search-svg {
@@ -49,31 +55,36 @@
   width: 100%;
   height: 42px;
   padding: 0 36px 0 38px;
-  border-radius: var(--radius-sm);
-  background: #0c0c0d;
-  border: none;
+  border-radius: var(--radius-full);
+  background: var(--glass-fill);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-rim);
+  box-shadow: var(--glass-highlight), 0 8px 24px rgba(0, 0, 0, 0.35);
   color: var(--text-primary);
   font-family: var(--font-heading);
   font-size: var(--fs-base);
   letter-spacing: 0.04em;
-  transition: background 0.2s ease, box-shadow 0.2s ease;
+  transition: background 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
   outline: none;
+}
+
+.top-search-input:hover {
+  background: var(--glass-fill-hover);
 }
 
 /* Placeholder is body text, so Inter: dot-matrix is reserved for headings and numerals. */
 .top-search-input::placeholder {
   font-family: var(--font-body);
   letter-spacing: 0;
-  color: #6e6e73;
+  color: rgba(255, 255, 255, 0.5);
   font-size: var(--fs-base);
 }
 
 .top-search-input:focus {
-  /* Increased from 0.03 to 0.12 for a noticeably brighter background */
-  background: rgba(255, 255, 255, 0.12);
-  border: none;
-  /* Added a very subtle focus ring to make it pop more, remove if you only want the background change */
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.05);
+  background: var(--glass-fill-strong);
+  border-color: rgba(255, 255, 255, 0.22);
+  box-shadow: var(--glass-highlight), 0 0 0 3px rgba(255, 255, 255, 0.06);
 }
 
 .search-clear-btn {
@@ -100,6 +111,9 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding: 28px 36px 48px;
+  /* The top bar floats over this box now, so the page starts beneath it —
+     the bar's 60px plus the 28px of air every view used to sit below it. */
+  padding-top: calc(var(--topbar-height) + 28px);
   position: relative;
 }
 

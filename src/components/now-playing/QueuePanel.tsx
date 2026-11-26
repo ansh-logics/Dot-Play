@@ -2,6 +2,7 @@ import { memo, useState, type MouseEvent } from "react";
 import { Reorder } from "motion/react";
 import { CornerDownRight, ListPlus } from "lucide-react";
 import { ArtworkImage } from "../ArtworkImage";
+import { ArtistLinks } from "../ArtistLinks";
 import { UpcomingQueueItem } from "../queue/UpcomingQueueItem";
 import { useDragAutoScroll } from "../queue/useDragAutoScroll";
 import type { SearchResult } from "../../lib/search";
@@ -130,7 +131,9 @@ export const QueuePanel = memo(function QueuePanel({
               />
               <div className="sidebar-queue-meta">
                 <span className="sidebar-queue-item-title">{track.title}</span>
-                <span className="sidebar-queue-item-artist">{track.artist}</span>
+                <span className="sidebar-queue-item-artist">
+                  <ArtistLinks artist={track.artist} artists={track.artists} />
+                </span>
               </div>
               <div className="sidebar-history-actions" onClick={(e) => e.stopPropagation()}>
                 <button type="button" className="sidebar-history-btn" onClick={() => onPlayNext(track)} aria-label="Play next" title="Play next">

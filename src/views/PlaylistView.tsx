@@ -2,6 +2,7 @@ import { activateOnKey } from "../lib/a11y";
 import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { ChevronLeft, CornerDownRight, ListEnd, Play, Search, Shuffle, Trash2, Upload } from "lucide-react";
 import { ArtworkImage } from "../components/ArtworkImage";
+import { ArtistLinks } from "../components/ArtistLinks";
 import { cleanDisplayTitle } from "../lib/displayText";
 import { useArtwork } from "../lib/imagePipeline";
 import { SOURCE_NAMES, type ImportSource } from "../lib/imports";
@@ -149,6 +150,8 @@ export const PlaylistView = memo(function PlaylistView({
     videoId: track.videoId,
     title: track.title,
     artist: track.artist,
+    // Keeps the credited artists clickable in the mini player and Now Playing.
+    artists: track.artists,
     thumbnailUrl: track.thumbnailUrl,
     playlistId: playlist.id,
     itemType: "song",
@@ -159,8 +162,8 @@ export const PlaylistView = memo(function PlaylistView({
 
   const totalSeconds = allTracks.reduce((sum, t) => sum + durationSeconds(t.duration), 0);
   const songCount = playlist.trackCount || (allTracks.length > 0 ? `${allTracks.length} ${allTracks.length === 1 ? "song" : "songs"}` : "");
+  const lead = playlist.artist ?? playlist.author;
   const meta = [
-    playlist.artist ?? playlist.author,
     playlist.year,
     songCount,
     !playlist.trackCount && totalSeconds > 0 ? formatTotal(totalSeconds) : null,
@@ -216,12 +219,15 @@ export const PlaylistView = memo(function PlaylistView({
             <h1 className="album-title" title={title}>
               {title}
             </h1>
-            {meta.length > 0 && (
+            {(lead || meta.length > 0) && (
               <p className="album-meta">
-                {meta.map((part, i) => (
-                  <span key={i} className={i === 0 ? "album-meta-lead" : undefined}>
-                    {part}
+                {lead && (
+                  <span className="album-meta-lead">
+                    <ArtistLinks artist={lead} artists={playlist.artists} />
                   </span>
+                )}
+                {meta.map((part, i) => (
+                  <span key={i}>{part}</span>
                 ))}
               </p>
             )}
@@ -327,7 +333,9 @@ export const PlaylistView = memo(function PlaylistView({
                     )}
                     <span className="track-row-title">{track.title}</span>
                   </div>
-                  <span className="col-artist">{track.artist}</span>
+                  <span className="col-artist">
+                    <ArtistLinks artist={track.artist} artists={track.artists} />
+                  </span>
                   <div className="col-time-actions">
                     <span className="track-row-missing-note">
                       <Search size={12} /> Not found
@@ -366,7 +374,9 @@ export const PlaylistView = memo(function PlaylistView({
                   )}
                   <span className="track-row-title">{track.title}</span>
                 </div>
-                <span className="col-artist">{track.artist}</span>
+                <span className="col-artist">
+                  <ArtistLinks artist={track.artist} artists={track.artists} />
+                </span>
                 <div className="col-time-actions">
                   <div className="track-row-actions" onClick={(e) => e.stopPropagation()}>
                     <button

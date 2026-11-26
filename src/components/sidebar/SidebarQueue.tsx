@@ -2,6 +2,7 @@ import { memo, useState } from "react";
 import { Reorder } from "motion/react";
 import { CornerDownRight, ListPlus } from "lucide-react";
 import { ArtworkImage } from "../ArtworkImage";
+import { ArtistLinks } from "../ArtistLinks";
 import { UpcomingQueueItem } from "../queue/UpcomingQueueItem";
 import { useDragAutoScroll } from "../queue/useDragAutoScroll";
 import type { SearchResult } from "../../lib/search";
@@ -125,7 +126,7 @@ export const SidebarQueue = memo(function SidebarQueue({
                       {track.title}
                     </span>
                     <span className="sidebar-queue-item-artist" title={track.artist}>
-                      {track.artist}
+                      <ArtistLinks artist={track.artist} artists={track.artists} />
                     </span>
                   </div>
                   <div className="sidebar-history-actions" onClick={(e) => e.stopPropagation()}>

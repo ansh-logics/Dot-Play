@@ -1,8 +1,8 @@
 //! Playlist / album detail pages.
 
-use crate::models::{PlaylistDetails, PlaylistPage, PlaylistTrack};
+use crate::models::{ArtistRef, PlaylistDetails, PlaylistPage, PlaylistTrack};
 use crate::session::SessionState;
-use crate::ytmusic::parse::{clean_ytmusic_title_and_artist, parse_ytmusic_artist_from_runs, upscale_thumbnail_url};
+use crate::ytmusic::parse::{clean_ytmusic_title_and_artist, parse_artist_refs_from_runs, parse_ytmusic_artist_from_runs, upscale_thumbnail_url};
 use crate::ytmusic::{attach_youtube_auth, web_remix_context, with_ytm_headers, HTTP_CLIENT};
 use tauri::State;
 
@@ -92,7 +92,7 @@ pub(crate) async fn get_playlist_details(
         .map(|runs| runs.iter().filter_map(|r| r.get("text").and_then(|t| t.as_str())).collect::<String>())
         .unwrap_or_default();
 
-    let HeaderFacts { kind, artist, year } = header_facts(header_opt);
+    let HeaderFacts { kind, artist, artists, year } = header_facts(header_opt);
 
     let thumb = header_opt
         .and_then(|h| {
@@ -139,6 +139,7 @@ pub(crate) async fn get_playlist_details(
         author,
         kind,
         artist,
+        artists,
         year,
         thumbnail_url: upscale_thumbnail_url(thumb),
         track_count,
@@ -212,7 +213,7 @@ fn continuation_token(items: &[serde_json::Value], shelf: &serde_json::Value) ->
         .map(str::to_string)
 }
 
-fn parse_track(item: &serde_json::Value, fallback_thumb: &str) -> Option<PlaylistTrack> {
+pub(crate) fn parse_track(item: &serde_json::Value, fallback_thumb: &str) -> Option<PlaylistTrack> {
     let r = item.get("musicResponsiveListItemRenderer")?;
     let video_id = r
         .pointer("/playlistItemData/videoId")
@@ -222,9 +223,10 @@ fn parse_track(item: &serde_json::Value, fallback_thumb: &str) -> Option<Playlis
     let track_title = r
         .pointer("/flexColumns/0/musicResponsiveListItemFlexColumnRenderer/text/runs/0/text")
         .and_then(|v| v.as_str())?;
-    let raw_artist = r
+    let artist_runs = r
         .pointer("/flexColumns/1/musicResponsiveListItemFlexColumnRenderer/text/runs")
-        .and_then(|v| v.as_array())
+        .and_then(|v| v.as_array());
+    let raw_artist = artist_runs
         .map(|runs| parse_ytmusic_artist_from_runs(runs))
         .unwrap_or_else(|| "Artist".to_string());
     let duration = r
@@ -239,10 +241,14 @@ fn parse_track(item: &serde_json::Value, fallback_thumb: &str) -> Option<Playlis
         .and_then(|u| u.as_str())
         .unwrap_or(fallback_thumb);
     let (title, artist) = clean_ytmusic_title_and_artist(track_title, &raw_artist);
+    let artists = artist_runs
+        .map(|runs| parse_artist_refs_from_runs(runs))
+        .unwrap_or_default();
     Some(PlaylistTrack {
         video_id: video_id.to_string(),
         title,
         artist,
+        artists,
         duration: duration.to_string(),
         thumbnail_url: upscale_thumbnail_url(track_thumb),
     })
@@ -255,6 +261,7 @@ struct HeaderFacts {
     /// "Album", "Single", "EP", "Playlist"…
     kind: Option<String>,
     artist: Option<String>,
+    artists: Vec<ArtistRef>,
     year: Option<String>,
 }
 
@@ -272,8 +279,9 @@ fn runs_text(runs: Option<&serde_json::Value>) -> Option<String> {
 
 fn header_facts(header: Option<&serde_json::Value>) -> HeaderFacts {
     let Some(header) = header else {
-        return HeaderFacts { kind: None, artist: None, year: None };
+        return HeaderFacts { kind: None, artist: None, artists: Vec::new(), year: None };
     };
+    let subtitle_runs = header.pointer("/subtitle/runs").and_then(|v| v.as_array());
     let subtitle = runs_text(header.pointer("/subtitle/runs")).unwrap_or_default();
     let mut kind = None;
     let mut year = None;
@@ -287,9 +295,20 @@ fn header_facts(header: Option<&serde_json::Value>) -> HeaderFacts {
             rest.push(part);
         }
     }
-    let artist = runs_text(header.pointer("/straplineTextOne/runs"))
-        .or_else(|| (!rest.is_empty()).then(|| rest.join(" • ")));
-    HeaderFacts { kind, artist, year }
+    let strapline_runs = header.pointer("/straplineTextOne/runs").and_then(|v| v.as_array());
+    let (artist, mut artists) = if let Some(runs) = strapline_runs.filter(|r| !r.is_empty()) {
+        (runs_text(header.pointer("/straplineTextOne/runs")), parse_artist_refs_from_runs(runs))
+    } else {
+        let a = (!rest.is_empty()).then(|| rest.join(" • "));
+        let refs = subtitle_runs.map(|r| parse_artist_refs_from_runs(r)).unwrap_or_default();
+        (a, refs)
+    };
+    if artists.is_empty() {
+        if let Some(runs) = subtitle_runs {
+            artists = parse_artist_refs_from_runs(runs);
+        }
+    }
+    HeaderFacts { kind, artist, artists, year }
 }
 
 #[cfg(test)]

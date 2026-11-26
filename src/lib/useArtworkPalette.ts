@@ -18,7 +18,7 @@ export interface ArtworkPalette {
 }
 
 const SAMPLE = 24
-const K = 4
+const K = 5
 const cache = new Map<string, ArtworkPalette | null>()
 
 type RGB = [number, number, number]
@@ -40,12 +40,115 @@ function rgbToHsl([r, g, b]: RGB): [number, number, number] {
   return [h * 60, s, l]
 }
 
-const hsl = (h: number, s: number, l: number) =>
-  `hsl(${Math.round(h)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%)`
+const hsl = (h: number, s: number, l: number) => {
+  const normH = ((Math.round(h) % 360) + 360) % 360
+  return `hsl(${normH} ${Math.round(s * 100)}% ${Math.round(l * 100)}%)`
+}
 
-/** Keep colours rich but dark enough that white type stays readable on top. */
-function tune([h, s, l]: [number, number, number], maxL: number): string {
-  return hsl(h, Math.min(Math.max(s, 0.28), 0.8), Math.min(Math.max(l, 0.2), maxL))
+const SLOT_TARGET_LIGHTNESS = [0.44, 0.40, 0.36, 0.32] as const
+
+function tuneColor([h, s, l]: [number, number, number], slotTarget: number): string {
+  const tunedS = s >= 0.15 ? Math.min(Math.max(s, 0.5), 0.85) : s
+  const tunedL = Math.min(Math.max(l, 0.3), slotTarget)
+  return hsl(h, tunedS, tunedL)
+}
+
+function hueDistance(h1: number, h2: number): number {
+  const diff = Math.abs(h1 - h2) % 360
+  return diff > 180 ? 360 - diff : diff
+}
+
+export function choosePalette(clusters: { hsl: [number, number, number]; size: number }[]): {
+  colors: [string, string, string, string]
+  base: string
+} {
+  if (clusters.length === 0) {
+    return {
+      colors: [hsl(0, 0, 0.44), hsl(0, 0, 0.40), hsl(0, 0, 0.36), hsl(0, 0, 0.32)],
+      base: hsl(0, 0, 0.09),
+    }
+  }
+
+  const isGrey = clusters.every((c) => c.hsl[1] < 0.12)
+
+  if (isGrey) {
+    const bySize = [...clusters].sort((a, b) => b.size - a.size)
+    const pick0 = bySize[0]
+    const pick1 = bySize[1] ?? pick0
+    const pick2 = bySize[2] ?? pick1
+    const pick3 = bySize[3] ?? bySize[bySize.length - 1] ?? pick2
+    const picks = [pick0, pick1, pick2, pick3]
+
+    return {
+      colors: [
+        tuneColor(picks[0].hsl, SLOT_TARGET_LIGHTNESS[0]),
+        tuneColor(picks[1].hsl, SLOT_TARGET_LIGHTNESS[1]),
+        tuneColor(picks[2].hsl, SLOT_TARGET_LIGHTNESS[2]),
+        tuneColor(picks[3].hsl, SLOT_TARGET_LIGHTNESS[3]),
+      ],
+      base: hsl(pick0.hsl[0], Math.min(pick0.hsl[1], 0.15), 0.09),
+    }
+  }
+
+  const scored = clusters
+    .map((c) => {
+      const [h, s, l] = c.hsl
+      let score = Math.pow(s, 1.5) * Math.sqrt(c.size)
+      const isSkinOrBrown = h >= 10 && h <= 45 && s < 0.6 && l >= 0.25 && l <= 0.75
+      const isExtremeL = l < 0.12 || l > 0.9
+      if (isSkinOrBrown || isExtremeL) {
+        score *= 0.45
+      }
+      return { ...c, score }
+    })
+    .sort((a, b) => b.score - a.score)
+
+  const picks: { hsl: [number, number, number]; size: number }[] = []
+  for (const c of scored) {
+    if (picks.length >= 4) break
+    const tooClose = c.hsl[1] >= 0.12 && picks.some((p) => p.hsl[1] >= 0.12 && hueDistance(c.hsl[0], p.hsl[0]) <= 28)
+    if (!tooClose) {
+      picks.push(c)
+    }
+  }
+
+  if (picks.length < 4 && picks[0]) {
+    const p0 = picks[0]
+    const fillCandidates: { hsl: [number, number, number]; size: number }[] = [
+      { hsl: [(p0.hsl[0] + 24 + 360) % 360, p0.hsl[1], p0.hsl[2]], size: p0.size },
+    ]
+    if (picks[1]) {
+      const p1 = picks[1]
+      fillCandidates.push({ hsl: [(p1.hsl[0] + 18 + 360) % 360, p1.hsl[1], p1.hsl[2]], size: p1.size })
+      fillCandidates.push({ hsl: [(p0.hsl[0] - 24 + 360) % 360, p0.hsl[1], p0.hsl[2]], size: p0.size })
+    } else {
+      fillCandidates.push({ hsl: [(p0.hsl[0] - 24 + 360) % 360, p0.hsl[1], p0.hsl[2]], size: p0.size })
+      fillCandidates.push({ hsl: [(fillCandidates[0].hsl[0] + 18 + 360) % 360, p0.hsl[1], p0.hsl[2]], size: p0.size })
+    }
+
+    for (const f of fillCandidates) {
+      if (picks.length >= 4) break
+      picks.push(f)
+    }
+  }
+
+  while (picks.length < 4) {
+    const fallback = picks[picks.length - 1] ?? clusters[0]
+    picks.push(fallback)
+  }
+
+  const pick0 = picks[0]
+  const baseS = Math.min(Math.max(pick0.hsl[1], 0.35), 0.6)
+
+  return {
+    colors: [
+      tuneColor(picks[0].hsl, SLOT_TARGET_LIGHTNESS[0]),
+      tuneColor(picks[1].hsl, SLOT_TARGET_LIGHTNESS[1]),
+      tuneColor(picks[2].hsl, SLOT_TARGET_LIGHTNESS[2]),
+      tuneColor(picks[3].hsl, SLOT_TARGET_LIGHTNESS[3]),
+    ],
+    base: hsl(pick0.hsl[0], baseS, 0.09),
+  }
 }
 
 function kmeans(pixels: RGB[]): { center: RGB; size: number }[] {
@@ -139,22 +242,14 @@ function extract(img: HTMLImageElement): ArtworkPalette | null {
   if (pixels.length < K) return null
 
   const clusters = kmeans(pixels).map((c) => ({ ...c, hsl: rgbToHsl(c.center) }))
-  // Prefer colourful clusters for the accents; fall back to prominence for greyscale art.
-  const byVividness = [...clusters].sort((a, b) => b.hsl[1] * Math.sqrt(b.size) - a.hsl[1] * Math.sqrt(a.size))
-  const darkest = [...clusters].sort((a, b) => a.hsl[2] - b.hsl[2])[0]
+  const chosen = choosePalette(clusters)
 
   return {
-    colors: [
-      tune(clusters[0].hsl, 0.46),
-      tune(byVividness[0].hsl, 0.5),
-      tune(byVividness[1]?.hsl ?? clusters[1].hsl, 0.42),
-      tune(clusters[clusters.length - 1].hsl, 0.36),
-    ],
-    // A deep shade of the dominant hue reads richer than near-black.
+    colors: chosen.colors,
+    base: chosen.base,
     // Shown square with object-fit: cover, the bars take `bar` of the height top and bottom.
     // +1.2% margin: JPEG ringing softens the bar edge, so detection undercounts by a row.
     zoom: bar > 0 ? +(1 / (1 - 2 * (bar + 0.012))).toFixed(3) : 1,
-    base: hsl(clusters[0].hsl[0], Math.min(Math.max(clusters[0].hsl[1], 0.3), 0.55), Math.min(Math.max(darkest.hsl[2], 0.08), 0.13)),
   }
 }
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { AnimatePresence, animate, motion, useAnimationFrame, useMotionValue, useTransform, type MotionValue } from "motion/react";
 import { CassetteTape } from "./CassetteTape";
+import { ArtistLinks } from "../ArtistLinks";
 import type { SettledArtwork } from "./useSettledArtwork";
 import type { SearchResult } from "../../lib/search";
 import { useLyricClock } from "./useLyricClock";
@@ -426,7 +427,9 @@ export function CassetteDeck(props: CassetteDeckProps) {
               <div className="deck-screen-info">
                 <span className="deck-screen-kicker">{isPlaying ? "▶ Playing" : "❚❚ Paused"}</span>
                 <span className="deck-screen-title">{cleanDisplayTitle(track.title)}</span>
-                <span className="deck-screen-artist">{track.artist}</span>
+                <span className="deck-screen-artist">
+                  <ArtistLinks artist={track.artist} artists={track.artists} />
+                </span>
               </div>
             )}
           </div>

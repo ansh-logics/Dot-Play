@@ -1,0 +1,157 @@
+/* --------------------------------------------------------------------------
+   Artist Page (album page's clothes: banner, top songs, disc shelves)
+   -------------------------------------------------------------------------- */
+.artist-view {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding-bottom: 24px;
+}
+
+/* ---------- Loading & failure ---------- */
+
+.artist-loading-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  /* Where the banner's title would sit, so the spinner doesn't jump in from the top. */
+  padding-top: 72px;
+}
+
+.artist-loading-view .loading-label {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-family: var(--font-body);
+  font-size: var(--fs-md);
+  letter-spacing: 0;
+}
+
+.artist-loading-view .search-cards-grid {
+  width: 100%;
+  margin-top: 26px;
+}
+
+.artist-error-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+/* ---------- Banner ---------- */
+
+/* The album cover's slot, but round. */
+.artist-avatar {
+  flex: none;
+  width: clamp(168px, 18vw, 232px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  transform: scale(calc(1 - var(--hero-progress, 0) * 0.12));
+  transform-origin: 0 100%;
+}
+
+.artist-avatar-img,
+.artist-avatar-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border-radius: 50%;
+}
+
+.artist-subscribers {
+  margin: 10px 0 0;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.artist-description {
+  margin: 8px 0 0;
+  max-width: 640px;
+  font-size: var(--fs-md);
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.62);
+  white-space: pre-line;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* The slim bar carries the avatar too, so it's obviously this page. */
+.album-sticky-art.is-round {
+  border-radius: 50%;
+}
+
+/* --------------------------------------------------------------------------
+   Albums & Singles: the Home cards in a row that scrolls sideways instead of
+   wrapping, so a long discography stays one glanceable line.
+   -------------------------------------------------------------------------- */
+.artist-shelf {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: clamp(140px, 13vw, 176px);
+  gap: 20px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* Room above for the card's hover lift, below for its shadow and the scrollbar. */
+  margin-top: -6px;
+  padding: 6px 0 16px;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+.artist-shelf > * {
+  scroll-snap-align: start;
+}
+
+.artist-shelf::-webkit-scrollbar {
+  height: 8px;
+}
+
+.artist-shelf::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.artist-shelf::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: var(--radius-full);
+}
+
+/* --------------------------------------------------------------------------
+   Artist names: text, unless there's a page behind them
+   -------------------------------------------------------------------------- */
+/* An inline span (not a button) so it keeps the line's case, tracking and ellipsis. */
+.artist-link {
+  color: inherit;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  text-underline-offset: 0.18em;
+}
+
+.artist-link:hover {
+  text-decoration: underline;
+}
+
+.artist-link:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.7);
+  outline-offset: 2px;
+}
+
+@media (max-width: 760px) {
+  .artist-avatar {
+    width: 150px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .artist-avatar {
+    transform: none;
+  }
+}

@@ -137,6 +137,12 @@ h1, h2, h3, h4, h5, h6, b, strong, th {
   .np-card {
     background-color: #202024 !important;
   }
+  .app-top-bar {
+    background: #000 !important;
+  }
+  .top-search-input {
+    background: #1c1c20 !important;
+  }
   .nothing-modal-backdrop {
     background: rgba(0, 0, 0, 0.9) !important;
   }

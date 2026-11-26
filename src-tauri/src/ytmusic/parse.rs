@@ -1,7 +1,7 @@
 //! Parsing helpers for YouTube Music API responses: artist/title cleanup, thumbnail
 //! upscaling, feed items, shelves and continuation tokens.
 
-use crate::models::{HomeSection, SearchResult};
+use crate::models::{ArtistRef, HomeSection, SearchResult};
 
 fn is_duration_or_views_or_year(text: &str) -> bool {
     let t = text.trim();
@@ -115,6 +115,61 @@ pub(crate) fn parse_ytmusic_artist_from_runs(runs: &[serde_json::Value]) -> Stri
     clean_artist_string(&all_text)
 }
 
+pub(crate) fn parse_artist_refs_from_runs(runs: &[serde_json::Value]) -> Vec<ArtistRef> {
+    let mut artists: Vec<ArtistRef> = Vec::new();
+    for run in runs {
+        let is_artist = run
+            .pointer("/navigationEndpoint/browseEndpoint/browseEndpointContextSupportedConfigs/browseEndpointContextMusicConfig/pageType")
+            .and_then(|v| v.as_str())
+            .map(|pt| pt == "MUSIC_PAGE_TYPE_ARTIST" || pt == "MUSIC_PAGE_TYPE_USER_CHANNEL")
+            .unwrap_or(false)
+            || run
+                .pointer("/navigationEndpoint/browseEndpoint/browseId")
+                .and_then(|v| v.as_str())
+                .map(|id| id.starts_with("UC") || id.starts_with("FEmusic_library_privately_owned_artist"))
+                .unwrap_or(false);
+
+        if !is_artist {
+            continue;
+        }
+        // Uploaders and playlist owners are channels too, but their pages aren't artist pages.
+        let user_channel = run
+            .pointer("/navigationEndpoint/browseEndpoint/browseEndpointContextSupportedConfigs/browseEndpointContextMusicConfig/pageType")
+            .and_then(|v| v.as_str())
+            == Some("MUSIC_PAGE_TYPE_USER_CHANNEL");
+        if user_channel {
+            continue;
+        }
+
+        let Some(browse_id) = run
+            .pointer("/navigationEndpoint/browseEndpoint/browseId")
+            .and_then(|v| v.as_str())
+        else {
+            continue;
+        };
+
+        if !browse_id.starts_with("UC") {
+            continue;
+        }
+
+        let Some(txt) = run.get("text").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let trimmed = txt.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if !artists.iter().any(|a| a.browse_id == browse_id) {
+            artists.push(ArtistRef {
+                name: trimmed.to_string(),
+                browse_id: browse_id.to_string(),
+            });
+        }
+    }
+    artists
+}
+
 /// Byte index of `needle` in `haystack`, ignoring ASCII case. Matching on the original
 /// string (not a lowercased copy, whose byte offsets can differ) keeps slicing at the
 /// result on a char boundary.
@@ -223,6 +278,9 @@ pub(crate) fn parse_feed_item(item: &serde_json::Value) -> Option<SearchResult> 
         "YouTube Music".to_string()
     };
     let (title, artist) = clean_ytmusic_title_and_artist(raw_title, &raw_artist);
+    let artists = subtitle_runs_opt
+        .map(|runs| parse_artist_refs_from_runs(runs))
+        .unwrap_or_default();
 
     // 3. Extract Thumbnail
     let raw_thumb = renderer
@@ -371,6 +429,7 @@ pub(crate) fn parse_feed_item(item: &serde_json::Value) -> Option<SearchResult> 
             video_id: resolved_video_id.to_string(),
             title,
             artist,
+            artists,
             thumbnail_url: final_thumb,
             playlist_id: final_playlist_id,
             item_type: Some(item_type.to_string()),
@@ -499,4 +558,78 @@ pub(crate) fn parse_shelves(shelves: &[serde_json::Value]) -> Vec<HomeSection> {
     }
 
     sections
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn parses_artist_refs_from_runs() {
+        let runs = json!([
+            {
+                "text": " The Beatles ",
+                "navigationEndpoint": {
+                    "browseEndpoint": {
+                        "browseId": "UC1234567890",
+                        "browseEndpointContextSupportedConfigs": {
+                            "browseEndpointContextMusicConfig": {
+                                "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                "text": " • "
+            },
+            {
+                "text": "The Beatles Duplicate",
+                "navigationEndpoint": {
+                    "browseEndpoint": {
+                        "browseId": "UC1234567890",
+                        "browseEndpointContextSupportedConfigs": {
+                            "browseEndpointContextMusicConfig": {
+                                "pageType": "MUSIC_PAGE_TYPE_ARTIST"
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                "text": "Private Library Artist",
+                "navigationEndpoint": {
+                    "browseEndpoint": {
+                        "browseId": "FEmusic_library_privately_owned_artist_abc"
+                    }
+                }
+            },
+            {
+                "text": "Second Artist",
+                "navigationEndpoint": {
+                    "browseEndpoint": {
+                        "browseId": "UC0987654321"
+                    }
+                }
+            }
+        ]);
+
+        let refs = parse_artist_refs_from_runs(runs.as_array().unwrap());
+        assert_eq!(refs.len(), 2);
+        assert_eq!(
+            refs[0],
+            ArtistRef {
+                name: "The Beatles".to_string(),
+                browse_id: "UC1234567890".to_string(),
+            }
+        );
+        assert_eq!(
+            refs[1],
+            ArtistRef {
+                name: "Second Artist".to_string(),
+                browse_id: "UC0987654321".to_string(),
+            }
+        );
+    }
 }

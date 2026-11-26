@@ -1,3 +1,4 @@
+mod artist;
 mod discord;
 mod feed;
 mod fsutil;
@@ -43,6 +44,7 @@ const MAIN_WINDOW_PERMISSIONS: &[&str] = &[
     "allow-get-home-feed",
     "allow-get-home-feed-continuation",
     "allow-get-playlist-details",
+    "allow-get-artist",
     "allow-get-playlist-continuation",
     "allow-get-highres-thumbnails",
     "allow-get-user-profile",
@@ -217,6 +219,7 @@ pub fn run() {
             feed::get_home_feed_continuation,
             playlist::get_playlist_details,
             playlist::get_playlist_continuation,
+            artist::get_artist,
             thumbnails::get_highres_thumbnails,
             session::get_user_profile,
             feed::get_history,

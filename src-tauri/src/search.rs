@@ -1,7 +1,7 @@
 //! Song search.
 
 use crate::models::SearchResult;
-use crate::ytmusic::parse::{clean_ytmusic_title_and_artist, parse_ytmusic_artist_from_runs, upscale_thumbnail_url};
+use crate::ytmusic::parse::{clean_ytmusic_title_and_artist, parse_artist_refs_from_runs, parse_ytmusic_artist_from_runs, upscale_thumbnail_url};
 use crate::ytmusic::{web_remix_context, with_ytm_headers, HTTP_CLIENT};
 
 #[tauri::command]
@@ -75,11 +75,15 @@ pub(crate) async fn search_songs(query: &str) -> Result<Vec<SongHit>, String> {
 
         if let (Some(id), Some(t)) = (video_id, title) {
             let (clean_t, clean_a) = clean_ytmusic_title_and_artist(t, &raw_artist);
+            let artists = subtitle_runs
+                .map(|runs| parse_artist_refs_from_runs(runs))
+                .unwrap_or_default();
             results.push(SongHit {
                 result: SearchResult {
                     video_id: id.to_string(),
                     title: clean_t,
                     artist: clean_a,
+                    artists,
                     thumbnail_url: thumb.to_string(),
                     playlist_id: None,
                     item_type: Some("song".to_string()),
@@ -133,12 +137,16 @@ pub(crate) async fn search_songs(query: &str) -> Result<Vec<SongHit>, String> {
 
                         if let (Some(id), Some(t)) = (video_id, title) {
                             let (clean_t, clean_a) = clean_ytmusic_title_and_artist(t, &raw_artist);
+                            let artists = subtitle_runs
+                                .map(|runs| parse_artist_refs_from_runs(runs))
+                                .unwrap_or_default();
                             if !results.iter().any(|r| r.result.video_id == id) {
                                 results.push(SongHit {
                                     result: SearchResult {
                                         video_id: id.to_string(),
                                         title: clean_t,
                                         artist: clean_a,
+                                        artists,
                                         thumbnail_url: thumb.to_string(),
                                         playlist_id: None,
                                         item_type: Some("song".to_string()),

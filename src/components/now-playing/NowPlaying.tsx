@@ -20,6 +20,7 @@ import { cleanDisplayTitle } from "../../lib/displayText";
 import type { SearchResult } from "../../lib/search";
 import type { QueueSession } from "../../lib/queueManager";
 import type { PlaybackModes } from "../../lib/playbackModes";
+import { ArtistLinks } from "../ArtistLinks";
 import { NowPlayingBackdrop } from "./NowPlayingBackdrop";
 import { LyricsPanel } from "./LyricsPanel";
 import { AmLyricsPanel } from "./AmLyricsPanel";
@@ -580,7 +581,7 @@ function NowPlayingScreen(props: NowPlayingProps) {
               {cleanDisplayTitle(track.title)}
             </h1>
             <p className={`np-artist ${props.playbackError ? "is-error" : ""}`} title={props.playbackError ?? track.artist}>
-              {props.playbackError ?? track.artist}
+              {props.playbackError ?? <ArtistLinks artist={track.artist} artists={track.artists} />}
             </p>
           </motion.div>
         </LayoutGroup>
@@ -624,7 +625,9 @@ function NowPlayingScreen(props: NowPlayingProps) {
               </div>
               <div className="np-mini-text">
                 <span className="np-mini-title">{cleanDisplayTitle(track.title)}</span>
-                <span className="np-mini-artist">{track.artist}</span>
+                <span className="np-mini-artist">
+                  <ArtistLinks artist={track.artist} artists={track.artists} />
+                </span>
               </div>
             </motion.div>
             <motion.div style={{ y: contentShift }}>

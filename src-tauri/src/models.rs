@@ -2,12 +2,21 @@
 
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct ArtistRef {
+    pub name: String,
+    #[serde(rename = "browseId")]
+    pub browse_id: String,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SearchResult {
     #[serde(rename = "videoId")]
     pub video_id: String,
     pub title: String,
     pub artist: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub artists: Vec<ArtistRef>,
     #[serde(rename = "thumbnailUrl")]
     pub thumbnail_url: String,
     #[serde(rename = "playlistId", skip_serializing_if = "Option::is_none")]
@@ -26,6 +35,8 @@ pub struct PlaylistTrack {
     pub video_id: String,
     pub title: String,
     pub artist: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub artists: Vec<ArtistRef>,
     pub duration: String,
     #[serde(rename = "thumbnailUrl")]
     pub thumbnail_url: String,
@@ -43,6 +54,8 @@ pub struct PlaylistDetails {
     /// The album's artist or the playlist's owner.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub artist: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub artists: Vec<ArtistRef>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub year: Option<String>,
     #[serde(rename = "thumbnailUrl")]
@@ -75,3 +88,21 @@ pub struct HomeFeedResponse {
     #[serde(rename = "continuationToken", skip_serializing_if = "Option::is_none")]
     pub continuation_token: Option<String>,
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ArtistPage {
+    pub id: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(rename = "thumbnailUrl")]
+    pub thumbnail_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subscribers: Option<String>,
+    pub songs: Vec<PlaylistTrack>,
+    #[serde(rename = "songsPlaylistId", skip_serializing_if = "Option::is_none")]
+    pub songs_playlist_id: Option<String>,
+    pub albums: Vec<SearchResult>,
+    pub singles: Vec<SearchResult>,
+}
+

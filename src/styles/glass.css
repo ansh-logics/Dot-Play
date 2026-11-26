@@ -1,0 +1,53 @@
+/* ==========================================================================
+   Glass: one recipe for every translucent surface (search bar, mini player,
+   sidebar items, round controls). In the spirit of Nothing OS's translucent
+   pills and Apple's Liquid Glass: a faint white fill, a heavy blur that lifts
+   the colours behind it, a hairline rim, and a soft highlight along the top.
+
+   Glass only reads when something colourful sits behind it, so it's used on
+   surfaces that float over content (the top bar over the page) or over their
+   own blurred artwork (the mini player). Plain black behind = flat grey.
+   ========================================================================== */
+
+:root {
+  --glass-fill: rgba(255, 255, 255, 0.06);
+  --glass-fill-hover: rgba(255, 255, 255, 0.1);
+  --glass-fill-strong: rgba(255, 255, 255, 0.14);
+  --glass-blur: blur(28px) saturate(180%);
+  --glass-rim: rgba(255, 255, 255, 0.1);
+  /* Light catching the top edge, and a faint darker lip at the bottom. */
+  --glass-highlight:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18);
+  --glass-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+.glass {
+  background: var(--glass-fill);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-rim);
+  box-shadow: var(--glass-highlight), var(--glass-shadow);
+}
+
+/* A pill or round control: same glass, no drop shadow (it sits in a bar). */
+.glass-pill {
+  background: var(--glass-fill);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-rim);
+  box-shadow: var(--glass-highlight);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.glass-pill:hover {
+  background: var(--glass-fill-hover);
+}
+
+/* macOS Reduce Transparency: solid fills, no blur (base.css also strips every blur). */
+@media (prefers-reduced-transparency: reduce) {
+  .glass,
+  .glass-pill {
+    background: #1c1c20 !important;
+  }
+}

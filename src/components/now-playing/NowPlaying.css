@@ -63,13 +63,15 @@
 
 .np-backdrop-colour {
   position: absolute;
-  inset: -12%;
+  inset: -25%;
   opacity: 0;
   background:
-    radial-gradient(60% 55% at 18% 12%, var(--np-c0) 0%, transparent 100%),
-    radial-gradient(50% 50% at 46% 58%, var(--np-c1) 0%, transparent 100%),
-    radial-gradient(55% 60% at 88% 26%, var(--np-c2) 0%, transparent 100%),
-    radial-gradient(60% 50% at 80% 96%, var(--np-c3) 0%, transparent 100%),
+    radial-gradient(75% 70% at 12% 18%, var(--np-c0) 0%, transparent 70%),
+    radial-gradient(70% 75% at 88% 12%, var(--np-c1) 0%, transparent 70%),
+    radial-gradient(85% 70% at 50% 55%, var(--np-c2) 0%, transparent 72%),
+    radial-gradient(70% 70% at 10% 92%, var(--np-c3) 0%, transparent 70%),
+    radial-gradient(75% 65% at 92% 88%, var(--np-c0) 0%, transparent 70%),
+    radial-gradient(60% 60% at 55% 8%, var(--np-c3) 0%, transparent 70%),
     var(--np-base);
   transition:
     opacity 0.8s ease,
@@ -78,15 +80,16 @@
     --np-c2 1.4s ease,
     --np-c3 1.4s ease,
     --np-base 1.4s ease;
-  animation: np-drift 48s ease-in-out infinite alternate;
+  animation: np-drift 36s ease-in-out infinite alternate;
 }
 
 .np-backdrop-colour.is-ready { opacity: 1; }
 
 @keyframes np-drift {
-  0%   { transform: translate3d(0, 0, 0) scale(1); }
-  50%  { transform: translate3d(3%, 2%, 0) scale(1.05); }
-  100% { transform: translate3d(-2%, 4%, 0) scale(0.98); }
+  0%   { transform: translate3d(0, 0, 0) scale(1) rotate(0deg); }
+  33%  { transform: translate3d(3%, -2%, 0) scale(1.08) rotate(4deg); }
+  66%  { transform: translate3d(-3%, 3%, 0) scale(1.04) rotate(-3deg); }
+  100% { transform: translate3d(2%, 2%, 0) scale(1.1) rotate(2deg); }
 }
 
 .np-vignette {

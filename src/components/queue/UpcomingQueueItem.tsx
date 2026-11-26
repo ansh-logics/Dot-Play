@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import { Reorder, useDragControls } from "motion/react";
 import { X } from "lucide-react";
 import { ArtworkImage } from "../ArtworkImage";
+import { ArtistLinks } from "../ArtistLinks";
 import type { SearchResult } from "../../lib/search";
 
 export type UpcomingQueueItemProps = {
@@ -162,7 +163,7 @@ export function UpcomingQueueItem({
           {track.title}
         </span>
         <span className="sidebar-queue-item-artist" title={track.artist}>
-          {track.artist}
+          <ArtistLinks artist={track.artist} artists={track.artists} />
         </span>
       </div>
       <button
